@@ -44,7 +44,8 @@ class AndroidInstrumentationGateTests(unittest.TestCase):
             result = gate.run_gate(self.root)
         run.assert_called_once_with(
             ["./gradlew", "--stacktrace", ":app:connectedDebugAndroidTest",
-             "-Pandroid.testInstrumentationRunnerArguments.notClass=com.choplab.sampler.audio.AndroidNativeCodecTest"],
+             "-Pandroid.testInstrumentationRunnerArguments.notClass=com.choplab.sampler.audio.AndroidNativeCodecTest,"
+             "com.choplab.sampler.next.NextOfflineTtsProductionTest,com.choplab.sampler.next.NextFourStemProductionTest"],
             cwd=self.root,
             check=False,
         )

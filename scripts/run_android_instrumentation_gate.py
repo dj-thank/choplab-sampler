@@ -38,9 +38,10 @@ def run_gate(repo_root: Path) -> int:
     try:
         completed = subprocess.run(
             ["./gradlew", "--stacktrace", ":app:connectedDebugAndroidTest",
-             # The native candidate gate requires an owned arm64 target, explicit opt-in and
-             # reviewed runtime hashes. Its separate class/argument invocation remains mandatory.
-             "-Pandroid.testInstrumentationRunnerArguments.notClass=com.choplab.sampler.audio.AndroidNativeCodecTest"],
+             # Native codec and offline production fixtures require an owned target and explicit
+             # opt-in. Their separate invocations/receipts remain mandatory; skip is never proof.
+             "-Pandroid.testInstrumentationRunnerArguments.notClass=com.choplab.sampler.audio.AndroidNativeCodecTest,"
+             "com.choplab.sampler.next.NextOfflineTtsProductionTest,com.choplab.sampler.next.NextFourStemProductionTest"],
             cwd=repo_root,
             check=False,
         )

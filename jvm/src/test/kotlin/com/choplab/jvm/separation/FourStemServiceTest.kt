@@ -189,7 +189,13 @@ class FourStemServiceTest {
             val limitedOriginal = source(directory, limitedAssets)
             val limitedPcm = WavPcmPort(limitedAssets)
             val limited = FourStemService(limitedAssets, limitedPcm, directory.resolve("limited-scratch"), native) { available }
-            try { assertEquals(SeparationProblem.NO_SPACE, assertIs<SeparationResult.Failure>(limited.prepare(limitedOriginal)).failure.problem) }
+            val opensBeforeRefusal = native.opens.get()
+            try {
+                assertEquals(SeparationProblem.NO_SPACE, assertIs<SeparationResult.Failure>(limited.prepare(limitedOriginal)).failure.problem)
+                assertEquals(opensBeforeRefusal, native.opens.get())
+                assertTrue(limitedAssets.verified(limitedOriginal)); assertEquals(limitedOriginal.byteCount, limitedAssets.storedBytes())
+                assertEquals(0L, limitedPcm.memory.statistics().usedBytes)
+            }
             finally { limited.close(); limitedPcm.close() }
             val amplePcm = WavPcmPort(assets)
             val broken = FourStemService(assets, amplePcm, directory.resolve("broken-scratch"), native.apply { invalid = true }) { available }

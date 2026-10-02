@@ -26,7 +26,7 @@ class FourStemModelStore(private val directory: Path,
         } else if (!allowDownload) throw SeparationException(SeparationProblem.MODEL_MISSING)
         Files.createDirectories(directory)
         require(!Files.isSymbolicLink(directory))
-        if (Files.getFileStore(directory).usableSpace < FourStemSpec.MODEL_BYTES + 64L * 1024 * 1024)
+        if (directory.toFile().usableSpace < FourStemSpec.MODEL_BYTES + 64L * 1024 * 1024)
             throw SeparationException(SeparationProblem.NO_SPACE)
         val pending = directory.resolve(".model-${UUID.randomUUID()}.part")
         try {

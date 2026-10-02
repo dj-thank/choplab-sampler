@@ -32,7 +32,7 @@ checkoutのJDK/SDKを設定してrepository rootから実行します。Windows�
 
 関連するUI suiteと公開surface/配布検査も選びます。新module/Preview variantを追加したPRで実在するtask名をROADMAP/CIへ反映し、全体 `check`だけで全module実行とみなしません。文書だけならリンク、契約の整合、機密/個人path、必須CIを確認し、fresh buildと報告しません。
 
-Android NEXTの縮小候補は[RELEASE](RELEASE.md)の `choplabNextSizeProbe=true` で、本体と `:app:assemblePreviewAndroidTest` を同じtree・property・runtime AARで作ります。[AGPのtestBuildType](https://developer.android.com/studio/test/advanced-test-setup#change-test-build-type) を `preview` に設定し、本体のR8 mappingでtest APKも縮小・参照変換します。DebugAndroidTestをR8本体へ組み合わせると、Kotlin等の難読化済みclassへ到達できません。probeだけは `src/nextRuntimeTest` と既存codec testを対象にし、Compose内部APIへ直接入る通常Debug UI suiteと分けます。runnerはEspressoの間接依存にせずtestへ明示依存します。本体だけの最適化で `Trace` / `LazyKt` のholderやcodec入口が消えるため、probe専用規則はAGPの縮小前classfile入力に対してR8 `TraceReferences --keep-rules` で抽出したtest→本体の共有APIを保持します。名前付きholderと実際の参照memberだけが対象で、package wildcardや広いCompose/制作class保持、本体の欠落class警告抑制は加えません。annotationにしか現れずtestのmethod/field参照がない型は除外し、`kotlin.Metadata` による本体全体のmetadata保持を避けます。fixture・共有依存を変えたらこの境界も再抽出し、実APKとmatching testを実行し直します。
+Android NEXTの縮小候補は[RELEASE](RELEASE.md)の `choplabNextSizeProbe=true` で、本体と `:app:assemblePreviewAndroidTest` を同じtree・property・runtime AARで作ります。[AGPのtestBuildType](https://developer.android.com/studio/test/advanced-test-setup#change-test-build-type) を `preview` に設定し、本体のR8 mappingでtest APKも縮小・参照変換します。DebugAndroidTestをR8本体へ組み合わせると、Kotlin等の難読化済みclassへ到達できません。probeだけは `src/nextRuntimeTest`、明示実行専用の `src/nextAndroidTest` と既存codec testを対象にし、Compose内部APIへ直接入る通常Debug UI suiteと分けます。runnerはEspressoの間接依存にせずtestへ明示依存します。本体だけの最適化で `Trace` / `LazyKt` のholderやcodec入口が消えるため、probe専用規則はAGPの縮小前classfile入力に対してR8 `TraceReferences --keep-rules` で抽出したtest→本体の共有APIを保持します。名前付きholderと実際の参照memberだけが対象で、package wildcardや広いCompose/制作class保持、本体の欠落class警告抑制は加えません。annotationにしか現れずtestのmethod/field参照がない型は除外し、`kotlin.Metadata` による本体全体のmetadata保持を避けます。fixture・共有依存を変えたらこの境界も再抽出し、実APKとmatching testを実行し直します。
 
 境界抽出では `minifyPreviewWithR8.classes` をtarget、`minifyPreviewAndroidTestWithR8.classes` をsource、AGPの `bootClasspath` をlibraryにします。directory入力はclassfile JARへ束ね、AGP同梱R8の `TraceReferences --keep-rules` を使います。Android SDK stubが持たないrunnerの `ExposedInstrumentationApi.execStartActivity` 継承先はframework側の診断として確認し、共有APIの未解決参照と混同しません。
 
@@ -55,6 +55,25 @@ adb -s "$CHOPLAB_TEST_SERIAL" shell am instrument -w -r \
 `CHOPLAB_FFMPEG_SHA256` は固定候補のFFmpeg entry pinです。runtimeの4 testはja/en launcher、Rhino interpreter/timeago reflection、ORT JNI tensor、公開Android入口からの実Activity起動・初回案内を閉じる操作・4工程のframework accessibility表示を検査します。model/provider/マイクへ接続せず、testは所有する隔離profileだけで実行します。通常Debugの `NextEditorDeviceTest` は合成WAV取込・kit配置・Undoも引き続き確認しますが、縮小本体の受入へ転用しません。codec testは11形式・区間seek・24bit/左右・resample・local yt-dlp変換に加え、local FLAC metadataをproduction Jackson mapperで読む経路を確認します。テスト数/失敗/runner crashをreadbackし、未実行やskipを成功にしません。native loaderで止まった場合はcodec未受入のまま保持し、Java/R8検査成功から繰り上げません。実provider、物理音/route、縮小本体の全制作通し、署名配布は別の受入です。
 
 旧Python cacheの移行は、端末ownerが所有する隔離Previewでcodec試験を新しいprocessから実行し、上の引数へ `-e choplabCodecSeedLegacyPythonCache true` と `-e choplabCodecExpectedPythonSha256 <config/android-ffmpeg-audio.json の pythonLinkage.member.sha256>` を追加して確認します。fixtureはnative初期化前に、固定ZIPの変更されていない版付きliblzmaを版なしaliasへ複製し、上流のprefsへ旧ZIP長 `14305904` を設定します。実際の `YoutubeDL.init` がcacheを再展開し、version `41890175`・alias不在・版付きELFのSHA不変を満たしてから、既存11codec/metadata試験を続けます。receiptの `cacheMigration` はこの明示的な旧cache模擬だけの結果であり、旧APK/元ZIPのinstall試験や利用者data移行の証拠にはしません。flagなしではcacheを模擬せず `NOT_RUN` と記録し、新規cacheの試験と区別します。元ZIP・音声・利用者dataはfixtureへ同梱しません。
+
+端末TTSの実software受入は、ownerが同じpackageのJava/libraryで `com.choplab.desktop.next.NextTtsProductionSelfTest --choplab-offline-tts-fixture` を実行します。Macは導入済み `say`、Windowsは `System.Speech` を使い、固定された日英の合成用短文だけを無音でWAVへ生成します。言語別receiptは、実PCM→本番VocalTtsService→明示guide配置1Undo/Redo→24bit→archive/autosave再開、原音bytes・推定word timing・終了PCM0を検査します。声がなければ `UNAVAILABLE` / process exit 2であり、fake音声へ置換しません。必要なfixtureのtempoはtyped `CANNOT_FIT` の実測値から明示選択し、40–240 BPM・WSOLA 0.6–1.6を維持します。
+
+Windowsで新しいproject JARを既存private app-imageのJRE/第三者依存と組み合わせる隔離診断は、fresh packageの受入から分けます。rootがschema互換のproject7個を一式固定し、元project7個を除外した新7＋固定第三者57個の明示classpathを使います。元64JARの前後hashを照合し、image外の新規profile/tmpだけで実行します。既存 `NextFourStemProductionSelfTest` はownerが指定した固定165,612,636 bytes・SHA-256を満たすモデル単一引数だけを受け、モデルをdownloadせず実推論・原音・明示1UndoRedo・24bit/archive/autosave・PCM終了0を検査します。モデルも前後hashを照合します。このDesktop entryはnative取消を検査せず、Androidのnative出力直後取消の証拠と混同しません。seed済みcacheの推論試験だけでは初回download/破損修復を通りません。Androidの追加caseは固定supplied modelをcontrolled-local `ModelDownload` として実Storeへ渡し、空cacheからの取得・途中取消後のpart削除/旧corrupt cache保全・hash検証後の修復を確認してから既存seed/inferを続けます。これはネットワークを使わない取得処理の検証で、receiptの `modelHttpDownloadVerified=false` を保持し、実HTTPS取得やproviderの成功にしません。診断のexit0/LOCAL_PASSをfresh package・物理音・provider・公開・Humanへ昇格しません。
+
+```sh
+"$CHOPLAB_BUNDLED_JAVA" -cp "$CHOPLAB_APP_LIBS/*" \
+  com.choplab.desktop.next.NextTtsProductionSelfTest --choplab-offline-tts-fixture
+adb -s "$CHOPLAB_TEST_SERIAL" shell am instrument -w -r \
+  -e class com.choplab.sampler.next.NextOfflineTtsProductionTest -e choplabOfflineTtsFixture true \
+  com.choplab.sampler.preview.test/androidx.test.runner.AndroidJUnitRunner
+adb -s "$CHOPLAB_TEST_SERIAL" shell am instrument -w -r \
+  -e class com.choplab.sampler.next.NextFourStemProductionTest -e choplabFourStemFixture true \
+  com.choplab.sampler.preview.test/androidx.test.runner.AndroidJUnitRunner
+```
+
+Androidの2言語TTSと1件の実4stemは、ownerの隔離Preview・対応test APKだけで実行します。新fixtureのtest→本体参照は、上のTraceReferences手順で最終同一sourceから再抽出してからpairを作ります。4stem用モデルはownerがappの `getExternalFilesDir(null)/acceptance/htdemucs_fp16weights.onnx` へ置いた固定165,612,636 bytesだけを読み、[FourStemSpec](../jvm/src/main/kotlin/com/choplab/jvm/separation/FourStemSpec.kt)のsize/SHAを外部入力と私有seedの両方で検査します。downloadやモデル同梱はせず、実ActivityManagerのRAM判定を保った本番workerで24,000 source frames→4つの44.1kHz float資産・各22,050 native frames→明示INSTRUMENTAL/1Undo→24bit→再開を検査します。取消は実native結果返却直後・資産公開前の境界へ固定し、公開資産0と再試行、原音・文書保全を検査します。native実行中の停止応答や物理音の証拠へは広げません。 Androidの空き容量は対象pathの `File.usableSpace` 実値で4出力＋16MiBを満たすことを要求し、0/不足はNO_SPACEとします。NIOのfilesystem情報取得がAndroidで拒否されても、架空の空きを返したり判定を省いたりしません。fixtureのmemory preflightは実ActivityManagerのtotal/available/lowMemoryを使い、CLIで容量を割り当てたsoftware emulatorの結果を物理端末へ読み替えません。
+
+これらのAndroid fixtureは明示flagなしで `NOT_RUN` skip、声・モデル・実RAM不足なら `UNAVAILABLE` receiptとskipです。通常CIのrunnerは2classを明示除外し、XMLの失敗・skip拒否自体は保持します。実行receiptはinstrumentation statusと同じapp外部acceptance directoryの新規JSONへ出し、原音・モデル・voice名・端末識別子・個人pathを含めません。source/hash・本体/testの署名後bytesと実行時刻に束縛し、成功した言語/fixtureだけをLOCALのsoftware証拠に数えます。Googleの利用適合・費用・actor/毎回同意、物理音、TalkBack、Human、公開配布は別の未確認条件です。
 
 Macでは同じJVM/desktop suiteに加え、`:desktop:compileMacSystemAudioHelper`、`:desktop:desktopUiQualityTest`、`:desktop:desktopLongPressUiTest` を実行します。実ファイル・providerの取込は私有の隔離ライブラリで確認し、取得時間とdecode/再読込を分けて測ります。合成音源の比較ではフレーム・rate・左右・サンプル一致も確認します。
 
