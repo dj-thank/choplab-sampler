@@ -205,7 +205,7 @@ internal data class CEPaddedDrag(val padId: Int, val rootPosition: Offset)
 @Composable internal fun CEPads(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit,
     modifier: Modifier = Modifier, maximumSide: androidx.compose.ui.unit.Dp = androidx.compose.ui.unit.Dp.Infinity,
     onPadDrag: ((CEPaddedDrag?) -> Unit)? = null, onPadDrop: ((Int, Offset) -> Unit)? = null,
-    capture: (() -> Long)? = null, hit: (() -> Long?)? = null) {
+    capture: (() -> ContinuousChopGesture?)? = null, hit: (() -> Long?)? = null) {
     val font = LocalDensity.current.fontScale
     val latestCapture by rememberUpdatedState(capture)
     val latestHit by rememberUpdatedState(hit)

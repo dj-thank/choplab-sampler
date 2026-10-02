@@ -1,18 +1,20 @@
 package com.choplab.ui
 
+import com.choplab.core.chop.*
+import com.choplab.ui.chop.*
+
 import com.choplab.core.*
 import com.choplab.core.ai.*
-import com.choplab.core.chop.*
 import com.choplab.core.edit.Intent
 import com.choplab.core.kits.DrumKits
 import com.choplab.core.model.*
 import com.choplab.core.pattern.PatternProblem
 import com.choplab.engine.EngineCommand
 import com.choplab.engine.EngineProgram
+import com.choplab.engine.Tempo
 import com.choplab.engine.PlayMode
 import com.choplab.ui.ai.*
 import com.choplab.ui.analysis.*
-import com.choplab.ui.chop.*
 import com.choplab.ui.vocal.*
 import com.choplab.ui.pattern.*
 import kotlinx.coroutines.*
@@ -26,6 +28,7 @@ class ContinuousEditorPresenterTest {
     @Test fun autoChopAndOtherSourceToolsTransferOnePreviewOwnerWithoutEditing() = runBlocking<Unit> {
         for (target in listOf(ContinuousEditorAction.OpenSourceAnalysis, ContinuousEditorAction.OpenVocalCoach,
             ContinuousEditorAction.OpenVocalPitch, ContinuousEditorAction.OpenVocalGuide,
+            ContinuousEditorAction.OpenLiveChopTiming, ContinuousEditorAction.BeginLiveChop,
             ContinuousEditorAction.Mixer(com.choplab.ui.mixer.MixerAction.Open()))) {
             lateinit var ports: ChopModalPorts
             val h = Harness(decoratePorts = { ChopModalPorts(it).also { p -> ports = p } }, adjust = ::chopModalProject)
@@ -45,6 +48,7 @@ class ContinuousEditorPresenterTest {
                 assertNotSame(chop, h.presenter.autoChop.value)
                 assertNull(h.presenter.sourceAnalysis.value); assertNull(h.presenter.vocalCoach.value)
                 assertNull(h.presenter.vocalPitch.value); assertNull(h.presenter.vocalGuide.value)
+                h.until { !it.liveChopping && !it.liveChopTiming.open }
                 h.until { it.mixer.draft == null }
                 assertEquals(before, h.studio.document.value)
             } finally { h.close() }
@@ -86,9 +90,10 @@ class ContinuousEditorPresenterTest {
                     while (analysis?.state?.value?.phase != SourceAnalysisPhase.APPLYING &&
                         guide?.state?.value?.phase != VocalGuidePhase.APPLYING && chop?.state?.value?.applying != true) delay(1)
                 }
-                val actions = if (chop == null) listOf(ContinuousEditorAction.AutoChop) else listOf(
+                val actions = (if (chop == null) listOf(ContinuousEditorAction.AutoChop) else listOf(
                     ContinuousEditorAction.OpenSourceAnalysis, ContinuousEditorAction.OpenVocalCoach, ContinuousEditorAction.OpenVocalPitch,
-                    ContinuousEditorAction.OpenVocalGuide, ContinuousEditorAction.CloseAutoChop)
+                    ContinuousEditorAction.OpenVocalGuide, ContinuousEditorAction.CloseAutoChop)) +
+                    listOf(ContinuousEditorAction.OpenLiveChopTiming, ContinuousEditorAction.BeginLiveChop)
                 for (action in actions) assertFalse(withTimeout(1_000) { h.presenter.dispatch(action) }, "$kind: $action")
                 if (analysis != null) assertSame(analysis, h.presenter.sourceAnalysis.value)
                 if (guide != null) assertSame(guide, h.presenter.vocalGuide.value)
@@ -100,6 +105,28 @@ class ContinuousEditorPresenterTest {
                 assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
                 assertEquals(before.project, h.studio.document.value.project)
             } finally { release.complete(Unit); h.close() }
+        }
+    }
+
+    @Test fun liveChopEntriesCloseSourceProposalsWithoutChangingTheDocument() = runBlocking<Unit> {
+        for (entry in listOf(ContinuousEditorAction.OpenLiveChopTiming, ContinuousEditorAction.BeginLiveChop)) {
+            for (proposal in listOf(ContinuousEditorAction.OpenSourceAnalysis, ContinuousEditorAction.OpenVocalGuide)) {
+                val h = Harness(decoratePorts = { ChopModalPorts(it) }, adjust = ::chopModalProject)
+                try {
+                    val before = h.studio.document.value
+                    assertTrue(h.presenter.dispatch(proposal))
+                    assertTrue(h.presenter.dispatch(entry), "$proposal → $entry")
+                    assertNull(h.presenter.sourceAnalysis.value)
+                    assertNull(h.presenter.vocalGuide.value)
+                    assertEquals(before, h.studio.document.value)
+                    if (entry == ContinuousEditorAction.BeginLiveChop) {
+                        val press = assertNotNull(h.presenter.captureLiveChop())
+                        assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopAll))
+                        assertTrue(h.presenter.dispatch(ContinuousEditorAction.CapturePad(3, press)))
+                        assertEquals(before, h.studio.document.value, "A released press cannot cross Stop")
+                    }
+                } finally { h.close() }
+            }
         }
     }
 
@@ -1336,24 +1363,24 @@ class ContinuousEditorPresenterTest {
         try {
             fun pads() = h.studio.document.value.project.pads
             val untouched = h.studio.document.value.project
-            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CapturePad(3, 40_000)), "A tap outside a pass is not an error")
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CapturePad(3, h.press(40_000))), "A tap outside a pass is not an error")
             assertEquals(untouched, h.studio.document.value.project, "It cuts nothing")
 
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.BeginLiveChop))
             assertEquals(listOf(12_000L), h.ports.seeks, "A pass plays the original from the start of the range")
             withTimeout(2000) { h.presenter.state.first { it.liveChopping && it.originalPlaying } }
-            // A tap cuts where it was heard: 60 ms, 2 880 frames at 48 kHz, before the original's position at the press.
-            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CapturePad(3, 42_880)))
+            // The fixture reports 60 ms (2 880 output frames); the press binds that reading before release.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CapturePad(3, h.press(42_880))))
             assertEquals(FrameRange(40_000, 90_000), pads()[3].range)
             assertEquals(h.original.hash, pads()[3].assetHash)
             assertEquals(3, h.studio.selection.value.padId, "The chopped PAD is selected")
-            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CapturePad(0, 62_880)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CapturePad(0, h.press(62_880))))
             assertEquals(listOf(FrameRange(40_000, 60_000), FrameRange(60_000, 90_000)), listOf(pads()[3].range, pads()[0].range))
             assertEquals(h.original.hash, pads()[0].assetHash, "A PAD that held another sound takes the original")
             assertEquals(PlayMode.GATE, pads()[0].mode, "and keeps its other settings")
             assertEquals(listOf(40_000L, 60_000L), h.studio.document.value.project.source!!.markers)
             val cut = h.studio.document.value.project
-            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CapturePad(5, 92_880)), "A tap heard after the range is not an error")
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CapturePad(5, h.press(92_880))), "A tap heard after the range is not an error")
             assertEquals(cut, h.studio.document.value.project, "It cuts nothing")
 
             // Undo takes back one tap and, as in the earlier app, ends the pass with the original.
@@ -1363,18 +1390,18 @@ class ContinuousEditorPresenterTest {
             assertEquals(h.initial.pads[0], pads()[0])
             assertEquals(stops + 1, h.ports.stops)
             assertFalse(withTimeout(2000) { h.presenter.state.first { !it.liveChopping } }.originalPlaying)
-            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CapturePad(5, 80_000)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CapturePad(5, h.press(80_000))))
             assertNull(pads()[5].assetHash, "No pass, no cut")
         } finally { h.close() }
     }
 
     @Test fun liveChopFollowsTheKeyAndEndsWithTheOriginal() = runBlocking<Unit> {
-        // An octave up the original plays twice as fast, so the same 60 ms spans twice as many of its frames.
+        // The same reported output delay spans twice as many native frames at an octave up.
         val h = Harness { it.copy(source = it.source!!.copy(pitchSemitones = 12.0)) }
         try {
             h.ports.playing = true
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.BeginLiveChop))
-            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CapturePad(2, 30_000)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CapturePad(2, h.press(30_000))))
             assertEquals(FrameRange(24_240, 96_000), h.studio.document.value.project.pads[2].range)
 
             // Leaving the CHOP stage ends the pass; the original keeps playing.
@@ -1411,6 +1438,123 @@ class ContinuousEditorPresenterTest {
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.EndLiveChop))
             assertEquals(stops + 1, h.ports.stops)
             withTimeout(2000) { h.presenter.state.first { !it.liveChopping } }
+        } finally { h.close() }
+    }
+
+    @Test fun liveChopManualCorrectionBelongsToOneRouteAndOldPressesCannotCrossPasses() = runBlocking<Unit> {
+        val h = Harness()
+        try {
+            val before = h.studio.document.value
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenLiveChopTiming))
+            val route = h.ports.timingRoute
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetLiveChopCorrection(route, LiveChopCorrection(LiveChopTimingMode.MANUAL, 25))))
+            assertEquals(before, h.studio.document.value, "Timing settings have no document or Undo mutation")
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.BeginLiveChop))
+            val oldPress = h.press(30_000)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.EndLiveChop))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.BeginLiveChop))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CapturePad(2, oldPress)))
+            assertEquals(before, h.studio.document.value)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CapturePad(2, h.press(30_000))))
+            assertEquals(FrameRange(28_800, 96_000), h.studio.document.value.project.pads[2].range)
+            withTimeout(2000) { h.presenter.state.first { it.liveChopTiming.lastCut != null } }
+            val receipt = h.presenter.state.value.liveChopTiming.lastCut!!
+            assertEquals(28_800, receipt.requestedSourceFrame)
+            assertEquals(28_800, receipt.appliedSourceFrame)
+            assertEquals(LiveChopTimingMode.MANUAL, receipt.mode)
+            val cut = h.studio.document.value
+            val pending = h.press(50_000)
+            h.ports.timingRoute = route.copy(clockEpoch = 1)
+            h.presenter.dispatch(ContinuousEditorAction.CapturePad(3, pending))
+            withTimeout(2000) { h.presenter.state.first { !it.liveChopping && it.liveChopTiming.correction.mode == LiveChopTimingMode.ESTIMATED } }
+            assertEquals(cut, h.studio.document.value, "A clock reset refuses the complete old press")
+            assertEquals(LiveChopTimingProblem.INVALIDATED, h.presenter.state.value.liveChopTiming.problem)
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.SetLiveChopCorrection(route, LiveChopCorrection(LiveChopTimingMode.MANUAL, 90))))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            assertEquals(before.project, h.studio.document.value.project)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.BeginLiveChop))
+            val beforeSeek = h.press(20_000)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SeekOriginal(10_000)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CapturePad(5, beforeSeek)))
+            assertEquals(before.project, h.studio.document.value.project, "A SOURCE seek ends the pass before a held press is released")
+        } finally { h.close() }
+    }
+
+    @Test fun liveChopContendedReadoutKeepsItsRouteButCannotSupplyANewPress() = runBlocking<Unit> {
+        val changes: List<Pair<String, (LiveChopRoute) -> LiveChopRoute>> = listOf(
+            "output session" to { it.copy(outputSession = Any()) }, "engine clock" to { it.copy(engineClock = Any()) },
+            "clock epoch" to { it.copy(clockEpoch = it.clockEpoch + 1) }, "buffer" to { it.copy(bufferFrames = 2048) },
+            "encoding" to { it.copy(floatOutput = !it.floatOutput) }, "rate" to { it.copy(sampleRate = 96_000) },
+            "channels" to { it.copy(channels = 1) }, "block" to { it.copy(blockFrames = 512) })
+        for ((name, change) in changes) {
+            val h = Harness()
+            try {
+                val before = h.studio.document.value
+                val manual = LiveChopCorrection(LiveChopTimingMode.MANUAL, 37)
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetLiveChopCorrection(h.ports.timingRoute, manual)))
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.BeginLiveChop))
+                h.until { it.liveChopping && it.liveChopTiming.correction == manual && it.liveChopTiming.estimatedMillis != null }
+                val press = h.press(30_000)
+                h.ports.timingContended = true
+                h.until { it.liveChopTiming.estimatedMillis == null }
+                assertTrue(h.presenter.state.value.liveChopping, name)
+                assertEquals(manual, h.presenter.state.value.liveChopTiming.correction, name)
+                assertNull(h.presenter.captureLiveChop(), "An incoherent readout has no position to capture: $name")
+                assertEquals(before, h.studio.document.value)
+                h.ports.timingRoute = change(h.ports.timingRoute)
+                h.until { !it.liveChopping && it.liveChopTiming.correction.mode == LiveChopTimingMode.ESTIMATED }
+                assertEquals(LiveChopTimingProblem.INVALIDATED, h.presenter.state.value.liveChopTiming.problem, name)
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.CapturePad(2, press)))
+                assertEquals(before, h.studio.document.value, "Contention cannot hide a $name change or revive its old press")
+            } finally { h.close() }
+        }
+    }
+
+    @Test fun liveChopUnknownOutputRequiresManualChoiceAndEveryTimingChangeInvalidatesIt() = runBlocking<Unit> {
+        val h = Harness()
+        try {
+            h.ports.timingDelay = null
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.BeginLiveChop))
+            val changes: List<(LiveChopRoute) -> LiveChopRoute> = listOf(
+                { it.copy(outputSession = Any()) }, { it.copy(engineClock = Any()) }, { it.copy(clockEpoch = it.clockEpoch + 1) },
+                { it.copy(bufferFrames = (it.bufferFrames ?: 0) + 128) }, { it.copy(floatOutput = !it.floatOutput) },
+                { it.copy(sampleRate = 96_000) }, { it.copy(channels = 1) }, { it.copy(blockFrames = 512) })
+            for (change in changes) {
+                val before = h.studio.document.value
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetLiveChopCorrection(h.ports.timingRoute, LiveChopCorrection(LiveChopTimingMode.MANUAL, 50))))
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.BeginLiveChop))
+                val press = h.press(40_000)
+                h.ports.timingRoute = change(h.ports.timingRoute)
+                h.presenter.dispatch(ContinuousEditorAction.CapturePad(4, press))
+                withTimeout(2000) { h.presenter.state.first { !it.liveChopping && it.liveChopTiming.correction.mode == LiveChopTimingMode.ESTIMATED } }
+                assertEquals(before, h.studio.document.value)
+            }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetLiveChopCorrection(h.ports.timingRoute, LiveChopCorrection(LiveChopTimingMode.MANUAL, 50))))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.BeginLiveChop))
+            h.ports.timingAvailable = false
+            withTimeout(2000) { h.presenter.state.first { !it.liveChopping && it.liveChopTiming.route == null } }
+            assertEquals(LiveChopTimingMode.ESTIMATED, h.presenter.state.value.liveChopTiming.correction.mode)
+        } finally { h.close() }
+    }
+
+    @Test fun liveChopRefusesAStaleRevisionAndAllRecordingRoutesWithoutACut() = runBlocking<Unit> {
+        val h = Harness(voice = true)
+        try {
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.BeginLiveChop))
+            val press = h.press(30_000)
+            assertTrue(h.studio.dispatch(Action.Edit(Intent.SetTempo(Tempo(100_000)))).accepted)
+            val after = h.studio.document.value
+            h.presenter.dispatch(ContinuousEditorAction.CapturePad(2, press))
+            withTimeout(2000) { h.presenter.state.first { !it.liveChopping } }
+            assertEquals(after, h.studio.document.value)
+            for ((start, stop) in listOf(ContinuousEditorAction.RecordVoice to ContinuousEditorAction.StopVoice,
+                ContinuousEditorAction.RecordHits to ContinuousEditorAction.StopHits,
+                ContinuousEditorAction.RecordSource to ContinuousEditorAction.StopSourceRecording)) {
+                assertTrue(h.presenter.dispatch(start))
+                assertFalse(h.presenter.dispatch(ContinuousEditorAction.BeginLiveChop))
+                assertFalse(h.presenter.dispatch(ContinuousEditorAction.OpenLiveChopTiming))
+                assertTrue(h.presenter.dispatch(stop))
+            }
         } finally { h.close() }
     }
 
@@ -2578,6 +2722,11 @@ class ContinuousEditorPresenterTest {
         } finally { gate.countDown(); h.close(); dispatcher.close() }
     }
 
+    private fun Harness.press(frame: Long): ContinuousChopGesture {
+        ports.timingSourceFrame = frame
+        return presenter.captureLiveChop() ?: ContinuousChopGesture(Any(), studio.document.value.revision, ports.liveChopOutput()!!)
+    }
+
     private class Harness(kits: Boolean = false, voice: Boolean = false, originalFrames: Long = 96_000, render: Boolean = false,
                           system: SystemAudioCapture? = null,
                           lyricProposal: LyricProposalPort? = null,
@@ -2696,6 +2845,15 @@ class ContinuousEditorPresenterTest {
             val hash = java.security.MessageDigest.getInstance("SHA-256").digest("${pad.id}:$releaseAt:$frames".toByteArray()).joinToString("") { "%02x".format(it) }
             return Asset(hash, "wav", 44 + frames * 8, 48_000, 2, frames, "performance", AssetRole.RENDERED, derivedFrom = source.hash)
         }
+        @Volatile var timingRoute = LiveChopRoute(Any(), Any(), 0, 48_000, 2, true, 1024, 256)
+        @Volatile var timingDelay: Long? = 60_000_000L
+        @Volatile var timingSourceFrame = 0L
+        @Volatile var timingAvailable = true
+        @Volatile var timingContended = false
+        override fun liveChopProbe() = if (timingAvailable && timingContended) LiveChopProbe.Contended(timingRoute)
+            else super<ContinuousEditorPorts>.liveChopProbe()
+        override fun liveChopOutput() = if (!timingAvailable || timingContended) null else LiveChopOutput(timingRoute, System.nanoTime(),
+            100_000, timingSourceFrame, playing != false, timingDelay)
         @Volatile var originalFrame = 0L
         @Volatile var stops = 0
         val seeks = java.util.concurrent.CopyOnWriteArrayList<Long>()

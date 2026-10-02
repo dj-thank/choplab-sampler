@@ -200,6 +200,8 @@ class NextSession private constructor(
                                              releaseAt: Int, limitFrames: Int, stopAt: Int?) =
             backend.renderNoteRepeat(pad, source, tempo, ticks, releaseAt, limitFrames, stopAt)
         override suspend fun setSongMonitorGain(gain: Float) = backend.audition.songGain(gain)
+        override fun liveChopOutput() = backend.engine.liveChopOutput()
+        override fun liveChopProbe() = backend.engine.liveChopProbe()
         override fun readout() = ContinuousEditorReadout(backend.audition.nativeFrame(), backend.engine.playback().sequenceRenderFrames,
             handSourceFrame = backend.audition.nativeHandFrame(), countInBeatsRemaining = backend.engine.snapshot().countInBeatsRemaining,
             pcm = pcmReadout())

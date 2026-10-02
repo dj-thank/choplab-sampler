@@ -1,6 +1,7 @@
 package com.choplab.desktop.next
 
 import java.lang.reflect.Proxy
+import javax.sound.sampled.AudioFormat
 import javax.sound.sampled.SourceDataLine
 import kotlin.test.*
 
@@ -10,13 +11,18 @@ class JavaSoundSinkTest {
     private class ScriptedLine {
         var free = 4096
         var played = 0L
+        var open = true
+        val format = AudioFormat(AudioFormat.Encoding.PCM_FLOAT, 48_000f, 32, 2, 8, 48_000f, false)
         val line = Proxy.newProxyInstance(SourceDataLine::class.java.classLoader, arrayOf(SourceDataLine::class.java)) { _, method, args ->
             when (method.name) {
                 "available" -> free
                 "getBufferSize" -> 4096
                 "getLongFramePosition" -> played
+                "isOpen" -> open
+                "getFormat" -> format
                 "write" -> (args[2] as Int).also { free -= it }
-                "stop", "flush", "close" -> Unit
+                "close" -> Unit.also { open = false }
+                "stop", "flush" -> Unit
                 else -> error("Not used by the sink: ${method.name}")
             }
         } as SourceDataLine
@@ -48,5 +54,31 @@ class JavaSoundSinkTest {
         scripted.free = 0
         assertEquals(0, sink.write(block, 0, 2048))
         assertEquals(1, sink.underruns())
+    }
+
+    @Test fun reportsFormatAndInvalidatesTimingWhenTheLinePositionResets() {
+        val scripted = ScriptedLine()
+        val sink = JavaSoundSink(scripted.line, SinkEncoding.FLOAT32)
+        assertEquals(48_000, sink.timingSampleRate())
+        assertEquals(2, sink.timingChannels())
+        assertEquals(0L, sink.timingEpoch())
+        sink.write(ByteArray(2048), 0, 2048)
+        scripted.played = 100
+        assertEquals(156L, sink.pendingFrames())
+        assertEquals(0L, sink.timingEpoch())
+        scripted.played = 20
+        assertEquals(236L, sink.pendingFrames())
+        assertEquals(1L, sink.timingEpoch())
+        assertEquals(236L, sink.pendingFrames())
+        assertEquals(1L, sink.timingEpoch())
+    }
+
+    @Test fun refusesTimingAfterTheLineIsClosed() {
+        val scripted = ScriptedLine()
+        val sink = JavaSoundSink(scripted.line, SinkEncoding.FLOAT32)
+        sink.close()
+        assertFalse(scripted.open)
+        assertFailsWith<IllegalStateException> { sink.pendingFrames() }
+        assertFailsWith<IllegalStateException> { sink.timingEpoch() }
     }
 }
