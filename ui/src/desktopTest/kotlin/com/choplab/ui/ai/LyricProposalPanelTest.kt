@@ -5,6 +5,8 @@ package com.choplab.ui.ai
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.MotionDurationScale
+import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.UriHandler
 import androidx.compose.ui.semantics.*
@@ -39,7 +41,9 @@ class LyricProposalPanelTest {
                 }
                 val session = GoogleLyricSession { 100L }
                 val controller = LyricProposalController(document, provider, LyricProposalApply { _, _ -> edits++; true }, this, session.openDialog())
-                val scene = ImageComposeScene(width = width, height = height, density = Density(1f, font), coroutineContext = coroutineContext) {
+                // Keep scroll animation enabled and slow it down on the compact, large-text surface.
+                val motion = object : MotionDurationScale { override val scaleFactor = if (font == 2f) 4f else 1f }
+                val scene = ImageComposeScene(width = width, height = height, density = Density(1f, font), coroutineContext = coroutineContext + motion) {
                     CompositionLocalProvider(LocalUriHandler provides object : UriHandler { override fun openUri(uri: String) = Unit }) {
                         MaterialTheme { LyricProposalPanel(controller, { closed = true }) }
                     }
@@ -53,7 +57,8 @@ class LyricProposalPanelTest {
                     assertEquals(0, requests)
                     assertTrue(scene.tag("ai-key")!!.config.contains(SemanticsProperties.Password))
                     assertTrue(scene.tag("ai-generate")!!.config.contains(SemanticsProperties.Disabled))
-                    scene.tag("ai-consent")!!.config[SemanticsActions.OnClick].action!!.invoke()
+                    scene.reach("ai-consent", width, height)
+                    scene.click("ai-consent")
                     scene.settle()
                     assertTrue(scene.tag("ai-generate")!!.config.contains(SemanticsProperties.Disabled), "Consent alone is not a reviewed owner session")
                     val review = ReviewedGoogleUse("gemini-test", GoogleAccountTier.PAID,
@@ -65,7 +70,8 @@ class LyricProposalPanelTest {
                     scene.settle()
                     assertNotNull(scene.tag("ai-attempt-maximum"))
                     assertTrue(scene.tag("ai-generate")!!.config.contains(SemanticsProperties.Disabled), "Review changes clear the previous consent")
-                    scene.tag("ai-consent")!!.config[SemanticsActions.OnClick].action!!.invoke()
+                    scene.reach("ai-consent", width, height)
+                    scene.click("ai-consent")
                     scene.settle()
                     scene.tag("ai-key")!!.config[SemanticsActions.SetText].action!!.invoke(AnnotatedString("replacement-key"))
                     scene.settle()
@@ -75,23 +81,24 @@ class LyricProposalPanelTest {
                     assertNull(session.install(requireNotNull(session.pendingReview()), review))
                     scene.settle()
                     assertTrue(scene.tag("ai-generate")!!.config.contains(SemanticsProperties.Disabled))
-                    scene.tag("ai-consent")!!.config[SemanticsActions.OnClick].action!!.invoke()
+                    scene.reach("ai-consent", width, height)
+                    scene.click("ai-consent")
                     scene.settle()
                     scene.reach("ai-generate", width, height)
                     assertFalse(scene.tag("ai-generate")!!.config.contains(SemanticsProperties.Disabled))
-                    scene.tag("ai-generate")!!.config[SemanticsActions.OnClick].action!!.invoke()
+                    scene.click("ai-generate")
                     scene.settle()
                     assertEquals(1, requests); assertEquals(0, edits)
                     assertEquals(LyricProposalPhase.PREVIEW, controller.state.value.phase)
                     assertFalse(scene.nodes().flatMap { it.config.getOrNull(SemanticsProperties.Text).orEmpty() }.any { '%' in it.text })
                     scene.reach("ai-apply", width, height)
                     scene.capture("${locale.language}-${width}-font${(font * 100).toInt()}.png")
-                    scene.tag("ai-apply")!!.config[SemanticsActions.OnClick].action!!.invoke()
+                    scene.click("ai-apply")
                     scene.settle()
                     assertEquals(1, edits); assertEquals(1, requests)
                     assertNotNull(scene.tag("ai-applied")); assertNull(scene.tag("ai-apply"))
                     scene.reach("ai-close", width, height)
-                    scene.tag("ai-close")!!.config[SemanticsActions.OnClick].action!!.invoke()
+                    scene.click("ai-close")
                     assertTrue(closed)
                     assertEquals(LyricProposalPhase.CLOSED, controller.state.value.phase)
                 } finally { scene.close(); controller.close() }
@@ -107,12 +114,41 @@ class LyricProposalPanelTest {
     private suspend fun ImageComposeScene.settle() { repeat(8) { render(System.nanoTime()).close(); delay(12) } }
     private suspend fun ImageComposeScene.reach(value: String, width: Int, height: Int) {
         val node = requireNotNull(tag(value))
-        val scroll = nodes().firstNotNullOf { it.config.getOrNull(SemanticsActions.ScrollBy)?.action }
-        scroll(0f, node.positionInRoot.y - height / 3f)
-        settle()
-        val bounds = tag(value)!!.boundsInRoot
-        assertTrue(bounds.height >= 48 && bounds.top >= 0 && bounds.bottom <= height, "$value must be reachable: $bounds")
+        val scroll = nodes().first { it.config.getOrNull(SemanticsProperties.VerticalScrollAxisRange) != null }
+        val area = scroll.boundsInRoot
+        if (node.positionInRoot.y < area.top || node.positionInRoot.y + node.size.height > area.bottom) {
+            val distance = node.positionInRoot.y - area.top - area.height / 3f
+            assertTrue(requireNotNull(scroll.config[SemanticsActions.ScrollBy].action)(0f, distance))
+            // ScrollBy animates. Wait for the real frame clock and layout/draw work, not a fixed frame count.
+            // A guessed integer destination can also be transient because ScrollState keeps subpixel remainder.
+            try { withTimeout(5_000) { do { settle() } while (hasInvalidations()) } }
+            catch (failure: TimeoutCancellationException) {
+                fail("Scroll to $value did not finish: ${tag(value)?.boundsInRoot}; viewport=${width}x$height", failure)
+            }
+        }
+        val reached = requireNotNull(tag(value))
+        val bounds = reached.boundsInRoot
+        val target = reached.touchBoundsInRoot
+        // A Checkbox draws at 24dp; its actual interactive target must still be at least 48dp.
+        assertTrue(target.width >= 48 && target.height >= 48, "$value touch target: $target")
+        assertTrue(target.left >= 0 && target.right <= width && target.top >= 0 && target.bottom <= height,
+            "$value touch target must be fully reachable: $target; viewport=${width}x$height")
+        assertEquals(reached.size.width.toFloat(), bounds.width, .5f, "$value clipped width: $bounds")
+        assertEquals(reached.size.height.toFloat(), bounds.height, .5f, "$value clipped height: $bounds")
+        if (value != "ai-consent") assertTrue(bounds.height >= 48, "$value button height: $bounds")
+        assertTrue(bounds.top >= 0 && bounds.bottom <= height,
+            "$value must be reachable: $bounds / ${reached.size}; viewport=${width}x$height; pending=${hasInvalidations()}")
         assertTrue(bounds.left >= 0 && bounds.right <= width)
+    }
+    private suspend fun ImageComposeScene.click(value: String) {
+        val point = requireNotNull(tag(value)).boundsInRoot.center
+        sendPointerEvent(PointerEventType.Press, point, type = PointerType.Mouse,
+            buttons = PointerButtons(isPrimaryPressed = true), button = PointerButton.Primary)
+        render(System.nanoTime()).close()
+        assertEquals(point, requireNotNull(tag(value)).boundsInRoot.center, "$value moved during the pointer press")
+        sendPointerEvent(PointerEventType.Release, point, type = PointerType.Mouse,
+            buttons = PointerButtons(), button = PointerButton.Primary)
+        settle()
     }
     private fun ImageComposeScene.capture(name: String) {
         val output = File(System.getProperty("choplab.ui.evidenceDir"), "ai-lyrics").apply { mkdirs() }
