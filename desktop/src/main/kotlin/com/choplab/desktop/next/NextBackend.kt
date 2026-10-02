@@ -102,6 +102,7 @@ class NextBackend private constructor(private val shared: EditorBackend, val fil
     suspend fun renderPad(pad: com.choplab.core.model.Pad, source: Asset): Asset = shared.renderPad(pad, source)
     suspend fun renderPerformance(pad: com.choplab.core.model.Pad, source: Asset, releaseAt: Int?, limitFrames: Int, stopAt: Int? = null): Asset =
         shared.renderPerformance(pad, source, releaseAt, limitFrames, stopAt)
+    suspend fun createLoopOverdub(startFrame: Long, frames: Int, grid: IntArray, routes: List<com.choplab.engine.LoopOverdubRoute>) = shared.createLoopOverdub(startFrame, frames, grid, routes)
     suspend fun renderNoteRepeat(pad: com.choplab.core.model.Pad, source: Asset, tempo: com.choplab.engine.Tempo, ticks: Int,
                                  releaseAt: Int, limitFrames: Int, stopAt: Int? = null): Asset =
         shared.renderNoteRepeat(pad, source, tempo, ticks, releaseAt, limitFrames, stopAt)

@@ -79,6 +79,30 @@ class ProgramCompiler(private val pcm: PcmPort) {
         fun songFits(project: Project): Boolean =
             try { planArrangement(project, PlaybackTarget.Arrangement()); true } catch (_: IllegalArgumentException) { false }
 
+        /** Admit all route layers together using the same selected-take and mixer limits as playback. */
+        fun canAddAudioClips(project: Project, target: PlaybackTarget.Arrangement, start: Long, end: Long, trackIds: List<String?>): Boolean = try {
+            require(start >= 0 && end > start && end <= Arrangement.MAX_DURATION_FRAMES && trackIds.isNotEmpty())
+            val plan = planArrangement(project, target)
+            val solo = project.tracks.any { it.solo }
+            val additions = trackIds.count { id ->
+                if (id == null) true else requireNotNull(project.tracks.firstOrNull { it.id == id }).let {
+                    !it.mute && it.gain > 0f && (!solo || it.solo)
+                }
+            }
+            require(plan.audible.size + additions <= Arrangement.MAX_CLIPS)
+            val usedTracks = (plan.audible.map { it.track.id } + project.pads.filter { it.assetHash != null }
+                .mapNotNull { project.banks[it.id / 16].trackId } + trackIds.filterNotNull()).toSet()
+            require(usedTracks.size + trackIds.count { it == null } <= Arrangement.MAX_TRACKS)
+            val edges = plan.audible.flatMap { clip ->
+                val from = maxOf(start, clip.start); val to = minOf(end, clip.end)
+                if (to > from) listOf(from * 2 + 1, to * 2) else emptyList()
+            }.sorted()
+            var overlap = additions
+            require(overlap <= Arrangement.MAX_SIMULTANEOUS_CLIPS)
+            for (edge in edges) { overlap += if (edge and 1L == 1L) 1 else -1; require(overlap <= Arrangement.MAX_SIMULTANEOUS_CLIPS) }
+            true
+        } catch (_: IllegalArgumentException) { false }
+
         private fun planArrangement(project: Project, target: PlaybackTarget.Arrangement): TimelinePlan {
             val takes = target.takeIds.map { id -> requireNotNull(project.takes.firstOrNull { it.id == id }) { "Unknown selected take" } }
             val tracks = project.tracks.associateBy { it.id }

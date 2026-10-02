@@ -204,6 +204,32 @@ class EditorBackendTest {
         assertEquals(opens, closes)
     }
 
+    @Test fun routedOverdubReservesOnePeriodAndForwardQuantizeOnlyAndRefusesBeforePartialAllocation() = runBlocking<Unit> {
+        val files = CountingFiles()
+        val backend = EditorBackend.create(directory().resolve("profile"), ::silentEngine, files::services)
+        val captures = mutableListOf<LoopOverdubCapture>()
+        val routes = List(4) { com.choplab.engine.LoopOverdubRoute("bank-$it") }
+        try {
+            val before = backend.studio.document.value
+            val maximum = com.choplab.engine.LoopOverdub.MAX_FRAMES
+            val grid = IntArray(33) { it * 72_000 }
+            assertEquals(75_142_176, com.choplab.engine.LoopOverdub.memoryBytes(maximum, grid, 4))
+            captures += backend.createLoopOverdub(0, maximum, grid, routes)
+            assertFailsWith<PcmMemoryLimit> { backend.createLoopOverdub(0, maximum, grid, routes) }
+            assertEquals(before, backend.studio.document.value)
+            captures.removeAt(0).close()
+            captures += backend.createLoopOverdub(0, maximum, grid, routes)
+            assertFailsWith<PcmMemoryLimit> { backend.createLoopOverdub(0, maximum, grid, routes) }
+            captures.forEach { it.close() }; captures.clear()
+            val eight = List(8) { com.choplab.engine.LoopOverdubRoute("bank-$it") }
+            assertFailsWith<PcmMemoryLimit> { backend.createLoopOverdub(0, maximum, grid, eight) }
+            val small = backend.createLoopOverdub(0, 48_000, intArrayOf(), eight)
+            assertEquals(8, small.take.routeCount)
+            small.close(); small.close()
+            assertEquals(before, backend.studio.document.value)
+        } finally { captures.forEach { it.close() }; backend.shutdown() }
+    }
+
     @Test fun importsCompleteWhileTheOutputKeepsStallingAndReopening() = runBlocking<Unit> {
         // Like an emulator or a flaky route: every device fills up and stalls, and a recovery policy keeps reopening it.
         val stalling = { object : AudioSink {

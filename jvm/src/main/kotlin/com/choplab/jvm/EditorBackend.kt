@@ -161,8 +161,26 @@ class EditorBackend private constructor(
         }
     }
 
+    /** Reserve all live/future loop PCM before it can reach render; the take never loads source copies. */
+    suspend fun createLoopOverdub(startFrame: Long, frames: Int, grid: IntArray, routes: List<com.choplab.engine.LoopOverdubRoute>): com.choplab.core.LoopOverdubCapture = withContext(Dispatchers.Default) {
+        val memory = pcm.memory.reserve(com.choplab.engine.LoopOverdub.memoryBytes(frames, grid, routes.size))
+        try {
+            val prepared = com.choplab.engine.LoopOverdub(startFrame, frames, grid, routes)
+            object : com.choplab.core.LoopOverdubCapture {
+                override val take = prepared
+                override suspend fun publish(name: String): List<com.choplab.core.LoopOverdubAsset> {
+                    check(take.completed && !take.pcmMiss) { "Incomplete loop PCM" }
+                    return (0 until take.routeCount).filter { take.acceptedPresses(it) > 0 }.map { route ->
+                        com.choplab.core.LoopOverdubAsset(route, publishRendered(take.samples(route), name, null))
+                    }
+                }
+                override fun close() { take.dispose(); memory.close() }
+            }
+        } catch (failure: Throwable) { memory.close(); throw failure }
+    }
+
     /** Stream float bytes: no second/third full-sized byte-array copy next to the rendered PCM. */
-    private suspend fun publishRendered(samples: FloatArray, name: String, sourceHash: String): Asset = withContext(Dispatchers.IO) {
+    private suspend fun publishRendered(samples: FloatArray, name: String, sourceHash: String?): Asset = withContext(Dispatchers.IO) {
         val temporary = Files.createTempFile("choplab-render-", ".wav")
         try {
             val hash = java.security.MessageDigest.getInstance("SHA-256")

@@ -17,6 +17,8 @@ sealed class EngineCommand(val effectiveFrame: Long, val orderId: Long) {
             require(durationFrames == null || durationFrames in 1..PadRender.MAX_FRAMES)
         }
     }
+    /** Prepared, bounded, monitor-only loop take; ownership returns after completed or engine close. */
+    class StartLoopOverdub(effectiveFrame: Long, orderId: Long, val take: LoopOverdub) : EngineCommand(effectiveFrame, orderId)
     class Release(effectiveFrame: Long, orderId: Long, val padId: Int) : EngineCommand(effectiveFrame, orderId) {
         init { require(padId in 0 until 128) }
     }
@@ -136,7 +138,7 @@ class ControlRing internal constructor(val capacity: Int, private val ownership:
         val isOriginal = command is EngineCommand.OriginalSourceCommand
         val isHand = command is EngineCommand.OriginalHandCommand
         if ((isOriginal || command is EngineCommand.SetSongMonitorGain || command is EngineCommand.SetMetronome ||
-                command is EngineCommand.CountInAndResume) && outputMode == EngineOutputMode.EXPORT) return OfferResult.MONITOR_DISABLED
+                command is EngineCommand.CountInAndResume || command is EngineCommand.StartLoopOverdub) && outputMode == EngineOutputMode.EXPORT) return OfferResult.MONITOR_DISABLED
         if (command.orderId <= lastId) return OfferResult.OUT_OF_ORDER
         val globalStop = command is EngineCommand.Panic || command is EngineCommand.StopAll
         if ((globalStop && (song.full() || original.full() || hand.full() || command.effectiveFrame < maxOf(song.lastFrame, original.lastFrame, hand.lastFrame))) ||

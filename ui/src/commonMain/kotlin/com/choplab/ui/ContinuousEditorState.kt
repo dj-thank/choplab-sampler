@@ -24,7 +24,7 @@ enum class ContinuousNoteRepeat(val ticks: Int) {
 enum class ContinuousGrid(val ticks: Int) { BEAT(960), HALF(480), QUARTER(240), EIGHTH_TRIPLET(320), SIXTEENTH_TRIPLET(160), FREE(0) }
 enum class ContinuousCapability {
     BEAT_STRETCH,
-    LYRICS_EDIT, LYRICS_FILES, LYRIC_PROPOSAL, STEP_PATTERNS, NOTE_REPEAT, VOCAL_GUIDE, VOCAL_TAKES, VOCAL_PUNCH, VOCAL_PRACTICE, VOCAL_PITCH, VOCAL_COACH, FOUR_STEMS, SOURCE_ANALYSIS,
+    LYRICS_EDIT, LYRICS_FILES, LYRIC_PROPOSAL, STEP_PATTERNS, NOTE_REPEAT, LOOP_OVERDUB, VOCAL_GUIDE, VOCAL_TAKES, VOCAL_PUNCH, VOCAL_PRACTICE, VOCAL_PITCH, VOCAL_COACH, FOUR_STEMS, SOURCE_ANALYSIS,
     RELOAD_AUDIO, IMPORT_AUDIO, IMPORT_LIBRARY, IMPORT_ONLINE, SPOTIFY_METADATA, SEPARATE_SOURCE, OPEN_PROJECT, SAVE_PROJECT, EXPORT_WAV, EXPORT_STEMS, MIXER, HISTORY,
     ORIGINAL_PLAYBACK, ORIGINAL_SEEK, ORIGINAL_MONITOR_GAIN, ORIGINAL_PITCH,
     SOURCE_RANGE, ASSIGN_SOURCE_RANGE, AUTO_CHOP, LIVE_CHOP,
@@ -65,7 +65,7 @@ enum class ContinuousStatus {
      * What the PADs played went onto the song as one Undo; only part of it, as the song could not take the rest or a
      * PAD's sound could not be prepared; nothing was played; or all of it was already there, so the song is as it was.
      */
-    HITS_PLACED, HITS_PARTLY, HITS_EMPTY, HITS_UNCHANGED,
+    HITS_PLACED, HITS_PARTLY, HITS_EMPTY, HITS_UNCHANGED, LOOP_NOT_SAVED, LOOP_INTERRUPTED,
 }
 
 @Immutable data class ContinuousSource(
@@ -215,6 +215,7 @@ enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
     val grid: ContinuousGrid = ContinuousGrid.BEAT,
     /** Session performance preference; captured phrases remain ordinary reversible audio placements. */
     val noteRepeat: ContinuousNoteRepeat = ContinuousNoteRepeat.OFF,
+    val loopOverdubBars: Int = 0,
     val canUndo: Boolean = false,
     val canRedo: Boolean = false,
     val capabilities: Set<ContinuousCapability> = emptySet(),
@@ -431,6 +432,8 @@ sealed interface ContinuousEditorAction {
      * Plays the song on from where it stands (from the top once it has ended) and records what the PADs play into it;
      * [StopHits], pausing or stopping the song, or its end puts what was played onto the song as one Undo.
      */
+    data class RecordLoopOverdub(val bars: Int) : ContinuousEditorAction
+    data object CancelLoopOverdub : ContinuousEditorAction
     data object RecordHits : ContinuousEditorAction
     data object StopHits : ContinuousEditorAction
     /**
