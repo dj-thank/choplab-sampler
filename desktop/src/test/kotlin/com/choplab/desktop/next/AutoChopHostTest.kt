@@ -111,12 +111,37 @@ class AutoChopHostTest {
                 val backend = NextBackend.create(directory.resolve("profile"), sinkFactory = { CountingTestSink() }, microphone = { null })
                 val host = DesktopEditorPorts(backend) { null }
                 val presenter = ContinuousEditorPresenter(backend.studio, scope, host)
+                val assignments = mutableListOf<ContinuousEditorAction.AssignSourceSlice>()
                 val scene = ImageComposeScene(width = width, height = height, density = Density(1f, font), coroutineContext = coroutineContext) {
                     val state by presenter.state.collectAsState()
                     val chop by presenter.autoChop.collectAsState()
-                    ContinuousEditor(state, presenter::onAction, presenter::readout, autoChop = chop)
+                    ContinuousEditor(state, { action ->
+                        if (action is ContinuousEditorAction.AssignSourceSlice) assignments += action
+                        presenter.onAction(action)
+                    }, presenter::readout, autoChop = chop)
                 }
                 try {
+                    fun sliceText() = scene.nodes().firstOrNull {
+                        it.config.getOrNull(SemanticsProperties.TestTag) == "ce-chop-slice"
+                    }?.config?.getOrNull(SemanticsProperties.Text)?.joinToString { it.text }
+                    fun expectedSlice(number: Int, start: String, end: String) =
+                        if (locale == Locale.JAPANESE) "区間 $number / 4：$start — $end" else "Slice $number / 4: $start — $end"
+                    suspend fun awaitChopUi(step: String, ready: () -> Boolean) {
+                        val reached = withTimeoutOrNull(15_000) {
+                            do { scene.render(System.nanoTime()).close(); delay(5) } while (!ready())
+                            true
+                        }
+                        val shown = presenter.state.value
+                        val document = backend.studio.document.value
+                        val controls = scene.nodes().filter {
+                            it.config.getOrNull(SemanticsProperties.TestTag) in listOf("ce-chop-slice-next", "ce-chop-assign-slice")
+                        }.joinToString { "${it.config.getOrNull(SemanticsProperties.TestTag)}=${it.boundsInWindow}, disabled=${it.config.getOrNull(SemanticsProperties.Disabled) != null}" }
+                        assertEquals(true, reached, "$locale ${width}x$height font=$font $step: owners=${scene.semanticsOwners.size}, " +
+                            "slice=${sliceText()}, shownMarkers=${shown.original?.markers}, shownPad=${shown.selectedPadId}, " +
+                            "canRedo=${shown.canRedo}, assignAllowed=${shown.permits(ContinuousCapability.ASSIGN_SOURCE_RANGE)}, " +
+                            "revision=${document.revision}, savedMarkers=${document.project.source?.markers}, pad0=${document.project.pads[0].range}, " +
+                            "status=${shown.status}, assignments=$assignments, $controls")
+                    }
                     val input = directory.resolve("original.wav")
                     val samples = FloatArray(144_000 * 2)
                     listOf(24_000, 72_000, 120_000).forEach { first -> repeat(1_200) { n ->
@@ -178,10 +203,27 @@ class AutoChopHostTest {
                     assertEquals(cuts, chopped.project.source!!.markers)
                     assertEquals(before.project.pads, chopped.project.pads)
                     assertTrue(presenter.dispatch(ContinuousEditorAction.Undo)); assertEquals(before.project, backend.studio.document.value.project)
+                    // Document edits finish before the presenter's projection and Compose frame. Observe
+                    // Undo in the actual scene before Redo, so a late marker update cannot reset a clicked slice.
+                    awaitChopUi("Undo removes the saved slices") {
+                        presenter.state.value.original?.markers == before.project.source!!.markers && presenter.state.value.canRedo &&
+                            scene.semanticsOwners.size == 1 && sliceText() == null
+                    }
                     assertTrue(presenter.dispatch(ContinuousEditorAction.Redo)); assertEquals(chopped.project, backend.studio.document.value.project)
+                    awaitChopUi("Redo displays the first saved slice") {
+                        val shown = presenter.state.value
+                        shown.original?.markers == cuts && !shown.canRedo && shown.selectedPadId == 0 &&
+                            shown.permits(ContinuousCapability.ASSIGN_SOURCE_RANGE) &&
+                            sliceText() == expectedSlice(1, "0:00.25", "0:00.50")
+                    }
                     scene.pointer("ce-chop-slice-next")
+                    awaitChopUi("Next displays the second saved slice") { sliceText() == expectedSlice(2, "0:00.50", "0:01.50") }
                     scene.pointer("ce-chop-assign-slice")
-                    until { backend.studio.document.value.project.pads[0].range == FrameRange(24_000, 72_000) }
+                    assertEquals(listOf(ContinuousEditorAction.AssignSourceSlice(1, 0, chopped.project.source!!.assetHash, 24_000, 72_000)),
+                        assignments, "$locale ${width}x$height: the single Assign click must submit the displayed native range")
+                    awaitChopUi("Assign stores the displayed second slice on PAD A1") {
+                        backend.studio.document.value.project.pads[0].range == FrameRange(24_000, 72_000)
+                    }
                     assertTrue(presenter.dispatch(ContinuousEditorAction.TapPad(0)))
                     assertTrue(presenter.dispatch(ContinuousEditorAction.StopAll))
                     val project = backend.studio.document.value.project
