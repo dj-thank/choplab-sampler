@@ -110,6 +110,11 @@ class WasapiAudioSink internal constructor(private val owner: WasapiOwner) : Aud
     override fun write(bytes: ByteArray, offset: Int, length: Int): Int = owner.write(bytes, offset, length)
     override fun bufferFrames(): Int = owner.deviceBufferFrames
     override fun pendingFrames(): Long = owner.pendingFrames()
+    override fun timingEpoch(): Long {
+        check(owner.status().phase == WasapiStreamPhase.RUNNING && owner.failure == null)
+        // WASAPI endpoint invalidation closes this owner; explicit reopen gets a new driver session token.
+        return 0
+    }
     // The software starvation counter in status is not a measured hardware-underrun counter.
     override fun underruns(): Int = -1
     fun status(): WasapiStreamStatus = owner.status()

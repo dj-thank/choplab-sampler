@@ -1,6 +1,8 @@
 package com.choplab.ui
 
 import androidx.compose.runtime.Immutable
+import com.choplab.core.chop.*
+import com.choplab.ui.chop.LiveChopTimingState
 
 /** Presentation contract for the user-selected 2026-09-24 linked workspace, not a document model.
  * Timeline/song frames are 48 kHz. Original/PAD/clip source frames retain their explicit source rate.
@@ -174,6 +176,7 @@ enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
     val vocalPreview: Boolean = false,
     /** A live chop pass is running: tapping a PAD of the CHOP stage cuts the original at that moment. */
     val liveChopping: Boolean = false,
+    val liveChopTiming: LiveChopTimingState = LiveChopTimingState(),
     /** A voice take is being recorded while the song plays. */
     val recordingVoice: Boolean = false,
     val startingVoiceRecording: Boolean = false,
@@ -282,8 +285,12 @@ class ContinuousHitGesture(val padId: Int, val songFrame: Long)
     /** Independent original HAND position in native source frames; -1 while inactive. */
     val handSourceFrame: Double = -1.0,
     val countInBeatsRemaining: Int = 0,
+    val liveChopGesture: ContinuousChopGesture? = null,
     val pcm: ContinuousPcmReadout = ContinuousPcmReadout(),
 )
+
+/** One physical press, captured before awaiting release; it cannot cross a pass or document revision. */
+data class ContinuousChopGesture(val pass: Any, val revision: Long, val output: LiveChopOutput)
 
 /** Typed requests. Hosts/Studio confirm every edit; UI drag previews are never document commits. */
 sealed interface ContinuousEditorAction {
@@ -339,10 +346,13 @@ sealed interface ContinuousEditorAction {
     data class SetOriginalMonitorGain(val gain: Float) : ContinuousEditorAction
     data class SetOriginalPitch(val semitones: Float) : ContinuousEditorAction
     data class SetSourceRange(val startFrame: Long, val endFrame: Long) : ContinuousEditorAction
+    data object OpenLiveChopTiming : ContinuousEditorAction
+    data object CloseLiveChopTiming : ContinuousEditorAction
+    data class SetLiveChopCorrection(val route: LiveChopRoute, val correction: LiveChopCorrection) : ContinuousEditorAction
     data object BeginLiveChop : ContinuousEditorAction
     data object EndLiveChop : ContinuousEditorAction
     /** [originalFrame] is the original's position sampled when the PAD was pressed, in the source's own frames. */
-    data class CapturePad(val padId: Int, val originalFrame: Long) : ContinuousEditorAction
+    data class CapturePad(val padId: Int, val gesture: ContinuousChopGesture) : ContinuousEditorAction
     data object AutoChop : ContinuousEditorAction
     data object CloseAutoChop : ContinuousEditorAction
     data class AssignSourceSlice(val slice: Int, val padId: Int, val assetHash: String, val startFrame: Long, val endFrame: Long) : ContinuousEditorAction

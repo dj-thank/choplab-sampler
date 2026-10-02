@@ -51,8 +51,15 @@ class SourceVocalPreview(private val studio: Studio, private val engine: Streami
         }
         jobs.launch {
             while (isActive) {
-                if (state.value.phase == VocalPreviewPhase.PLAYING && engine.status.value.phase == DriverPhase.ATTACHED &&
-                    !engine.originalPlayback().playing) restore(null)
+                if (state.value.phase == VocalPreviewPhase.PLAYING) {
+                    when (val readout = engine.originalPlaybackProbe()) {
+                        is OriginalPlaybackProbe.Ready -> if (!readout.playback.playing) restore(null)
+                        OriginalPlaybackProbe.Contended -> Unit
+                        // An unavailable engine is not a completed preview; the driver/revision observers above
+                        // handle real loss and retry restoration without clearing its failure or SOURCE ownership.
+                        OriginalPlaybackProbe.Unavailable -> Unit
+                    }
+                }
                 delay(25)
             }
         }

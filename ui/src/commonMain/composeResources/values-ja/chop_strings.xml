@@ -28,4 +28,16 @@
     <string name="chop_auto_apply">切れ目を適用</string>
     <string name="chop_auto_cancel">取り消す</string>
     <string name="chop_auto_assign">区間を %1$s の PAD %2$d へ</string>
+    <string name="chop_timing_title">遅延補正</string>
+    <string name="chop_timing_estimated">出力から推定</string>
+    <string name="chop_timing_manual">合計遅延を手動で設定</string>
+    <string name="chop_timing_estimated_value">推定（ESTIMATED）· %1$d ms</string>
+    <string name="chop_timing_manual_value">手動（MANUAL）· %1$d ms</string>
+    <string name="chop_timing_unknown">出力の遅延は不明です</string>
+    <string name="chop_timing_hint">この出力の待ち時間から推定します。往復遅延の実測値ではありません。出力・形式・バッファー・クロックが変わると設定は解除されます。</string>
+    <string name="chop_timing_manual_hint">大きくすると切断位置が前に移ります。聴きながら合計遅延を 1 ms 刻みで調整してください。この出力を使う間だけ有効です。</string>
+    <string name="chop_timing_invalidated">タイミングが変わったため、チョップを終了して補正を解除しました。</string>
+    <string name="chop_timing_unavailable">タイミングを取得できません。合計遅延を手動設定するか、出力を開き直してください。</string>
+    <string name="chop_timing_stale">文書が変わったため、古い押下を適用せずチョップを終了しました。</string>
+    <string name="chop_timing_apply">補正を適用</string>
 </resources>

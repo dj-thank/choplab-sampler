@@ -53,11 +53,31 @@ class AndroidAudioSink private constructor(
         return written
     }
 
+    private var timingGeneration = 0L
+    private var previousStampNanos = -1L
+    private var previousStampFrame = -1L
+    private var timestampAvailable = false
+    override fun timingEpoch(): Long = synchronized(stamp) {
+        check(!closed && !routeChanged)
+        timingGeneration
+    }
+    override fun timingSampleRate(): Int = track.sampleRate
+    override fun timingChannels(): Int = track.channelCount
     override fun bufferFrames(): Int = track.bufferSizeInFrames
     override fun underruns(): Int = track.underrunCount
     /** From the track's presentation timestamp: the frame at the speaker, moved on to now. */
     override fun pendingFrames(): Long = synchronized(stamp) {
-        if (!track.getTimestamp(stamp)) return -1
+        check(!closed && !routeChanged)
+        if (!track.getTimestamp(stamp)) {
+            if (timestampAvailable) timingGeneration++
+            timestampAvailable = false
+            return -1
+        }
+        if (!timestampAvailable || stamp.nanoTime < previousStampNanos ||
+            (stamp.framePosition - previousStampFrame).toInt() < 0) timingGeneration++
+        timestampAvailable = true
+        previousStampNanos = stamp.nanoTime
+        previousStampFrame = stamp.framePosition
         pendingFrames(framesWritten, stamp.framePosition, System.nanoTime() - stamp.nanoTime, SAMPLE_RATE)
     }
 

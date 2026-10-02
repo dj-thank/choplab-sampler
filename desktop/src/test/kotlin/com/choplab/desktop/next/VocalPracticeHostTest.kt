@@ -8,10 +8,15 @@ import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.Density
 import com.choplab.core.*
+import com.choplab.core.ai.*
 import com.choplab.core.edit.Intent
 import com.choplab.core.model.*
 import com.choplab.core.vocal.*
+import com.choplab.engine.EngineCore
+import com.choplab.engine.LiveReadout
+import com.choplab.engine.OriginalSource
 import com.choplab.jvm.*
+import com.choplab.jvm.ai.SourceVocalPreview
 import com.choplab.ui.*
 import com.choplab.ui.vocal.*
 import kotlinx.coroutines.*
@@ -24,13 +29,14 @@ import kotlin.test.*
 
 /** Real VOCAL entry, shared SOURCE loop, production render/export/archive. Synthetic endpoint, no devices. */
 class VocalPracticeHostTest {
-    private class Harness {
+    private class Harness(private val beforeWrite: () -> Unit = {}) {
         val directory = Files.createTempDirectory("practice-host-")
         val lost = AtomicBoolean()
         val backend = NextBackend.create(directory.resolve("profile"), sinkFactory = { object : AudioSink {
             override val encoding = SinkEncoding.FLOAT32
             override fun write(bytes: ByteArray, offset: Int, length: Int): Int {
                 check(!lost.get())
+                beforeWrite()
                 LockSupport.parkNanos(length.toLong() / 8 * 1_000_000_000 / 48_000)
                 return length
             }
@@ -59,6 +65,81 @@ class VocalPracticeHostTest {
         }
         suspend fun close() { host.close(); backend.shutdown(); scope.cancel(); directory.toFile().deleteRecursively() }
     }
+
+    @Test fun concurrentReadoutPublicationCannotFinishAStillPlayingPracticeLoop() = runBlocking<Unit> {
+        val pause = AtomicBoolean()
+        val parked = AtomicBoolean()
+        val release = java.util.concurrent.Semaphore(0)
+        val h = Harness {
+            if (pause.get()) {
+                parked.set(true)
+                check(release.tryAcquire(10, java.util.concurrent.TimeUnit.SECONDS)) { "Test did not release the output block" }
+                parked.set(false)
+            }
+        }
+        val queued = java.util.concurrent.ConcurrentLinkedQueue<Runnable>()
+        val dispatcher = object : CoroutineDispatcher() {
+            override fun dispatch(context: kotlin.coroutines.CoroutineContext, block: Runnable) { queued.add(block) }
+        }
+        val previewScope = CoroutineScope(SupervisorJob() + dispatcher)
+        val reader = java.util.concurrent.Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+        var preview: SourceVocalPreview? = null
+        suspend fun drainUntil(done: () -> Boolean) = withTimeout(10_000) {
+            while (!done()) { repeat(100) { queued.poll()?.run() }; delay(1) }
+        }
+        try {
+            h.prepare()
+            val before = h.backend.studio.document.value
+            val asset = assertIs<PracticeResult.Success<Asset>>(h.host.vocalPractice.renderer.render(
+                before.project, before.revision, VocalPracticeRequest(9_600, 15_360, .8), {})).value
+            assertEquals(7_200L, asset.frames)
+            val owned = SourceVocalPreview(h.backend.studio, h.backend.engine, h.backend.audition, previewScope).also { preview = it }
+            assertIs<TtsResult.Success<Unit>>(owned.start(asset, before.revision, true, VocalPreviewOwner.PRACTICE))
+            drainUntil { owned.state.value.phase == VocalPreviewPhase.PLAYING }
+            while (true) (queued.poll() ?: break).run()
+            pause.set(true)
+            until { parked.get() }
+            val view = StreamingEnginePort::class.java.getDeclaredField("engineView").run { isAccessible = true; get(h.backend.engine) }
+            val engine = view.javaClass.getDeclaredField("engine").run { isAccessible = true; get(view) as EngineCore }
+            val voice = EngineCore::class.java.getDeclaredField("originalVoice").run { isAccessible = true; get(engine) }
+            val source = voice.javaClass.getDeclaredField("source").run { isAccessible = true; get(voice) as OriginalSource }
+            assertTrue(source.loop)
+            assertEquals(7_200, source.endFrame - source.startFrame)
+            assertTrue(engine.originalPlaying)
+            val version = LiveReadout::class.java.getDeclaredField("version").apply { isAccessible = true }
+            val completed = version.getLong(engine.readout)
+            assertEquals(0L, completed and 1L)
+            // The existing driver fixture uses the same fence while its real audio owner is parked.
+            // Resume the monitor on a new consumer thread, as Dispatchers.Default may do in production.
+            version.setLong(engine.readout, completed + 1)
+            val during = try {
+                until { queued.isNotEmpty() }
+                withContext(reader) { requireNotNull(queued.poll()).run() }
+                assertTrue(engine.originalPlaying, "No audio block or stop command ran during the incomplete publication")
+                owned.state.value
+            } finally {
+                version.setLong(engine.readout, completed)
+                pause.set(false); release.release()
+            }
+            if (during.phase != VocalPreviewPhase.PLAYING) drainUntil { !owned.state.value.ownsSource }
+            assertEquals(VocalPreviewPhase.PLAYING, during.phase,
+                "An incomplete readout cannot end loop=true: during=$during; completed=${owned.state.value}; driver=${h.backend.engine.status.value}")
+            assertTrue(during.ownsSource)
+            val frame = h.backend.engine.snapshot().frame
+            drainUntil { h.backend.engine.snapshot().frame >= frame + 7_200 * 3 }
+            assertTrue(h.backend.engine.originalPlayback().playing)
+            assertEquals(VocalPreviewPhase.PLAYING, owned.state.value.phase)
+            assertEquals(before, h.backend.studio.document.value)
+            assertIs<TtsResult.Success<Unit>>(owned.stop(VocalPreviewOwner.PRACTICE))
+            assertEquals(5_000L, h.backend.audition.nativeFrame())
+            assertEquals(.25f, h.backend.engine.originalPlayback().gain)
+        } finally {
+            pause.set(false); release.release()
+            preview?.close(); previewScope.cancel(); repeat(100) { queued.poll()?.run() }
+            reader.close(); h.close()
+        }
+    }
+
     @Test fun realVocalEntryLoopsStopsAndKeepsExportUndoAndArchiveAtWideAndCompactInJaEn() = runBlocking<Unit> {
         val previous = Locale.getDefault()
         try { for (locale in listOf(Locale.JAPANESE, Locale.ENGLISH)) for ((width,height,font) in listOf(Triple(1440,838,1f), Triple(390,844,2f))) {

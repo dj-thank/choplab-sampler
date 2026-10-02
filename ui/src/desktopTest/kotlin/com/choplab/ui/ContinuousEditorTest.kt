@@ -2,6 +2,8 @@
 
 package com.choplab.ui
 
+import com.choplab.core.chop.*
+
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.MotionDurationScale
@@ -1238,6 +1240,9 @@ class ContinuousEditorTest {
         Locale.setDefault(Locale.JAPAN)
         try {
             var frame = 1_000L
+            val pass = Any()
+            val route = LiveChopRoute(Any(), Any(), 0, 48_000, 2, true, 1024, 256)
+            fun press(at: Long) = ContinuousChopGesture(pass, 0, LiveChopOutput(route, at, at, at, true, 5_000_000))
             val base = ContinuousEditorFixture.state(ContinuousStage.CHOP)
             val state = mutableStateOf(base.copy(capabilities = base.capabilities + ContinuousCapability.LIVE_CHOP))
             val actions = mutableListOf<ContinuousEditorAction>()
@@ -1249,7 +1254,7 @@ class ContinuousEditorTest {
                         ContinuousEditorAction.EndLiveChop -> state.value = state.value.copy(liveChopping = false, originalPlaying = false)
                         else -> Unit
                     }
-                }, { ContinuousEditorReadout(originalFrame = frame) })
+                }, { ContinuousEditorReadout(originalFrame = frame, liveChopGesture = press(frame)) })
             }
             fun texts() = scene.nodes().flatMap { it.config.getOrNull(SemanticsProperties.Text).orEmpty() }.map { it.text }
             try {
@@ -1266,7 +1271,7 @@ class ContinuousEditorTest {
                 frame = 9_000
                 scene.sendPointerEvent(PointerEventType.Release, pad, type = PointerType.Mouse, buttons = PointerButtons(), button = PointerButton.Primary)
                 scene.settle()
-                assertEquals(listOf<ContinuousEditorAction>(ContinuousEditorAction.CapturePad(5, 1_000)), actions,
+                assertEquals(listOf<ContinuousEditorAction>(ContinuousEditorAction.CapturePad(5, press(1_000))), actions,
                     "During a pass a PAD cuts; it neither plays nor selects by itself")
 
                 // A touch that turns into a drag cuts nothing.
@@ -1279,7 +1284,7 @@ class ContinuousEditorTest {
                 val click = requireNotNull(node.config.getOrNull(SemanticsActions.OnClick))
                 assertEquals("今の位置で切る", click.label)
                 assertTrue(requireNotNull(click.action).invoke())
-                assertEquals(ContinuousEditorAction.CapturePad(6, 12_000), actions.last())
+                assertEquals(ContinuousEditorAction.CapturePad(6, press(12_000)), actions.last())
                 scene.capture("chop-live-desktop.png")
 
                 scene.click("ce-live-chop")
