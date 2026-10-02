@@ -4,14 +4,22 @@ import hashlib
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from scripts.write_release_manifest import write_manifest
+from scripts import prepare_source_notices as notices
+from scripts.tests.test_source_notices import committed_git
 
 
 class ReleaseManifestTest(unittest.TestCase):
     def setUp(self) -> None:
         self.directory = Path(tempfile.mkdtemp(prefix="choplab-release-manifest-"))
         self.addCleanup(lambda: __import__("shutil").rmtree(self.directory, ignore_errors=True))
+        with tempfile.TemporaryDirectory() as output, patch.object(notices, "git", side_effect=committed_git):
+            source_archive = self.directory / "ChopLab-v0.16.2-source-notices.zip"
+            notices.stage(Path(__file__).resolve().parents[2], Path(output), "all", archive=source_archive)
+        source_archive.with_suffix(".zip.sha256").write_text(
+            f"{hashlib.sha256(source_archive.read_bytes()).hexdigest()}  {source_archive.name}\n")
         for name, content in {
             "ChopLab-v0.16.2-android-release.apk": b"android",
             "ChopLab-v0.16.2-windows-app-image.zip": b"windows",
@@ -36,7 +44,8 @@ class ReleaseManifestTest(unittest.TestCase):
             "workflow_run_id": "123",
         }
         values.update(overrides)
-        return write_manifest(**values)  # type: ignore[arg-type]
+        with patch.object(notices, "git", side_effect=committed_git):
+            return write_manifest(**values)  # type: ignore[arg-type]
 
     def test_writes_sorted_hash_bound_assets(self) -> None:
         payload = self.write()
@@ -121,6 +130,15 @@ class ReleaseManifestTest(unittest.TestCase):
         (self.directory / "extra.txt").write_text("unreviewed", encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "Unexpected release asset"):
             self.write()
+
+    def test_rejects_missing_source_notice_checksum(self):
+        (self.directory / "ChopLab-v0.16.2-source-notices.zip.sha256").unlink()
+        with self.assertRaisesRegex(ValueError, "Missing checksum sidecar"):
+            self.write()
+
+    def test_rejects_source_notice_from_other_commit(self):
+        with self.assertRaisesRegex(ValueError, "Source-notice revision"):
+            self.write(commit="b" * 40)
 
     def test_rejects_directory_entry(self):
         (self.directory / "unexpected").mkdir()

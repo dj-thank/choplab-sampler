@@ -91,13 +91,17 @@ jobs:
           cp app/build/outputs/apk/androidTest/preview/app-preview-androidTest.apk dist/android-next-native-candidate/
           cp work/next-native-android/candidate/native-inputs.json dist/android-next-native-candidate/
           git rev-parse HEAD > dist/android-next-native-candidate/source-revision.txt
+          python3.14 scripts/prepare_source_notices.py --platform android --require-committed \
+            --out dist/android-next-native-candidate/source-notices \
+            --archive dist/android-next-native-candidate/source-notices.zip
           python3.14 scripts/check_public_surface.py \
             --archive dist/android-next-native-candidate/app-preview-unsigned.apk \
             --archive dist/android-next-native-candidate/app-preview-androidTest.apk \
+            --archive dist/android-next-native-candidate/source-notices.zip \
             --text-file dist/android-next-native-candidate/static-verification.json \
             --text-file dist/android-next-native-candidate/native-inputs.json \
             --text-file dist/android-next-native-candidate/source-revision.txt
-          (cd dist/android-next-native-candidate && shasum -a 256 ./*.apk > SHA256SUMS)
+          (cd dist/android-next-native-candidate && shasum -a 256 ./*.apk source-notices.zip > SHA256SUMS)
 
       - name: Upload explicitly unsigned Android NEXT candidate pair
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -131,7 +135,8 @@ jobs:
       - name: Rebuild and verify every admitted Windows runtime byte
         run: |
           python scripts/prepare_next_native_candidate.py windows --work work/next-native-windows --jobs 4
-          python scripts/check_public_surface.py --text-file work/next-native-windows/candidate/native-inputs.json --text-file work/next-native-windows/candidate/derived.json
+          python scripts/prepare_source_notices.py --platform windows --require-committed --out work/next-native-windows/candidate/source-notices --archive work/next-native-windows/candidate/source-notices.zip
+          python scripts/check_public_surface.py --text-file work/next-native-windows/candidate/native-inputs.json --text-file work/next-native-windows/candidate/derived.json --archive work/next-native-windows/candidate/source-notices.zip
 
       - name: Upload exact pinned transfer inputs
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -207,9 +212,12 @@ jobs:
           Copy-Item work/native-codec-acceptance/windows-audio-tools.json dist/windows-next-native-candidate/
           Copy-Item work/native-codec-acceptance/codecs.json dist/windows-next-native-candidate/
           git rev-parse HEAD | Set-Content -Encoding utf8 dist/windows-next-native-candidate/source-revision.txt
-          python scripts/check_public_surface.py --archive dist/windows-next-native-candidate/ChopLab-windows-next.zip --text-file dist/windows-next-native-candidate/size-verification.json --text-file dist/windows-next-native-candidate/native-inputs.json --text-file dist/windows-next-native-candidate/source-revision.txt --text-file dist/windows-next-native-candidate/windows-audio-tools.json --text-file dist/windows-next-native-candidate/codecs.json --text-file dist/windows-next-native-candidate/packaged-acceptance.json
+          python scripts/prepare_source_notices.py --platform windows --require-committed --out dist/windows-next-native-candidate/source-notices --archive dist/windows-next-native-candidate/source-notices.zip
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python scripts/check_public_surface.py --archive dist/windows-next-native-candidate/ChopLab-windows-next.zip --archive dist/windows-next-native-candidate/source-notices.zip --text-file dist/windows-next-native-candidate/size-verification.json --text-file dist/windows-next-native-candidate/native-inputs.json --text-file dist/windows-next-native-candidate/source-revision.txt --text-file dist/windows-next-native-candidate/windows-audio-tools.json --text-file dist/windows-next-native-candidate/codecs.json --text-file dist/windows-next-native-candidate/packaged-acceptance.json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $archiveSha + '  ' + $zip.Name | Set-Content -Encoding utf8 dist/windows-next-native-candidate/SHA256SUMS
+          (Get-FileHash dist/windows-next-native-candidate/source-notices.zip -Algorithm SHA256).Hash.ToLowerInvariant() + '  source-notices.zip' | Add-Content -Encoding utf8 dist/windows-next-native-candidate/SHA256SUMS
 
       - name: Upload Windows NEXT native candidate
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
