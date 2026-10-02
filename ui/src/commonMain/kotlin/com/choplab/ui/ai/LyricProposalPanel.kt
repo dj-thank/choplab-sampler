@@ -38,9 +38,12 @@ fun LyricProposalPanel(controller: LyricProposalController, onClose: () -> Unit,
     var beatsPerLine by remember { mutableStateOf("4") }
     var details by remember { mutableStateOf(false) }
     var consent by remember { mutableStateOf(false) }
+    var consentVersion by remember { mutableStateOf(-1L) }
+    var sessionKey by remember { mutableStateOf<SessionApiKey?>(null) }
     var invalidInput by remember { mutableStateOf(false) }
     val busy = state.phase == LyricProposalPhase.GENERATING || state.phase == LyricProposalPhase.APPLYING
-    DisposableEffect(controller) { onDispose { controller.close() } }
+    DisposableEffect(controller) { onDispose { sessionKey?.close(); controller.close() } }
+    LaunchedEffect(state.admission?.version) { consent = false; consentVersion = -1L }
     Surface(modifier.fillMaxWidth().testTag("ai-lyrics-panel")) {
         Column(Modifier.padding(16.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(stringResource(Res.string.ai_lyrics_title), style = MaterialTheme.typography.headlineSmall)
@@ -48,11 +51,23 @@ fun LyricProposalPanel(controller: LyricProposalController, onClose: () -> Unit,
             Text(stringResource(Res.string.ai_lyrics_disclosure))
             Text(stringResource(Res.string.ai_lyrics_data_terms), style = MaterialTheme.typography.bodySmall)
             if (controller.availability == LyricProviderAvailability.UNVERIFIED) Text(stringResource(Res.string.ai_lyrics_unverified))
+            state.admission?.summary?.let { summary ->
+                Text(stringResource(Res.string.ai_lyrics_attempt_maximum, summary.model,
+                    stringResource(if (summary.tier == GoogleAccountTier.PAID) Res.string.ai_lyrics_paid else Res.string.ai_lyrics_unpaid),
+                    summary.maximumCost.currency, moneyAmount(summary.maximumCost)), Modifier.testTag("ai-attempt-maximum"))
+            }
+            state.admission?.problem?.takeIf { it != GoogleAdmissionProblem.UNVERIFIED }?.let {
+                Text(stringResource(admissionText(it)), Modifier.testTag("ai-admission-problem"))
+            }
             TextButton(onClick = { uri.openUri("https://ai.google.dev/gemini-api/terms") }) { Text(stringResource(Res.string.ai_lyrics_terms)) }
             TextButton(onClick = { uri.openUri("https://ai.google.dev/gemini-api/docs/pricing") }) { Text(stringResource(Res.string.ai_lyrics_pricing)) }
             if (state.phase != LyricProposalPhase.PREVIEW && state.phase != LyricProposalPhase.APPLYING && state.phase != LyricProposalPhase.APPLIED) {
-                Input(model, { model = it.take(87); consent = false }, Res.string.ai_lyrics_model, "ai-model", !busy)
-                OutlinedTextField(value = key, onValueChange = { key = it.take(256); consent = false }, enabled = !busy,
+                Input(model, { model = it.take(87); controller.bindInputs(model.trim(), sessionKey); consent = false }, Res.string.ai_lyrics_model, "ai-model", !busy)
+                OutlinedTextField(value = key, onValueChange = {
+                    sessionKey?.close(); key = it.take(256)
+                    sessionKey = runCatching { SessionApiKey(key) }.getOrNull()
+                    controller.bindInputs(model.trim(), sessionKey); consent = false
+                }, enabled = !busy,
                     modifier = Modifier.fillMaxWidth().testTag("ai-key"), label = { Text(stringResource(Res.string.ai_lyrics_key)) },
                     visualTransformation = PasswordVisualTransformation(), singleLine = true)
                 Input(theme, { theme = it.take(1_024); consent = false }, Res.string.ai_lyrics_theme, "ai-theme", !busy)
@@ -79,23 +94,25 @@ fun LyricProposalPanel(controller: LyricProposalController, onClose: () -> Unit,
                 Input(startBeat, { startBeat = it.take(8) }, Res.string.ai_lyrics_start, "ai-start", !busy)
                 Input(beatsPerLine, { beatsPerLine = it.take(2) }, Res.string.ai_lyrics_beats, "ai-beats", !busy)
                 Row {
-                    Checkbox(consent, { consent = it }, enabled = !busy, modifier = Modifier.testTag("ai-consent"))
+                    Checkbox(consent, { consent = it; consentVersion = if (it) controller.admissionVersion else -1L }, enabled = !busy, modifier = Modifier.testTag("ai-consent"))
                     Text(stringResource(Res.string.ai_lyrics_consent), Modifier.weight(1f))
                 }
                 Button(onClick = {
                     scope.launch {
                         val permitted = consent
+                        val reviewedVersion = consentVersion
                         consent = false
+                        consentVersion = -1L
                         val input = runCatching { LyricRequest(model.trim(), theme, mood, language, style, structure, rhyme, keep) }.getOrNull()
                         val first = startBeat.toLongOrNull()
                         val length = beatsPerLine.toIntOrNull()
-                        val secret = runCatching { SessionApiKey(key) }.getOrNull()
+                        val secret = sessionKey
                         if (input == null || first == null || first !in 1..(ProjectLimits.MAX_TIMELINE_TICKS / ProjectLimits.PPQ) ||
                             length == null || length !in 1..16 || secret == null) {
                             secret?.close(); invalidInput = true
                         } else {
                             invalidInput = false
-                            controller.generate(input, secret, (first - 1) * ProjectLimits.PPQ, length, permitted)
+                            controller.generate(input, secret, (first - 1) * ProjectLimits.PPQ, length, permitted, reviewedVersion)
                         }
                     }
                 }, enabled = controller.availability == LyricProviderAvailability.AVAILABLE && !busy && consent && key.isNotBlank() && model.isNotBlank() && theme.isNotBlank() && state.retryRemainingSeconds == 0L,
@@ -139,7 +156,7 @@ fun LyricProposalPanel(controller: LyricProposalController, onClose: () -> Unit,
             } else if (state.phase == LyricProposalPhase.PREVIEW || state.phase == LyricProposalPhase.APPLIED) Text(stringResource(Res.string.ai_lyrics_usage_unknown))
             state.modelVersion?.let { Text(stringResource(Res.string.ai_lyrics_model_used, it)) }
             if (state.proposal != null || state.failure?.costUnknown == true) Text(stringResource(Res.string.ai_lyrics_cost_unknown))
-            state.failure?.let { Text(stringResource(problemText(it.problem)), color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("ai-failure")) }
+            state.failure?.let { Text(stringResource(it.admissionProblem?.let(::admissionText) ?: problemText(it.problem)), color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("ai-failure")) }
             if (state.retryRemainingSeconds > 0) Text(stringResource(Res.string.ai_lyrics_retry_after, state.retryRemainingSeconds))
             if (state.phase == LyricProposalPhase.APPLIED) Text(stringResource(Res.string.ai_lyrics_applied), Modifier.testTag("ai-applied"))
             if (state.phase == LyricProposalPhase.GENERATING || state.phase == LyricProposalPhase.PREVIEW) OutlinedButton(
@@ -171,6 +188,22 @@ private fun problemText(problem: LyricAiProblem): StringResource = when (problem
     LyricAiProblem.STALE_DOCUMENT -> Res.string.ai_lyrics_stale
     LyricAiProblem.APPLY_REJECTED -> Res.string.ai_lyrics_apply_rejected
     LyricAiProblem.CLOSED -> Res.string.ai_lyrics_closed
+    LyricAiProblem.SESSION_ADMISSION_REFUSED -> Res.string.ai_lyrics_admission_refused
+}
+private fun moneyAmount(money: GoogleMoney): String {
+    val whole = money.nanoUnits / 1_000_000_000
+    val fraction = (money.nanoUnits % 1_000_000_000).toString().padStart(9, '0').trimEnd('0')
+    return if (fraction.isEmpty()) whole.toString() else "$whole.$fraction"
+}
+private fun admissionText(problem: GoogleAdmissionProblem): StringResource = when (problem) {
+    GoogleAdmissionProblem.UNKNOWN_PRICE, GoogleAdmissionProblem.MODEL_OR_TIER_MISMATCH -> Res.string.ai_lyrics_price_unverified
+    GoogleAdmissionProblem.UNKNOWN_BOUNDS -> Res.string.ai_lyrics_bound_unverified
+    GoogleAdmissionProblem.UNKNOWN_BUDGET, GoogleAdmissionProblem.CURRENCY_MISMATCH,
+    GoogleAdmissionProblem.COST_OVERFLOW, GoogleAdmissionProblem.BUDGET_EXCEEDED -> Res.string.ai_lyrics_budget_refused
+    GoogleAdmissionProblem.EXPIRED -> Res.string.ai_lyrics_review_expired
+    GoogleAdmissionProblem.ATTEMPT_USED -> Res.string.ai_lyrics_attempt_used
+    GoogleAdmissionProblem.INPUT_CHANGED, GoogleAdmissionProblem.CLOSED -> Res.string.ai_lyrics_review_changed
+    GoogleAdmissionProblem.UNVERIFIED -> Res.string.ai_lyrics_unverified
 }
 private fun sectionText(kind: LyricSectionKind): StringResource = when (kind) {
     LyricSectionKind.INTRO -> Res.string.ai_lyrics_intro

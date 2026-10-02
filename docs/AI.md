@@ -12,6 +12,10 @@ SDKはAPI29/R8、通信基盤の重複、APK増分を計測し、必要なら薄
 
 Googleの作詞adapterは固定HTTPS originへ薄いRESTで接続し、redirectや自動再送は許可しません。hostの利用適合判定 `LyricProviderAvailability` と毎回の送信同意は別です。未確認のhostは `UNVERIFIED` として送信を無効にし、鍵の入力やローカル試験だけで `AVAILABLE` にしません。採用時の[Google追加規約](https://ai.google.dev/gemini-api/terms)、用途・利用者・地域・アカウント条件を確認した上でhostを有効化します。モデル名を利用者のsession入力にし、無料枠や料金を固定の既定にしません。
 
+通常のAndroid/Desktop hostは、同じ `GoogleLyricSession` と `SessionLyricProposalPort` を所有します。現在のdialogの鍵/model入力に結び付くopaqueな `pendingReview()` に対し、既に確認した個別条件を `install(binding, ReviewedGoogleUse)` で渡す入口だけを持ちます。ここで用途等の適合、実account区分、model、価格snapshot、適用input枠、system/schemaを含む最大input token、thinkingを含む全課金outputの上界、対応する `maxOutputTokens`、通貨と今回1回の金額/期限を確認できなければ送信しません。文字数や4行指定をtoken上界にせず、固定8192を課金上限とみなしません。未知値はnull/型付き拒否、0は明示的に確認した無料条件だけです。条件の事実確認を行うUIやprivate設定の自動探索、価格/modelの既定値は追加しません。
+
+費用上界は通貨の10億分の1単位の整数で、inputと全課金outputを各々切り上げて計算します。通貨/価格適用枠不一致・overflow・予算超過・期限切れは0 POSTです。送信同意は確認条件の世代に結び付け、key/model/本文/条件変更で解除します。permitはjobを開始する前に1回だけ消費し、HTTP直前にも同じdialog/key/model/期限を再照合します。取消・失敗・timeout・429や待機終了で復活せず、次の送信には別の明示的な個別確認と同意が必要です。条件はsessionメモリ内だけで、鍵の生値/安定fingerprint/owner IDを確認record・log・archiveへ入れません。表示する最大額は実請求額ではなく、実usageと料金不明の表示を保持します。
+
 提案にはtheme、雰囲気、構成、韻、保持行など明示入力だけを送り、制作ID・音声・ファイル名を自動付加しません。応答のUTF-8、schema、文字/行/section上限を検証し、日本語のモーラと韻はかなから再計算します。鍵は当該job/sessionのメモリ内で所有し、取消/終了で破棄します。保存できる鍵の導入は下の端末別契約を満たす別実装です。
 
 ## 作詞・FlowPlanner・TTS

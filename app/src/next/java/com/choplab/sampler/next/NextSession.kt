@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
 import com.choplab.core.*
+import com.choplab.core.ai.GoogleLyricSession
 import com.choplab.jvm.VocalPunchCapture
 import com.choplab.core.model.Asset
 import com.choplab.core.model.Pad
@@ -19,6 +20,7 @@ import com.choplab.sampler.R
 import com.choplab.ui.*
 import com.choplab.ui.vocal.*
 import com.choplab.ui.ai.LyricProposalPort
+import com.choplab.ui.ai.SessionLyricProposalPort
 import com.choplab.ui.ai.VocalGuidePort
 import com.choplab.ui.onboarding.QuickStartController
 import kotlinx.coroutines.*
@@ -52,6 +54,8 @@ class NextSession private constructor(
     private val voice = VoiceTakes(backend.assets, File(context.cacheDir, "next-voice").toPath()) { AndroidMicInput.open(context) }
     private val speechPreview = SourceVocalPreview(backend, scope)
     private val pitchRenderer = backend.pitchRenderer()
+    /** Explicit owner-session review only; normal creation never enables cloud sending. */
+    val googleLyrics = GoogleLyricSession(System::currentTimeMillis)
     val presenter = ContinuousEditorPresenter(backend.studio, scope, Ports())
     private val guideStore = FileQuickStartStore(backend.assets.directory.parent.resolve("ui"))
     val quickStart = QuickStartController(scope, autoShow = backend.studio.document.value.revision == 0L,
@@ -88,6 +92,7 @@ class NextSession private constructor(
             { confirmWithoutAutosave().also { if (it) closedWithoutAutosave = true } }, finish)
 
     suspend fun shutdown() {
+        googleLyrics.close()
         quickStart.close()
         withContext(Dispatchers.Main.immediate + NonCancellable) { pickers.close(); microphone.close() }
         // Closing the presenter keeps a take still recording; anything left after that is dropped.
@@ -147,9 +152,7 @@ class NextSession private constructor(
             override val renderer = backend.practiceRenderer()
             override val preview = speechPreview
         }
-        override val lyricProposal: LyricProposalPort = object : LyricProposalPort {
-            override fun createProvider() = GeminiLyricProvider()
-        }
+        override val lyricProposal: LyricProposalPort = SessionLyricProposalPort(googleLyrics) { GeminiLyricProvider() }
         override val lyricFiles: LyricFiles = object : LyricFiles {
             override suspend fun importLrc(): String? {
                 val uri = pickers.pick(PickerKind.IMPORT_LRC) ?: return null

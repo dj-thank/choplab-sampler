@@ -37,7 +37,8 @@ class LyricProposalPanelTest {
                                 frozenListOf(ProposalLine.create("風の音", "かぜのおと", LyricLanguage.JAPANESE))))), LyricUsage(2, 3, 5), "gemini-test")
                     }
                 }
-                val controller = LyricProposalController(document, provider, LyricProposalApply { _, _ -> edits++; true }, this, LyricProviderAvailability.AVAILABLE)
+                val session = GoogleLyricSession { 100L }
+                val controller = LyricProposalController(document, provider, LyricProposalApply { _, _ -> edits++; true }, this, session.openDialog())
                 val scene = ImageComposeScene(width = width, height = height, density = Density(1f, font), coroutineContext = coroutineContext) {
                     CompositionLocalProvider(LocalUriHandler provides object : UriHandler { override fun openUri(uri: String) = Unit }) {
                         MaterialTheme { LyricProposalPanel(controller, { closed = true }) }
@@ -51,6 +52,28 @@ class LyricProposalPanelTest {
                     scene.settle()
                     assertEquals(0, requests)
                     assertTrue(scene.tag("ai-key")!!.config.contains(SemanticsProperties.Password))
+                    assertTrue(scene.tag("ai-generate")!!.config.contains(SemanticsProperties.Disabled))
+                    scene.tag("ai-consent")!!.config[SemanticsActions.OnClick].action!!.invoke()
+                    scene.settle()
+                    assertTrue(scene.tag("ai-generate")!!.config.contains(SemanticsProperties.Disabled), "Consent alone is not a reviewed owner session")
+                    val review = ReviewedGoogleUse("gemini-test", GoogleAccountTier.PAID,
+                        GoogleUseEligibility.REVIEWED_FOR_THIS_SESSION,
+                        GoogleTokenPrice("gemini-test", GoogleAccountTier.PAID, "USD", 1_000, 100, 200, 10_000, 0, 1_000),
+                        GoogleTokenBounds(4096, 128, 64), GoogleMoney("USD", 2_000), 0, 1_000)
+                    val binding = requireNotNull(session.pendingReview())
+                    assertNull(session.install(binding, review))
+                    scene.settle()
+                    assertNotNull(scene.tag("ai-attempt-maximum"))
+                    assertTrue(scene.tag("ai-generate")!!.config.contains(SemanticsProperties.Disabled), "Review changes clear the previous consent")
+                    scene.tag("ai-consent")!!.config[SemanticsActions.OnClick].action!!.invoke()
+                    scene.settle()
+                    scene.tag("ai-key")!!.config[SemanticsActions.SetText].action!!.invoke(AnnotatedString("replacement-key"))
+                    scene.settle()
+                    assertTrue(scene.tag("ai-generate")!!.config.contains(SemanticsProperties.Disabled))
+                    assertEquals(GoogleAdmissionProblem.INPUT_CHANGED, session.install(binding, review))
+                    assertEquals(0, requests)
+                    assertNull(session.install(requireNotNull(session.pendingReview()), review))
+                    scene.settle()
                     assertTrue(scene.tag("ai-generate")!!.config.contains(SemanticsProperties.Disabled))
                     scene.tag("ai-consent")!!.config[SemanticsActions.OnClick].action!!.invoke()
                     scene.settle()

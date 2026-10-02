@@ -7,6 +7,7 @@ import androidx.compose.ui.window.MenuBar
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.choplab.core.*
+import com.choplab.core.ai.GoogleLyricSession
 import com.choplab.jvm.VocalPunchCapture
 import com.choplab.core.model.Asset
 import com.choplab.core.model.Pad
@@ -27,6 +28,7 @@ import com.choplab.ui.separation.FourStemFactory
 import com.choplab.ui.*
 import com.choplab.ui.vocal.*
 import com.choplab.ui.ai.LyricProposalPort
+import com.choplab.ui.ai.SessionLyricProposalPort
 import com.choplab.ui.ai.VocalGuidePort
 import com.choplab.ui.onboarding.QuickStartController
 import com.choplab.ui.resources.*
@@ -175,6 +177,7 @@ internal class DesktopEditorPorts(
     private val fourStemMemory: () -> SeparationMemory = FourStemMemoryProbe()::sample,
     private val onlineDirectory: () -> Path = { DesktopProfile.dataDirectory(preview = true).toPath().resolve("audio-library") },
     private val onlineBackend: () -> com.choplab.sampler.source.YoutubeSourceBackend = { com.choplab.sampler.source.newpipe.NewPipeSourceBackend() },
+    private val googleTransport: () -> GeminiHttpTransport = { UrlConnectionGeminiTransport() },
     private val parent: () -> AwtWindow?,
 ) : ContinuousEditorPorts, AutoCloseable {
     init { require(spotify.purpose == SpotifySessionPurpose.METADATA_ONLY) }
@@ -184,6 +187,8 @@ internal class DesktopEditorPorts(
     private val speechScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val speechPreview = SourceVocalPreview(backend.studio, backend.engine, backend.audition, speechScope)
     private val pitchRenderer = backend.pitchRenderer()
+    /** Only this instance's current dialog/credential can receive an explicit reviewed allowance. */
+    val googleLyrics = GoogleLyricSession(System::currentTimeMillis)
     override val vocalCoach = object : VocalCoachHost {
         override val analyzer = backend.coachAnalyzer()
         override val renderer = backend.practiceRenderer()
@@ -212,14 +217,12 @@ internal class DesktopEditorPorts(
             return VocalTtsService(DesktopTtsProvider(directory.resolve("temporary")), TtsCache(directory.resolve("cache")), backend.assets)
         }
     }
-    override fun close() { try { runBlocking { speechPreview.close() } } finally { speechScope.cancel(); spotify.close() } }
+    override fun close() { googleLyrics.close(); try { runBlocking { speechPreview.close() } } finally { speechScope.cancel(); spotify.close() } }
     override val vocalPractice = object : VocalPracticePort {
         override val renderer = backend.practiceRenderer()
         override val preview = speechPreview
     }
-    override val lyricProposal: LyricProposalPort = object : LyricProposalPort {
-        override fun createProvider() = GeminiLyricProvider()
-    }
+    override val lyricProposal: LyricProposalPort = SessionLyricProposalPort(googleLyrics) { GeminiLyricProvider(googleTransport()) }
     override val lyricFiles: LyricFiles = DesktopLyricFiles { save ->
         choose(save, listOf("lrc"), if (japanese) { if (save) "歌詞を書き出す" else "歌詞を読み込む" }
             else { if (save) "Export lyrics" else "Import lyrics" })

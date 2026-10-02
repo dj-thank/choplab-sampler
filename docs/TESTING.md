@@ -16,6 +16,8 @@
 
 `LOCAL_PASS → DEVICE_PASS → PROVIDER_PASS → PUBLIC_PASS → HUMAN_GO` は別の境界です。必要な層を省略・昇格せず、scopeと未確認を併記します。historical receipt、画像、health応答、子agentの文章は新しい上位passではありません。
 
+Google作詞の個別session受入は、`GoogleLyricAdmissionTest` の整数費用上界/未知条件/通貨/期限/overflow/1回消費と、`GeminiLyricProviderTest` の送信直前失効・0 POST・取消/timeout後の再利用拒否を確認します。`GeminiLyricFlowTest` は通常Desktop hostが両host共通bridgeへ渡す確認recordからowned fake HTTPを1回だけ呼び、schema/かな→preview→明示1Undo→archive/autosaveと元文書/音声revision、鍵/本文/確認条件の非保存を検査します。`LyricProposalControllerTest` と日英wide/compactの `LyricProposalPanelTest` は既定UNVERIFIED、条件変更時の同意解除、課金上限表示、古いrevision/取消/遅着を保持します。合成価格/合成modelは利用者の条件や実価格ではなく、Android compileや共有bridge試験も実provider/実Android受入へ昇格しません。
+
 Windows 音声専用 FFmpeg 候補の実行受入は、package された `tools` directory を指定して行います。隔離 Python に `python -m pip install -r config/windows-audio-acceptance-requirements.txt` を入れ、`python scripts/acceptance/windows_audio_tools.py --tools <app-image>/tools --work <new-private-directory>` を実行します。既存 `native_audio_codecs.py` を再利用して 11 codec・24bit/先頭末尾・左右極性・delay/end trim・44.1→48kHz・range seek・legacy converter と原本 hash を検査します。追加は実 CLI の 221 decoder/86 encoder と protocol/filter 名、Rubber Band の有限非無音出力、生成した一時 CA による loopback HTTPS の全 PCM 一致と不信 CA 拒否、同梱 yt-dlp→同梱 FFmpeg の MP3 後処理だけです。一時秘密鍵は試験後に消し、利用者の trust store や既存 profile を変更しません。
 
 この receipt は実行した個別 fixture の LOCAL 結果です。通常 EXE の終了再開、制作を通した全新機能、実モデル分離、QuickJS EJS、実 audio endpoint、provider、署名・公開・Human はそれぞれ既存の別 gate で追跡します。Mac の同 helper の部分試験を Windows 成功へ転用しません。cross-build、対応 source/hash と公開面検査の成功だけで audio runtime を既定に切り替えません。
