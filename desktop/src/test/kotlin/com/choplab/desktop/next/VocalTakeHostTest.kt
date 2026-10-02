@@ -36,6 +36,7 @@ class VocalTakeHostTest {
             override val vocalPractice = null
             override val vocalPitch = null
             override val vocalCoach = null
+            override val sourcePreview get() = vocalTakes.preview
             override val onlineSource = idleOnlineHost {}
             override val vocalTakes = object : VocalTakePort by real.vocalTakes {
                 override val preview = object : VocalPreviewPort by real.vocalTakes.preview {

@@ -169,6 +169,7 @@ class NextSession private constructor(
                 return true
             }
         }
+        override val autoChop get() = backend.autoChop
         override val originalAvailable get() = backend.engine.status.value.phase == DriverPhase.ATTACHED
         override fun originalPlaying() = backend.engine.originalPlayback().playing
         override fun playingPads() = backend.engine.playingPads()

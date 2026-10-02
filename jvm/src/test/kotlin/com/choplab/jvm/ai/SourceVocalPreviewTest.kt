@@ -13,6 +13,31 @@ import kotlin.test.*
 
 /** Real engine and audition commands with in-memory decoded PCM and a synthetic output endpoint. */
 class SourceVocalPreviewTest {
+    @Test fun chopRangeClaimsOneOwnerStopsAtItsExclusiveEndAndRestoresFullSource() = runBlocking<Unit> {
+        val f = Fixture()
+        try {
+            f.open()
+            val before = f.studio.document.value
+            val range = FrameRange(12_003, 24_011)
+            assertIs<TtsResult.Success<Unit>>(f.preview.startRange(f.source, range, before.revision, VocalPreviewOwner.CHOP))
+            waitUntil { f.preview.state.value.phase == VocalPreviewPhase.PLAYING }
+            val region = (f.commands.last { it is EngineCommand.SetOriginalSource } as EngineCommand.SetOriginalSource).source!!
+            assertEquals(range.start.toInt(), region.startFrame); assertEquals(range.end.toInt(), region.endFrame)
+            assertFalse(region.loop)
+            f.preview.requestStop(VocalPreviewOwner.GUIDE)
+            assertIs<TtsResult.Success<Unit>>(f.preview.stop(VocalPreviewOwner.PITCH))
+            assertEquals(VocalPreviewOwner.CHOP, f.preview.state.value.owner)
+            assertEquals(TtsProblem.BUSY, assertIs<TtsResult.Failure>(f.preview.start(f.guide, before.revision)).failure.problem)
+            waitUntil { !f.preview.state.value.ownsSource }
+            assertEquals(5_000L, f.audition.nativeFrame())
+            assertEquals(.25f, f.engine.originalPlayback().gain); assertEquals(6f, f.pitch())
+            val restored = (f.commands.last { it is EngineCommand.SetOriginalSource } as EngineCommand.SetOriginalSource).source!!
+            assertEquals(0, restored.startFrame); assertEquals(f.source.frames.toInt(), restored.endFrame)
+            assertFalse(f.engine.originalPlayback().playing)
+            assertEquals(before, f.studio.document.value)
+            assertEquals(TtsProblem.INVALID_AUDIO, assertIs<TtsResult.Failure>(f.preview.startRange(f.guide, range, before.revision, VocalPreviewOwner.CHOP)).failure.problem)
+        } finally { f.close() }
+    }
     @Test fun unityPreviewRestoresPositionPitchGainOnceAndChangedSourceWins() = runBlocking<Unit> {
         val f = Fixture()
         try {

@@ -74,6 +74,7 @@ enum class ContinuousStatus {
     val rangeStartFrame: Long = 0,
     val rangeEndFrame: Long = frames,
     val pitchSemitones: Float = 0f,
+    val markers: List<Long> = emptyList(),
 ) {
     init { require(frames > 0 && sampleRate > 0 && rangeStartFrame >= 0 && rangeEndFrame > rangeStartFrame && rangeEndFrame <= frames) }
 }
@@ -343,6 +344,8 @@ sealed interface ContinuousEditorAction {
     /** [originalFrame] is the original's position sampled when the PAD was pressed, in the source's own frames. */
     data class CapturePad(val padId: Int, val originalFrame: Long) : ContinuousEditorAction
     data object AutoChop : ContinuousEditorAction
+    data object CloseAutoChop : ContinuousEditorAction
+    data class AssignSourceSlice(val slice: Int, val padId: Int, val assetHash: String, val startFrame: Long, val endFrame: Long) : ContinuousEditorAction
     data class AssignSourceRange(val padId: Int) : ContinuousEditorAction
     data class SelectBank(val bankId: Int) : ContinuousEditorAction
     data class SelectPad(val padId: Int) : ContinuousEditorAction

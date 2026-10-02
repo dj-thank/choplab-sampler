@@ -143,7 +143,7 @@ internal object CEColor {
 
 @Composable internal fun CEWaveform(peaks: List<Float>, modifier: Modifier, label: String,
     position: () -> Float = { 0f }, range: ClosedFloatingPointRange<Float>? = null,
-    color: Color = CEColor.Green, onSeek: ((Float) -> Unit)? = null, tag: String = "") {
+    color: Color = CEColor.Green, onSeek: ((Float) -> Unit)? = null, tag: String = "", markers: List<Float> = emptyList()) {
     val latestSeek by rememberUpdatedState(onSeek)
     Canvas(modifier.clip(RoundedCornerShape(8.dp)).background(CEColor.Deep).border(2.dp, CEColor.Ink, RoundedCornerShape(8.dp))
         .testTag(tag).semantics { contentDescription = label }
@@ -168,6 +168,10 @@ internal object CEColor {
         range?.let {
             drawLine(CEColor.Orange, Offset(it.start * size.width, 0f), Offset(it.start * size.width, size.height), 2.dp.toPx())
             drawLine(CEColor.Orange, Offset(it.endInclusive * size.width, 0f), Offset(it.endInclusive * size.width, size.height), 2.dp.toPx())
+        }
+        markers.forEach { marker ->
+            val at = marker.coerceIn(0f, 1f) * size.width
+            drawLine(CEColor.Cream, Offset(at, 0f), Offset(at, size.height), 1.dp.toPx())
         }
         val x = position().coerceIn(0f, 1f) * size.width
         drawLine(CEColor.Orange, Offset(x, 0f), Offset(x, size.height), 2.dp.toPx())

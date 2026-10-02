@@ -2,6 +2,7 @@ package com.choplab.ui
 
 import com.choplab.core.*
 import com.choplab.core.ai.*
+import com.choplab.core.chop.*
 import com.choplab.core.edit.Intent
 import com.choplab.core.kits.DrumKits
 import com.choplab.core.model.*
@@ -10,14 +11,181 @@ import com.choplab.engine.EngineCommand
 import com.choplab.engine.EngineProgram
 import com.choplab.engine.PlayMode
 import com.choplab.ui.ai.*
+import com.choplab.ui.analysis.*
+import com.choplab.ui.chop.*
+import com.choplab.ui.vocal.*
 import com.choplab.ui.pattern.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlin.math.pow
 import kotlin.test.*
 
 /** Presenter/Studio contracts with fake platform ports; not physical audio evidence. */
 class ContinuousEditorPresenterTest {
+    @Test fun autoChopAndOtherSourceToolsTransferOnePreviewOwnerWithoutEditing() = runBlocking<Unit> {
+        for (target in listOf(ContinuousEditorAction.OpenSourceAnalysis, ContinuousEditorAction.OpenVocalCoach,
+            ContinuousEditorAction.OpenVocalPitch, ContinuousEditorAction.OpenVocalGuide,
+            ContinuousEditorAction.Mixer(com.choplab.ui.mixer.MixerAction.Open()))) {
+            lateinit var ports: ChopModalPorts
+            val h = Harness(decoratePorts = { ChopModalPorts(it).also { p -> ports = p } }, adjust = ::chopModalProject)
+            try {
+                val before = h.studio.document.value
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.AutoChop))
+                val chop = assertNotNull(h.presenter.autoChop.value)
+                assertTrue(chop.dispatch(AutoChopAction.Prepare)); withTimeout(2_000) { chop.state.first { it.canApply } }
+                assertTrue(chop.dispatch(AutoChopAction.Preview))
+                assertEquals(VocalPreviewOwner.CHOP, ports.preview.state.value.owner)
+                assertTrue(h.presenter.dispatch(target), target.toString())
+                assertTrue(chop.state.value.closed)
+                assertNull(h.presenter.autoChop.value)
+                assertFalse(ports.preview.state.value.ownsSource)
+                if (target is ContinuousEditorAction.Mixer) h.until { it.mixer.draft != null }
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.AutoChop))
+                assertNotSame(chop, h.presenter.autoChop.value)
+                assertNull(h.presenter.sourceAnalysis.value); assertNull(h.presenter.vocalCoach.value)
+                assertNull(h.presenter.vocalPitch.value); assertNull(h.presenter.vocalGuide.value)
+                h.until { it.mixer.draft == null }
+                assertEquals(before, h.studio.document.value)
+            } finally { h.close() }
+        }
+    }
+
+    @Test fun autoChopAndApplyingSourceProposalsRejectSwitchesBeforeWaitingForTheDocumentLock() = runBlocking<Unit> {
+        for (kind in listOf("analysis", "guide", "chop")) {
+            val entered = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
+            val h = Harness(decoratePorts = { ChopModalPorts(it) { entered.complete(Unit); release.await() } }, adjust = ::chopModalProject)
+            try {
+                val before = h.studio.document.value
+                var analysis: SourceAnalysisController? = null
+                var guide: VocalGuideController? = null
+                var chop: AutoChopController? = null
+                when (kind) {
+                    "analysis" -> {
+                        assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenSourceAnalysis))
+                        analysis = assertNotNull(h.presenter.sourceAnalysis.value)
+                        assertTrue(analysis.dispatch(SourceAnalysisAction.Analyse))
+                        assertTrue(analysis.dispatch(SourceAnalysisAction.SelectTempo(98_000)))
+                    }
+                    "guide" -> {
+                        assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenVocalGuide))
+                        guide = assertNotNull(h.presenter.vocalGuide.value)
+                        withTimeout(2_000) { guide.state.first { !it.loadingVoices } }
+                        assertTrue(guide.prepare()); withTimeout(2_000) { guide.state.first { it.phase == VocalGuidePhase.READY } }
+                    }
+                    else -> {
+                        assertTrue(h.presenter.dispatch(ContinuousEditorAction.AutoChop))
+                        chop = assertNotNull(h.presenter.autoChop.value)
+                        assertTrue(chop.dispatch(AutoChopAction.Prepare)); withTimeout(2_000) { chop.state.first { it.canApply } }
+                    }
+                }
+                val holding = async { h.presenter.dispatch(ContinuousEditorAction.SetSongMonitorGain(.5f)) }
+                withTimeout(2_000) { entered.await() }
+                val applying = async { analysis?.dispatch(SourceAnalysisAction.Apply) ?: guide?.apply() ?: chop!!.dispatch(AutoChopAction.Apply) }
+                withTimeout(2_000) {
+                    while (analysis?.state?.value?.phase != SourceAnalysisPhase.APPLYING &&
+                        guide?.state?.value?.phase != VocalGuidePhase.APPLYING && chop?.state?.value?.applying != true) delay(1)
+                }
+                val actions = if (chop == null) listOf(ContinuousEditorAction.AutoChop) else listOf(
+                    ContinuousEditorAction.OpenSourceAnalysis, ContinuousEditorAction.OpenVocalCoach, ContinuousEditorAction.OpenVocalPitch,
+                    ContinuousEditorAction.OpenVocalGuide, ContinuousEditorAction.CloseAutoChop)
+                for (action in actions) assertFalse(withTimeout(1_000) { h.presenter.dispatch(action) }, "$kind: $action")
+                if (analysis != null) assertSame(analysis, h.presenter.sourceAnalysis.value)
+                if (guide != null) assertSame(guide, h.presenter.vocalGuide.value)
+                if (chop != null) assertSame(chop, h.presenter.autoChop.value)
+                assertEquals(before, h.studio.document.value)
+                release.complete(Unit)
+                assertTrue(holding.await()); assertTrue(applying.await(), kind)
+                assertEquals(before.revision + 1, h.studio.document.value.revision)
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
+                assertEquals(before.project, h.studio.document.value.project)
+            } finally { release.complete(Unit); h.close() }
+        }
+    }
+
+    @Test fun autoChopStopDiscardsLateAttackResultsWithoutApplyingOrClaimingSource() = runBlocking<Unit> {
+        val entered = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>(); val returned = CompletableDeferred<Unit>()
+        lateinit var ports: ChopModalPorts
+        val h = Harness(decoratePorts = { ChopModalPorts(it).also { p ->
+            ports = p
+            p.worker = AutoChopPort { _, _, _ -> withContext(NonCancellable) {
+                entered.complete(Unit); release.await(); returned.complete(Unit); AutoChopResult.Ready(frozenListOf(24_000))
+            } }
+        } }, adjust = ::chopModalProject)
+        try {
+            val before = h.studio.document.value
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.AutoChop))
+            val chop = assertNotNull(h.presenter.autoChop.value)
+            assertTrue(chop.dispatch(AutoChopAction.Settings(AutoChopSettings(AutoChopMode.ATTACK))))
+            assertTrue(chop.dispatch(AutoChopAction.Prepare)); withTimeout(2_000) { entered.await() }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopAll))
+            assertTrue(chop.state.value.working, "The non-cooperative worker remains owned until it returns")
+            release.complete(Unit); withTimeout(2_000) { returned.await(); chop.state.first { !it.working } }
+            assertNull(chop.state.value.markers); assertFalse(chop.dispatch(AutoChopAction.Apply))
+            assertFalse(ports.preview.state.value.ownsSource)
+            assertEquals(before, h.studio.document.value)
+        } finally { release.complete(Unit); h.close() }
+    }
+
+    private fun chopModalProject(project: Project): Project {
+        val placement = LyricProposal("川", LyricLanguage.JAPANESE, frozenListOf(ProposalSection("A", LyricSectionKind.VERSE, 1,
+            frozenListOf(ProposalLine.create("川の歌", "かわのうた", LyricLanguage.JAPANESE))))).placeStructured(0, 4, "line")
+        val original = project.assets.first()
+        return project.copy(tracks = frozenListOf(Track("voice", "Voice", TrackKind.VOCAL)),
+            clips = frozenListOf(Clip("voice", "voice", original.hash, FrameRange(0, original.frames))),
+            takes = frozenListOf(Take("take", "voice", original.hash, FrameRange(0, original.frames), 0)),
+            lyrics = placement.lines, lyricStructure = placement.structure)
+    }
+
+    private class ChopModalPorts(private val delegate: ContinuousEditorPorts, private val gainGate: suspend () -> Unit = {}) : ContinuousEditorPorts by delegate {
+        val preview = object : VocalPreviewPort {
+            override val state = MutableStateFlow(VocalPreviewState())
+            override suspend fun start(asset: Asset, expectedRevision: Long) = startRange(asset, FrameRange(0, asset.frames), expectedRevision, VocalPreviewOwner.GUIDE)
+            override suspend fun startRange(asset: Asset, range: FrameRange, expectedRevision: Long, owner: VocalPreviewOwner): TtsResult<Unit> {
+                state.value = VocalPreviewState(VocalPreviewPhase.PLAYING, true, asset.hash, owner = owner)
+                return TtsResult.Success(Unit)
+            }
+            override suspend fun stop() = stop(VocalPreviewOwner.GUIDE)
+            override suspend fun stop(owner: VocalPreviewOwner): TtsResult<Unit> { requestStop(owner); return TtsResult.Success(Unit) }
+            override fun requestStop() = requestStop(VocalPreviewOwner.GUIDE)
+            override fun requestStop(owner: VocalPreviewOwner) { if (state.value.owner == owner) state.value = VocalPreviewState() }
+            override fun frame() = 0L
+        }
+        override val sourcePreview: VocalPreviewPort = preview
+        var worker: AutoChopPort? = null
+        override val autoChop get() = worker
+        override val sourceAnalysisAvailable = true
+        override suspend fun analyseSource(asset: Asset, range: FrameRange) = com.choplab.core.analysis.SourceMusicResult(range.length.toInt(),
+            frozenListOf(com.choplab.core.analysis.TempoCandidate(98_000, .8)), frozenListOf())
+        override suspend fun setSongMonitorGain(gain: Float): Boolean { gainGate(); return delegate.setSongMonitorGain(gain) }
+        override val vocalGuide = object : VocalGuidePort {
+            override val preview = this@ChopModalPorts.preview
+            override fun createSynthesis() = object : VocalSynthesisPort {
+                override suspend fun voices() = TtsResult.Success(frozenListOf(TtsVoice(TtsEngine("device-test", "1", "system", "1"),
+                    "offline", "Offline", "ja-JP", "1", LyricLanguage.JAPANESE)))
+                override suspend fun prepare(row: FlowRow, tempo: com.choplab.engine.Tempo, voice: TtsVoice, settings: TtsSettings, regenerate: Boolean) =
+                    TtsResult.Success(PreparedVocalLine(row.line, Asset("c".repeat(64), "wav", 100, 48_000, 2, 96_000, "Guide", AssetRole.RENDERED), 1.0, 0, false, false))
+                override fun close() = Unit
+            }
+        }
+        override val vocalCoach = object : VocalCoachHost {
+            override val preview = this@ChopModalPorts.preview
+            override val analyzer = object : com.choplab.core.vocal.VocalCoachAnalyzer {
+                override suspend fun analyze(project: Project, revision: Long, request: com.choplab.core.vocal.VocalCoachRequest) = error("No analysis requested")
+            }
+            override val renderer = object : com.choplab.core.vocal.VocalPracticeRenderer {
+                override suspend fun render(project: Project, revision: Long, request: com.choplab.core.vocal.VocalPracticeRequest,
+                    progress: (com.choplab.core.vocal.PracticeProgress) -> Unit) = error("No practice requested")
+            }
+        }
+        override val vocalPitch = object : VocalPitchHost {
+            override val preview = this@ChopModalPorts.preview
+            override suspend fun render(project: Project, draft: com.choplab.core.vocal.VocalPitchDraft,
+                progress: (com.choplab.engine.PitchCorrectionPhase, Int, Int) -> Unit) = error("No correction requested")
+            override suspend fun original(project: Project, draft: com.choplab.core.vocal.VocalPitchDraft) = error("No pitch audition requested")
+        }
+    }
+
     @Test fun noteRepeatIsAPerformancePreferenceAndAccessibleClickIsOneFiniteBeat() = runBlocking<Unit> {
         val h = Harness(render = true)
         try {
@@ -154,6 +322,49 @@ class ContinuousEditorPresenterTest {
         } finally { h.close() }
     }
 
+    @Test fun savedSliceAssignmentRefusesAQueuedActionForChangedSourceBounds() = runBlocking<Unit> {
+        val h = Harness()
+        try {
+            h.until { it.permits(ContinuousCapability.AUTO_CHOP) }
+            val source = h.studio.document.value.project.source!!
+            val queued = ContinuousEditorAction.AssignSourceSlice(0, 15, source.assetHash, source.range.start, source.range.end)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetSourceRange(source.range.start + 1, source.range.end)))
+            val before = h.studio.document.value
+            assertFalse(h.presenter.dispatch(queued))
+            assertEquals(before, h.studio.document.value)
+        } finally { h.close() }
+    }
+    @Test fun autoChopOpeningAndPreparedApplyRefuseWorkAndEveryRecordingRoute() = runBlocking<Unit> {
+        for (block in 0..3) {
+            val h = Harness(voice = true, render = true)
+            val release = CompletableDeferred<Unit>()
+            try {
+                h.until { it.permits(ContinuousCapability.AUTO_CHOP) }
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.AutoChop))
+                val controller = requireNotNull(h.presenter.autoChop.value)
+                assertTrue(controller.dispatch(com.choplab.ui.chop.AutoChopAction.Prepare))
+                withTimeout(2_000) { controller.state.first { it.canApply } }
+                val before = h.studio.document.value
+                h.ports.takeFrames = null
+                var preparing: Deferred<ActionResult>? = null
+                when (block) {
+                    0 -> {
+                        h.engine.duringPrepare = { release.await() }
+                        preparing = async { h.studio.dispatch(Action.SelectPlaybackTarget(PlaybackTarget.Arrangement())) }
+                        h.until { it.unavailable[ContinuousCapability.AUTO_CHOP] == ContinuousUnavailable.BUSY }
+                    }
+                    1 -> assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordSource))
+                    2 -> assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
+                    3 -> assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordHits))
+                }
+                assertFalse(withTimeout(1_000) { h.presenter.dispatch(ContinuousEditorAction.AutoChop) })
+                assertFalse(controller.dispatch(com.choplab.ui.chop.AutoChopAction.Apply))
+                assertEquals(before, h.studio.document.value)
+                release.complete(Unit); preparing?.await()
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.CloseAutoChop))
+            } finally { release.complete(Unit); h.close() }
+        }
+    }
     @Test fun stepPatternEntryAndApplyRefuseBusySourceVoiceAndPadRecordingWhileCloseStillWorks() = runBlocking<Unit> {
         for (block in 0..3) {
             val h = Harness(voice = true, render = true)
@@ -2370,6 +2581,7 @@ class ContinuousEditorPresenterTest {
     private class Harness(kits: Boolean = false, voice: Boolean = false, originalFrames: Long = 96_000, render: Boolean = false,
                           system: SystemAudioCapture? = null,
                           lyricProposal: LyricProposalPort? = null,
+                          decoratePorts: (ContinuousEditorPorts) -> ContinuousEditorPorts = { it },
                           presenterDispatcher: CoroutineDispatcher = Dispatchers.Default,
                           rescue: Notice.Rescued? = null, adjust: (Project) -> Project = { it }) {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -2399,7 +2611,7 @@ class ContinuousEditorPresenterTest {
         val ports = FakePorts(kits, voice, render).also { it.engine = engine; it.system = system; it.lyricProposal = lyricProposal }
         /** Waits for [condition]; generous, since a loaded CI runner can take a while, and a wait that never ends fails. */
         suspend fun until(condition: (ContinuousEditorState) -> Boolean) = withTimeout(5000) { presenter.state.first(condition) }
-        val presenter = ContinuousEditorPresenter(studio, CoroutineScope(scope.coroutineContext + presenterDispatcher), ports)
+        val presenter = ContinuousEditorPresenter(studio, CoroutineScope(scope.coroutineContext + presenterDispatcher), decoratePorts(ports))
         suspend fun close() { presenter.close(); studio.dispatch(Action.Close); scope.cancel() }
     }
     private class FakeEngine : EnginePort {

@@ -38,6 +38,7 @@ import com.choplab.ui.analysis.SourceAnalysisDialog
 import com.choplab.ui.onboarding.*
 import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.stringResource
+import com.choplab.ui.chop.*
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
@@ -63,6 +64,7 @@ import kotlin.math.roundToLong
     vocalPractice: com.choplab.ui.vocal.VocalPracticeController? = null,
     vocalPitch: com.choplab.ui.vocal.VocalPitchController? = null,
     vocalCoach: com.choplab.ui.vocal.VocalCoachController? = null,
+    autoChop: AutoChopController? = null,
 ) {
     CETheme {
         BoxWithConstraints(modifier.fillMaxSize().background(CEColor.Ink).padding(8.dp).clip(RoundedCornerShape(16.dp)).background(CEColor.Cream)) {
@@ -104,6 +106,7 @@ import kotlin.math.roundToLong
                 if (!compact || state.stage != ContinuousStage.BEAT) CEStatus(state.status)
             }
         }
+        autoChop?.let { CEAutoChopDialog(it, { onAction(ContinuousEditorAction.CloseAutoChop) }, { onAction(ContinuousEditorAction.StopAll) }) }
         CEDrumKitDialogs(state, onAction)
         CEPadPlayDialog(state, onAction)
         CEScratchPanel(state, onAction, readout, refreshKey)
@@ -538,7 +541,7 @@ import kotlin.math.roundToLong
         CEPads(state, onAction, maximumSide = 140.dp, capture = capture)
     } else Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Box(Modifier.weight(.58f).fillMaxHeight()) {
-            CEChopSource(state, onAction, readout, refreshKey, Modifier.fillMaxSize(), null)
+            CEChopSource(state, onAction, readout, refreshKey, Modifier.fillMaxSize().verticalScroll(rememberScrollState()), 240.dp)
         }
         Column(Modifier.weight(.42f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             CEBanks(state, onAction)
@@ -557,7 +560,7 @@ import kotlin.math.roundToLong
         CEWaveform(original?.peaks.orEmpty(), Modifier.fillMaxWidth().then(if (fixedWaveHeight == null) Modifier.weight(1f) else Modifier.height(fixedWaveHeight)),
             stringResource(Res.string.ce_original_wave, original?.title.orEmpty()), position = { if (original == null) 0f else live.value.originalFrame.toFloat() / original.frames },
             onSeek = if (original != null && state.permits(ContinuousCapability.ORIGINAL_SEEK)) ({ onAction(ContinuousEditorAction.SeekOriginal((it * original.frames).roundToLong())) }) else null,
-            tag = "ce-original-wave")
+            tag = "ce-original-wave", markers = original?.markers.orEmpty().map { it.toFloat() / (original?.frames ?: 1) })
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             // Ending a pass is always possible; starting one needs the original on an output.
             if (state.liveChopping) CEActionButton(stringResource(Res.string.ce_chop_stop), ContinuousEditorAction.EndLiveChop, state,
@@ -587,10 +590,11 @@ import kotlin.math.roundToLong
             Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("ce-source-range"), enabled = original != null && state.permits(ContinuousCapability.SOURCE_RANGE),
             onValueChangeFinished = { pending?.let(::framesOf)?.let { (a, b) -> onAction(ContinuousEditorAction.SetSourceRange(a, b)) } },
             colors = SliderDefaults.colors(thumbColor = CEColor.Orange, activeTrackColor = CEColor.Orange, inactiveTrackColor = CEColor.Tan))
+        original?.let { CEChopSlices(it, state.selectedPadId, state.permits(ContinuousCapability.ASSIGN_SOURCE_RANGE), onAction) }
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             CEActionButton(stringResource(Res.string.ce_save_cut), ContinuousEditorAction.AssignSourceRange(state.selectedPadId), state,
                 ContinuousCapability.ASSIGN_SOURCE_RANGE, onAction, Modifier.weight(1f), tag = "ce-assign")
-            CEActionButton(stringResource(Res.string.ce_auto_chop), ContinuousEditorAction.AutoChop, state, ContinuousCapability.AUTO_CHOP, onAction, Modifier.weight(1f))
+            CEActionButton(stringResource(Res.string.ce_auto_chop), ContinuousEditorAction.AutoChop, state, ContinuousCapability.AUTO_CHOP, onAction, Modifier.weight(1f), tag = "ce-auto-chop")
             CEButton(stringResource(Res.string.ce_to_beat), { onAction(ContinuousEditorAction.Navigate(ContinuousStage.BEAT)) }, Modifier.weight(1f), primary = true)
         }
     }
