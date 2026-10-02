@@ -426,6 +426,11 @@ open class StreamingEnginePort(
         var monitorGain = 1f
         var monitorTarget = 1f
         var monitorRamp = 0
+        // The owner retains acknowledged targets, not intermediate ramp values. Refused,
+        // cancelled or still-queued commands cannot become preferences after a reset.
+        var originalMonitorTarget = 1f
+        var songMonitorTarget = 1f
+        var handMonitorTarget = 1f
 
         fun complete(request: Pending, accepted: Boolean, dropped: Boolean = false) {
             request.dropped = dropped; request.releasePcm(); request.answer.complete(accepted)
@@ -442,7 +447,8 @@ open class StreamingEnginePort(
             // Program only, with no voices; the document remains in Studio and edits stay usable.
             val offset = requireNotNull(engineView).offset + activeEngine.frame
             activeEngine.close()
-            activeEngine = EngineCore(confirmedProgram)
+            activeEngine = EngineCore(confirmedProgram, monitorGains =
+                MonitorGains(originalMonitorTarget, songMonitorTarget, handMonitorTarget))
             engineView = EngineView(activeEngine, offset)
             acknowledgedReadout = null
             previousLosses = 0
@@ -508,6 +514,9 @@ open class StreamingEnginePort(
                         }
                         is EngineCommand.StartSequence -> { sequenceStart = appliedFrame; stoppedElapsedFrames = 0 }
                         is EngineCommand.Stop, is EngineCommand.Panic -> stoppedElapsedFrames = (appliedFrame - sequenceStart).coerceAtLeast(0)
+                        is EngineCommand.SetOriginalMonitorGain -> originalMonitorTarget = command.gain
+                        is EngineCommand.SetSongMonitorGain -> songMonitorTarget = command.gain
+                        is EngineCommand.SetHandMonitorGain -> handMonitorTarget = command.gain
                         else -> Unit
                     }
                     if (accepted) {
