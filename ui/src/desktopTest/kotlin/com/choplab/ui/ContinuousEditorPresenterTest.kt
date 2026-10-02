@@ -2713,12 +2713,56 @@ class ContinuousEditorPresenterTest {
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchHold))
             h.until { it.scratch?.holding == true }
             h.engine.transport = h.engine.transport.copy(outputAttached = false)
-            h.until { it.scratch?.holding == false }
+            h.untilScratchEnded(2)
             assertEquals(2, h.ports.scratchEnds)
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.CloseScratch))
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchLetGo))
             assertEquals(2, h.ports.scratchEnds)
         } finally { h.close() }
+    }
+
+    @Test fun aPreviousNotHoldingSnapshotDoesNotAcknowledgeTheNextHandsEnd() = runBlocking<Unit> {
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+        val dispatcher = executor.asCoroutineDispatcher()
+        val paused = CompletableDeferred<Unit>()
+        val resume = java.util.concurrent.CountDownLatch(1)
+        val h = Harness(presenterDispatcher = dispatcher)
+        try {
+            h.until { it.permits(ContinuousCapability.SCRATCH) }
+            h.ports.playing = true
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenScratch))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetScratchTarget(ContinuousScratchTarget.ORIGINAL)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchHold))
+            h.until { it.scratch?.holding == true }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchLetGo))
+            h.until { it.scratch?.holding == false }
+            assertEquals(1, h.ports.scratchEnds)
+
+            // Keep the previous false projection while the next direct Hold commits. The actual
+            // presenter dispatcher, including output-loss cleanup, resumes only after the check.
+            executor.submit { paused.complete(Unit); resume.await() }
+            withTimeout(5_000) { paused.await() }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchHold))
+            assertEquals(2, h.ports.scratchStarts.size)
+            assertTrue(h.ports.handFrame >= 0, "The second HAND really started")
+            assertEquals(false, h.presenter.state.value.scratch?.holding, "Still the previous projection")
+            h.engine.transport = h.engine.transport.copy(outputAttached = false)
+            h.studio.dispatch(Action.RefreshTransport)
+            assertFalse(h.studio.transport.value.outputAttached)
+
+            // UNDISPATCHED makes an observer of only false finish immediately. The endpoint-aware
+            // observer must remain pending; there has been no second scratchOriginalEnd yet.
+            val ended = async(start = CoroutineStart.UNDISPATCHED) { h.untilScratchEnded(2) }
+            assertFalse(ended.isCompleted, "A stale false snapshot cannot acknowledge HAND end #2")
+            assertEquals(1, h.ports.scratchEnds)
+            resume.countDown()
+            ended.await()
+            assertEquals(2, h.ports.scratchEnds)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CloseScratch))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ScratchLetGo))
+            assertEquals(2, h.ports.scratchEnds, "Closing and repeated release never end HAND twice")
+            assertEquals(0, h.ports.stops, "HAND cleanup leaves SOURCE alone")
+        } finally { resume.countDown(); h.close(); dispatcher.close() }
     }
 
     @Test fun aScreenReaderNudgeScratchesAnEighthAndLetsGo() = runBlocking<Unit> {
@@ -2789,6 +2833,19 @@ class ContinuousEditorPresenterTest {
             gate.countDown()
             h.until { it.status == ContinuousStatus.RESCUED }
         } finally { gate.countDown(); h.close(); dispatcher.close() }
+    }
+
+    /** The projected panel can still describe the previous hold; await the real endpoint as well. */
+    private suspend fun Harness.untilScratchEnded(expected: Int) {
+        try {
+            withTimeout(5_000) {
+                while (presenter.state.value.scratch?.holding != false || ports.scratchEnds < expected) delay(5)
+            }
+        } catch (timeout: TimeoutCancellationException) {
+            throw AssertionError("HAND end #$expected: holding=${presenter.state.value.scratch?.holding}, " +
+                "ends=${ports.scratchEnds}, handFrame=${ports.handFrame}, attached=${studio.transport.value.outputAttached}", timeout)
+        }
+        assertEquals(expected, ports.scratchEnds, "HAND ends exactly once per completed hold")
     }
 
     private fun Harness.press(frame: Long): ContinuousChopGesture {
