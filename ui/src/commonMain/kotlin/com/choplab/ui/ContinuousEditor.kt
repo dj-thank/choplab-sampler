@@ -107,6 +107,7 @@ import kotlin.math.roundToLong
             }
         }
         autoChop?.let { CEAutoChopDialog(it, { onAction(ContinuousEditorAction.CloseAutoChop) }, { onAction(ContinuousEditorAction.StopAll) }) }
+        CELiveChopTimingDialog(state.liveChopTiming, onAction)
         CEDrumKitDialogs(state, onAction)
         CEPadPlayDialog(state, onAction)
         CEScratchPanel(state, onAction, readout, refreshKey)
@@ -534,7 +535,7 @@ import kotlin.math.roundToLong
 @Composable private fun CEChop(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit,
     readout: () -> ContinuousEditorReadout, refreshKey: Long, compact: Boolean) {
     // During a live chop pass a PAD cuts the original where it was playing when the PAD went down.
-    val capture: (() -> Long)? = if (state.liveChopping) ({ readout().originalFrame }) else null
+    val capture: (() -> ContinuousChopGesture?)? = if (state.liveChopping) ({ readout().liveChopGesture }) else null
     if (compact) Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         CEChopSource(state, onAction, readout, refreshKey, Modifier.fillMaxWidth(), 240.dp)
         CEBanks(state, onAction)
@@ -574,6 +575,9 @@ import kotlin.math.roundToLong
             { onAction(ContinuousEditorAction.SetOriginalPitch(it)) }, true, Modifier.fillMaxWidth())
         CEValueSlider(stringResource(Res.string.ce_source_gain), state.originalMonitorGain, state, ContinuousCapability.ORIGINAL_MONITOR_GAIN,
             { onAction(ContinuousEditorAction.SetOriginalMonitorGain(it)) }, Modifier.fillMaxWidth(), tag = "ce-source-monitor")
+        CEButton(stringResource(Res.string.chop_timing_title), { onAction(ContinuousEditorAction.OpenLiveChopTiming) },
+            Modifier.fillMaxWidth(), enabled = state.permits(ContinuousCapability.LIVE_CHOP), tag = "ce-live-timing")
+        CELiveChopTimingLabel(state.liveChopTiming)
         CEChopHint(state)
         val frames = original?.frames ?: 1
         fun framesOf(range: ClosedFloatingPointRange<Float>): Pair<Long, Long> {

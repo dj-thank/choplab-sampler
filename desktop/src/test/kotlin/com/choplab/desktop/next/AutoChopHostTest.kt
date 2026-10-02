@@ -29,6 +29,55 @@ import kotlin.test.*
 
 /** Actual editor, host worker, SOURCE engine region, PAD and persistence; the endpoint is synthetic. */
 class AutoChopHostTest {
+    @Test fun temporaryReadoutContentionKeepsTheManualCorrectionForTheSameOutputRoute() = runBlocking<Unit> {
+        val directory = Files.createTempDirectory("live-chop-readout-")
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val endpoint = CountingTestSink()
+        val contend = java.util.concurrent.atomic.AtomicBoolean(false)
+        val collisions = java.util.concurrent.atomic.AtomicInteger()
+        val backend = NextBackend.create(directory.resolve("profile"), sinkFactory = { object : AudioSink by endpoint {
+            override fun bufferFrames() = 1024
+            override fun pendingFrames(): Long {
+                if (contend.get()) {
+                    // Force the written-frame fence to change during every sampling attempt.
+                    // Two writes ensure the first has returned to the actual streaming driver.
+                    val first = endpoint.frames
+                    val deadline = System.nanoTime() + 5_000_000_000L
+                    while (endpoint.frames <= first + 256) {
+                        check(System.nanoTime() < deadline) { "The output stopped during the contention control" }
+                        java.util.concurrent.locks.LockSupport.parkNanos(100_000)
+                    }
+                    collisions.incrementAndGet()
+                }
+                return 240L
+            }
+        } }, microphone = { null })
+        val host = DesktopEditorPorts(backend) { null }
+        val presenter = ContinuousEditorPresenter(backend.studio, scope, host)
+        try {
+            until { backend.engine.liveChopOutput() != null && backend.studio.work.value.jobId == null }
+            assertTrue(presenter.dispatch(ContinuousEditorAction.OpenLiveChopTiming))
+            val route = assertNotNull(backend.engine.liveChopOutput()).route
+            val manual = LiveChopCorrection(LiveChopTimingMode.MANUAL, 37)
+            assertTrue(presenter.dispatch(ContinuousEditorAction.SetLiveChopCorrection(route, manual)))
+            until { presenter.state.value.liveChopTiming.correction == manual }
+            val before = backend.studio.document.value
+            contend.set(true)
+            assertTrue(presenter.dispatch(ContinuousEditorAction.OpenLiveChopTiming))
+            until { presenter.state.value.liveChopTiming.open }
+            contend.set(false)
+            until { backend.engine.liveChopOutput() != null }
+            val recovered = assertNotNull(backend.engine.liveChopOutput())
+            assertEquals(route, recovered.route, "The session, engine, clock, format and buffer did not change")
+            assertTrue(collisions.get() >= 3, "All three coherent sampling attempts must have collided")
+            assertEquals(before, backend.studio.document.value)
+            assertEquals(manual, presenter.state.value.liveChopTiming.correction,
+                "Same route after ${collisions.get()} controlled readout collisions: ${presenter.state.value.liveChopTiming}")
+        } finally {
+            contend.set(false); presenter.close(); host.close(); backend.shutdown(); scope.cancel(); directory.toFile().deleteRecursively()
+        }
+    }
+
     @Test fun editingWithoutAnOutputRefusesPreviewBeforeClaimingSourceAndRemainsCancellable() = runBlocking<Unit> {
         val directory = Files.createTempDirectory("auto-chop-offline-")
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -149,6 +198,103 @@ class AutoChopHostTest {
                     backend.flushAutosave()
                     assertEquals(final, AutosaveStore(directory.resolve("profile/autosave"), fresh).recover()!!.project)
                     assertEquals(cuts, final.source!!.markers)
+                } finally { scene.close(); presenter.close(); host.close(); backend.shutdown(); scope.cancel(); directory.toFile().deleteRecursively() }
+            }
+        } finally { Locale.setDefault(previous) }
+    }
+
+    @Test fun liveChopUsesPressTimeManualAndEstimatedOutputThenReopensExactNativeBytes() = runBlocking<Unit> {
+        val previous = Locale.getDefault()
+        try {
+            for (locale in listOf(Locale.JAPANESE, Locale.ENGLISH)) for ((width, height, font) in listOf(Triple(390, 844, 2f), Triple(1440, 1024, 1f))) {
+                Locale.setDefault(locale)
+                val directory = Files.createTempDirectory("live-chop-host-")
+                val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+                val endpoint = CountingTestSink()
+                val buffer = java.util.concurrent.atomic.AtomicInteger(1024)
+                val backend = NextBackend.create(directory.resolve("profile"), sinkFactory = { object : AudioSink by endpoint {
+                    override fun bufferFrames() = buffer.get()
+                    override fun pendingFrames() = 240L
+                } }, microphone = { null })
+                val host = DesktopEditorPorts(backend) { null }
+                val presenter = ContinuousEditorPresenter(backend.studio, scope, host)
+                val scene = ImageComposeScene(width = width, height = height, density = Density(1f, font), coroutineContext = coroutineContext) {
+                    val state by presenter.state.collectAsState()
+                    ContinuousEditor(state, presenter::onAction, presenter::readout)
+                }
+                try {
+                    val rate = if (locale == Locale.JAPANESE) 44_100 else 96_000
+                    val input = directory.resolve("native.wav")
+                    val samples = FloatArray(rate * 12 * 2) { n -> (kotlin.math.sin((n / 2) * .037) * if (n % 2 == 0) .4 else -.2).toFloat() }
+                    Files.newOutputStream(input).use { WavCodec.writeFloat(it, samples, rate, 2) }
+                    val originalBytes = Files.readAllBytes(input)
+                    assertTrue(backend.importAudio(input).accepted); idle(backend)
+                    assertTrue(presenter.dispatch(ContinuousEditorAction.Navigate(ContinuousStage.CHOP)))
+                    assertTrue(presenter.dispatch(ContinuousEditorAction.SetOriginalPitch(12f)))
+                    val before = backend.studio.document.value
+                    scene.pointer("ce-live-timing")
+                    scene.pointer("ce-live-timing-MANUAL")
+                    scene.reach("ce-live-timing-slider")
+                    assertTrue(scene.tag("ce-live-timing-slider").config[SemanticsActions.SetProgress].action!!(37f))
+                    scene.pointer("ce-live-timing-cancel")
+                    assertEquals(before, backend.studio.document.value)
+                    assertEquals(LiveChopTimingMode.ESTIMATED, presenter.state.value.liveChopTiming.correction.mode)
+                    scene.pointer("ce-live-timing")
+                    scene.pointer("ce-live-timing-MANUAL")
+                    scene.reach("ce-live-timing-slider")
+                    assertTrue(scene.tag("ce-live-timing-slider").config[SemanticsActions.SetProgress].action!!(37f))
+                    scene.settle()
+                    val png = Path.of("build/reports/ui-evidence/live-chop/timing-${locale.language}-${width}x$height.png")
+                    Files.createDirectories(png.parent)
+                    scene.render(System.nanoTime()).use { image -> image.encodeToData(EncodedImageFormat.PNG)!!.use { Files.write(png, it.bytes) } }
+                    scene.pointer("ce-live-timing-apply")
+                    until { presenter.state.value.liveChopTiming.correction == LiveChopCorrection(LiveChopTimingMode.MANUAL, 37) }
+                    assertEquals(before, backend.studio.document.value)
+                    scene.pointer("ce-live-chop"); until { presenter.state.value.liveChopping }; scene.settle()
+                    scene.reach("ce-pad-2"); scene.fullHit("ce-pad-2", width, height)
+                    val pad = scene.tag("ce-pad-2").boundsInWindow.center
+                    val start = System.nanoTime()
+                    scene.sendPointerEvent(PointerEventType.Press, pad, type = PointerType.Mouse, buttons = PointerButtons(isPrimaryPressed = true), button = PointerButton.Primary)
+                    scene.settle(); delay(75)
+                    val release = System.nanoTime()
+                    scene.sendPointerEvent(PointerEventType.Release, pad, type = PointerType.Mouse, buttons = PointerButtons(), button = PointerButton.Primary)
+                    scene.settle(); until { presenter.state.value.liveChopTiming.lastCut != null || !presenter.state.value.liveChopping }
+                    val receipt = assertNotNull(presenter.state.value.liveChopTiming.lastCut,
+                        "$locale ${width}x$height: ${presenter.state.value.liveChopTiming.problem}, ${presenter.state.value.status}")
+                    assertTrue(receipt.eventNanos in start until release, "It uses the press, not the later release")
+                    assertEquals(receipt.observedSourceFrame - kotlin.math.round(.037 * rate * 2).toLong(), receipt.requestedSourceFrame,
+                        "$locale ${width}x$height: receipt=$receipt, timing=${presenter.state.value.liveChopTiming}")
+                    assertEquals(before.revision + 1, backend.studio.document.value.revision)
+                    val chopped = backend.studio.document.value.project
+                    assertEquals(receipt.appliedSourceFrame, chopped.pads[2].range!!.start)
+                    assertEquals(before.project.source!!.range.end, chopped.pads[2].range!!.end)
+                    assertTrue(presenter.dispatch(ContinuousEditorAction.Undo)); assertEquals(before.project, backend.studio.document.value.project)
+                    assertTrue(presenter.dispatch(ContinuousEditorAction.Redo)); assertEquals(chopped, backend.studio.document.value.project)
+                    assertTrue(presenter.dispatch(ContinuousEditorAction.BeginLiveChop))
+                    val pending = assertNotNull(presenter.captureLiveChop())
+                    buffer.set(2048)
+                    presenter.dispatch(ContinuousEditorAction.CapturePad(3, pending))
+                    until { !presenter.state.value.liveChopping && presenter.state.value.liveChopTiming.correction.mode == LiveChopTimingMode.ESTIMATED }
+                    assertEquals(chopped, backend.studio.document.value.project)
+                    assertTrue(presenter.dispatch(ContinuousEditorAction.BeginLiveChop))
+                    delay(150)
+                    assertTrue(presenter.dispatch(ContinuousEditorAction.CapturePad(4, assertNotNull(presenter.captureLiveChop()))))
+                    until { presenter.state.value.liveChopTiming.lastCut != null }
+                    assertEquals(LiveChopTimingMode.ESTIMATED, presenter.state.value.liveChopTiming.lastCut!!.mode)
+                    assertTrue(presenter.dispatch(ContinuousEditorAction.StopAll))
+                    assertTrue(presenter.dispatch(ContinuousEditorAction.TapPad(2)))
+                    assertTrue(presenter.dispatch(ContinuousEditorAction.StopAll))
+                    assertTrue(backend.studio.dispatch(Action.Edit(Intent.FillPadPattern("pattern-1", 2, 960))).accepted)
+                    assertTrue(backend.studio.dispatch(Action.Export(ExportRequest(backend.files.register(directory.resolve("beat.wav")), 24_000, bits = 24), PlaybackTarget.Pattern("pattern-1"))).accepted)
+                    idle(backend)
+                    assertTrue(Files.newInputStream(directory.resolve("beat.wav")).use(WavCodec::read).samples.any { abs(it) > .01f })
+                    val final = backend.studio.document.value.project
+                    val archive = ByteArrayOutputStream().also { ArchiveCodec().write(final, backend.assets, it) }.toByteArray()
+                    val fresh = FileAssetStore(directory.resolve("fresh"))
+                    assertEquals(final, ArchiveCodec().read(ByteArrayInputStream(archive), fresh))
+                    assertContentEquals(originalBytes, fresh.read(final.asset(final.source!!.assetHash)))
+                    backend.flushAutosave()
+                    assertEquals(final, AutosaveStore(directory.resolve("profile/autosave"), fresh).recover()!!.project)
                 } finally { scene.close(); presenter.close(); host.close(); backend.shutdown(); scope.cancel(); directory.toFile().deleteRecursively() }
             }
         } finally { Locale.setDefault(previous) }
