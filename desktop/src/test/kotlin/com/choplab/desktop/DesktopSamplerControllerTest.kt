@@ -384,6 +384,64 @@ class DesktopSamplerControllerTest {
     }
 
     @Test
+    fun drumSeparationWithoutModelReportsCachePreparationFailureAndPreservesProduction() {
+        val directory = Files.createTempDirectory("choplab-separation-guard").toFile()
+        // Missing models now enter the verified download flow. A file at the cache path
+        // makes the real default store fail deterministically before any network access.
+        val blockedModels = directory.resolve("models").apply { writeText("not a directory") }
+        val source = directory.resolve("song.wav")
+        WavFileWriter(source, sampleRate = 48_000, channelCount = 1).use { writer ->
+            writer.writePcm16(ShortArray(4_800) { 1000 })
+        }
+        val originalSource = source.readBytes()
+        val previousModels = System.getProperty("choplab.separatorModels")
+        System.setProperty("choplab.separatorModels", blockedModels.absolutePath)
+        val engine = FakeAudioEngine()
+        val controller = DesktopSamplerController(engine, autosaveStore = null, recoverAutosaveOnStart = false)
+        try {
+            controller.loadWav(source)
+            awaitCondition { controller.state.value.currentAudio?.name == "song.wav" }
+            val loaded = controller.state.value
+            controller.createQuickSketch()
+            val before = controller.state.value
+            assertTrue(before.pads.take(8).all(PadModel::isAssigned))
+            assertTrue(before.activeSteps.isNotEmpty())
+            assertTrue(before.canUndo)
+            controller.separateDrumsFromCurrentSource()
+            awaitCondition { controller.state.value.drumSeparation?.phase == DrumSeparationPhase.FAILED }
+            val after = controller.state.value
+            assertEquals(
+                "ドラム分離に失敗しました: 分離モデルの保存先を作成できません",
+                after.statusMessage,
+            )
+            assertEquals("分離モデルの保存先を作成できません", after.drumSeparation?.message)
+            assertNull(after.drumSeparation?.resultPath)
+            assertNull(controller.consumeDrumSeparationResult())
+            assertEquals(before.currentAudio, after.currentAudio)
+            assertEquals(before.pads, after.pads)
+            assertEquals(before.activeSteps, after.activeSteps)
+            assertEquals(before.sliceMarkers, after.sliceMarkers)
+            assertEquals(before.canUndo, after.canUndo)
+            assertEquals(before.canRedo, after.canRedo)
+            assertTrue(originalSource.contentEquals(source.readBytes()))
+            assertEquals("not a directory", blockedModels.readText())
+            controller.undoEdit()
+            assertEquals(loaded.pads, controller.state.value.pads)
+            assertEquals(loaded.activeSteps, controller.state.value.activeSteps)
+            assertEquals(loaded.sliceMarkers, controller.state.value.sliceMarkers)
+            controller.redoEdit()
+            assertEquals(before.pads, controller.state.value.pads)
+            assertEquals(before.activeSteps, controller.state.value.activeSteps)
+            assertEquals(before.sliceMarkers, controller.state.value.sliceMarkers)
+        } finally {
+            controller.close()
+            if (previousModels == null) System.clearProperty("choplab.separatorModels")
+            else System.setProperty("choplab.separatorModels", previousModels)
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
     fun drumSeparationDownloadsMissingModelAndReportsFailureWithoutChangingProduction() {
         assertMissingModelAcquisition(cancel = false)
     }
