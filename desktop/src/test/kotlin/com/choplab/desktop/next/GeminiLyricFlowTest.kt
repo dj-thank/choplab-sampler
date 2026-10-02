@@ -24,14 +24,8 @@ class GeminiLyricFlowTest {
         val backend = NextBackend.create(profile, sinkFactory = { error("No device in this test") }, microphone = { null })
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         var calls = 0
-        val provider = GeminiLyricProvider(UrlConnectionGeminiTransport { url -> calls++; Connection(url) })
-        val ports = DesktopEditorPorts(backend) { null }
-        val presenter = ContinuousEditorPresenter(backend.studio, scope, object : ContinuousEditorPorts by ports {
-            override val lyricProposal = object : LyricProposalPort {
-                override val availability = LyricProviderAvailability.AVAILABLE
-                override fun createProvider() = provider
-            }
-        })
+        val ports = DesktopEditorPorts(backend, googleTransport = { UrlConnectionGeminiTransport { url -> calls++; Connection(url) } }) { null }
+        val presenter = ContinuousEditorPresenter(backend.studio, scope, ports)
         val saved: Project
         try {
             val original = Project(lyrics = frozenListOf(LyricLine("old", "元の歌", 0, 1920,
@@ -44,7 +38,10 @@ class GeminiLyricFlowTest {
             val before = backend.studio.document.value
             assertFalse(before.canUndo)
             val audioRevision = backend.engine.snapshot().programRevision
-            assertTrue(controller.generate(request(), SessionApiKey("fake-private-session-key"), 960, 2, true))
+            val key = SessionApiKey("fake-private-session-key")
+            controller.bindInputs(request().model, key)
+            assertNull(ports.googleLyrics.install(requireNotNull(ports.googleLyrics.pendingReview()), reviewed()))
+            assertTrue(controller.generate(request(), key, 960, 2, true, controller.admissionVersion))
             waitUntil { controller.state.value.phase == LyricProposalPhase.PREVIEW }
             assertEquals(1, calls)
             assertEquals(before, backend.studio.document.value, "A completed network request is still only a preview")
@@ -73,7 +70,7 @@ class GeminiLyricFlowTest {
             assertTrue(Files.isRegularFile(archive))
             ZipFile(archive.toFile()).use { zip ->
                 val json = zip.getInputStream(zip.getEntry("project.json")).bufferedReader().use { it.readText() }
-                for (privateValue in listOf("fake-private-session-key", "private-theme-marker", "gemini-test")) {
+                for (privateValue in listOf("fake-private-session-key", "private-theme-marker", "gemini-test", "nanoUnits", "maximumBillableOutputTokens")) {
                     assertFalse(json.contains(privateValue), "Credentials, prompts and provider configuration must not enter the archive")
                 }
                 assertTrue(json.contains("preview-title"), "Explicitly applied composition metadata survives saving")
@@ -99,7 +96,8 @@ class GeminiLyricFlowTest {
             assertTrue(presenter.dispatch(ContinuousEditorAction.OpenLyricProposal))
             val controller = requireNotNull(presenter.lyricProposal.value)
             val key = SessionApiKey("fake-key")
-            assertFalse(controller.generate(request(), key, 0, 4, true))
+            controller.bindInputs(request().model, key)
+            assertFalse(controller.generate(request(), key, 0, 4, true, controller.admissionVersion))
             assertEquals(LyricAiProblem.PROVIDER_UNVERIFIED, controller.state.value.failure?.problem)
             assertFailsWith<IllegalStateException> { key.useValue { it } }
             assertEquals(before, backend.studio.document.value)
@@ -117,13 +115,17 @@ class GeminiLyricFlowTest {
         val reached = CompletableDeferred<Unit>()
         val resume = CompletableDeferred<Unit>()
         var notice: Notice? = null
+        val session = GoogleLyricSession(System::currentTimeMillis)
         val controller = LyricProposalController(backend.studio.document, provider, LyricProposalApply { placement, revision ->
             reached.complete(Unit); resume.await()
             backend.studio.dispatch(Action.Edit(Intent.SetStructuredLyrics(placement.lines, placement.structure), revision)).also { notice = it.notice }.accepted
-        }, scope, LyricProviderAvailability.AVAILABLE)
+        }, scope, session.openDialog())
         try {
             idle(backend)
-            assertTrue(controller.generate(request(), SessionApiKey("fake-key"), 0, 4, true))
+            val key = SessionApiKey("fake-key")
+            controller.bindInputs(request().model, key)
+            assertNull(session.install(requireNotNull(session.pendingReview()), reviewed()))
+            assertTrue(controller.generate(request(), key, 0, 4, true, controller.admissionVersion))
             waitUntil { controller.state.value.phase == LyricProposalPhase.PREVIEW }
             val applying = async { controller.applyPreview() }
             reached.await()
@@ -140,6 +142,54 @@ class GeminiLyricFlowTest {
         } finally { resume.complete(Unit); controller.close(); scope.cancel(); backend.shutdown() }
     }
 
+    @Test fun normalHostRejectsUnknownOrMismatchedCostConditionsWithZeroHttpAndNoEdit() = runBlocking<Unit> {
+        val backend = NextBackend.create(Files.createTempDirectory("gemini-lyrics-admission-"), sinkFactory = { error("No device") }, microphone = { null })
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        var posts = 0
+        val ports = DesktopEditorPorts(backend, googleTransport = { object : GeminiHttpTransport {
+            override suspend fun post(request: GeminiHttpRequest): GeminiHttpResponse { posts++; error("No request is admitted") }
+        } }) { null }
+        val presenter = ContinuousEditorPresenter(backend.studio, scope, ports)
+        try {
+            idle(backend)
+            assertIs<SessionLyricProposalPort>(ports.lyricProposal, "Both normal hosts use the same session bridge")
+            val before = backend.studio.document.value
+            for (case in listOf("price", "bounds", "budget", "tier", "currency", "over-budget", "expired", "overflow")) {
+                assertTrue(presenter.dispatch(ContinuousEditorAction.OpenLyricProposal))
+                val controller = requireNotNull(presenter.lyricProposal.value)
+                val key = SessionApiKey("fake-key")
+                controller.bindInputs(request().model, key)
+                val known = reviewed()
+                val input = ReviewedGoogleUse(known.model, if (case == "tier") null else known.tier, known.eligibility,
+                    when (case) {
+                        "price" -> null
+                        "overflow" -> GoogleTokenPrice("gemini-test", GoogleAccountTier.PAID, "USD", 1_000,
+                            Long.MAX_VALUE, 200, 10_000, known.reviewedAtEpochMillis, known.expiresAtEpochMillis)
+                        else -> known.price
+                    }, if (case == "bounds") null else known.bounds,
+                    when (case) {
+                        "budget" -> null
+                        "currency" -> GoogleMoney("JPY", 2_000)
+                        "over-budget" -> GoogleMoney("USD", 0)
+                        else -> known.budget
+                    }, known.reviewedAtEpochMillis, if (case == "expired") 0 else known.expiresAtEpochMillis)
+                assertNotNull(ports.googleLyrics.install(requireNotNull(ports.googleLyrics.pendingReview()), input), case)
+                assertFalse(controller.generate(request(), key, 0, 4, true, controller.admissionVersion), case)
+                assertFailsWith<IllegalStateException> { key.useValue { it } }
+                assertEquals(0, posts, case)
+                assertEquals(before, backend.studio.document.value, case)
+                assertFalse(backend.studio.document.value.canUndo, case)
+                assertTrue(presenter.dispatch(ContinuousEditorAction.CloseLyricProposal))
+            }
+        } finally { presenter.close(); ports.close(); scope.cancel(); backend.shutdown() }
+    }
+
+    private fun reviewed(): ReviewedGoogleUse {
+        val now = System.currentTimeMillis()
+        return ReviewedGoogleUse("gemini-test", GoogleAccountTier.PAID, GoogleUseEligibility.REVIEWED_FOR_THIS_SESSION,
+            GoogleTokenPrice("gemini-test", GoogleAccountTier.PAID, "USD", 1_000, 100, 200, 10_000, now, now + 60_000),
+            GoogleTokenBounds(4096, 128, 64), GoogleMoney("USD", 2_000), now, now + 60_000)
+    }
     private fun request() = LyricRequest("gemini-test", "private-theme-marker", "", LyricLanguage.JAPANESE, LyricStyle.SONG, "", "", "")
     private suspend fun waitUntil(condition: () -> Boolean) = withTimeout(10_000) { while (!condition()) delay(5) }
     private suspend fun idle(backend: NextBackend) = waitUntil { backend.studio.work.value.jobId == null && backend.studio.work.value.preparationId == null }

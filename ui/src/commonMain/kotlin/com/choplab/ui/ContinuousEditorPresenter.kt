@@ -1418,7 +1418,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         closeStepPatterns(); closeVocalGuide()
         val controller = LyricProposalController(studio.document, port.createProvider(), LyricProposalApply { placement, revision ->
             applyPreparedEdit(Intent.SetStructuredLyrics(placement.lines, placement.structure), revision)
-        }, jobs, port.availability)
+        }, jobs, port.openAdmission())
         proposal.value = controller
         jobs.launch {
             controller.state.first { it.phase == LyricProposalPhase.CLOSED }

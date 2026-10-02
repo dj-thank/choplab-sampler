@@ -58,4 +58,14 @@
     <string name="ai_lyrics_stale">The project changed. Generate a new proposal from the current revision.</string>
     <string name="ai_lyrics_apply_rejected">The editor could not apply this proposal. Current lyrics were preserved.</string>
     <string name="ai_lyrics_closed">This proposal session is closed.</string>
+    <string name="ai_lyrics_attempt_maximum">This attempt: %1$s · %2$s · at most %3$s %4$s. The actual charge is not yet known.</string>
+    <string name="ai_lyrics_paid">paid tier</string>
+    <string name="ai_lyrics_unpaid">unpaid tier</string>
+    <string name="ai_lyrics_admission_refused">This session cannot authorize another request.</string>
+    <string name="ai_lyrics_price_unverified">The applicable model, account tier or price is unverified. Nothing will be sent.</string>
+    <string name="ai_lyrics_bound_unverified">The billable input and output limit, including thinking, is unverified. Nothing will be sent.</string>
+    <string name="ai_lyrics_budget_refused">The cost bound cannot fit the confirmed amount and currency. Nothing will be sent.</string>
+    <string name="ai_lyrics_review_expired">These session conditions have expired. Nothing will be sent.</string>
+    <string name="ai_lyrics_attempt_used">This one-attempt allowance has been used. Cancelling or retrying does not renew it.</string>
+    <string name="ai_lyrics_review_changed">The session, key or model changed. Reviewed conditions are required for this input.</string>
 </resources>

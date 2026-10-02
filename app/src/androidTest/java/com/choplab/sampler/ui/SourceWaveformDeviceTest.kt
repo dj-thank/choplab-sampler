@@ -1,5 +1,7 @@
 package com.choplab.sampler.ui
 
+import android.app.UiAutomation
+import android.os.Build
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.getValue
@@ -11,6 +13,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -192,7 +195,9 @@ class SourceWaveformDeviceTest {
         composeRule.enableAccessibilityChecks()
         composeRule.onRoot().tryPerformAccessibilityChecks()
 
-        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val automation = instrumentation.uiAutomation
+        val targetPackage = instrumentation.targetContext.packageName
         automation.waitForIdle(100, 5_000)
         val orderedDescriptions = listOf(
             "選択開始ハンドル",
@@ -203,28 +208,28 @@ class SourceWaveformDeviceTest {
             "チョップ4 の位置",
             "チョップ5 の位置",
         )
-        // UiAutomation can expose the active window before Compose has populated every
-        // framework node. Reacquire the root until the complete tree is observable instead
-        // of retaining an early, permanently incomplete AccessibilityNodeInfo snapshot.
-        composeRule.waitUntil(timeoutMillis = 30_000) {
-            val currentRoot = automation.rootInActiveWindow ?: return@waitUntil false
-            orderedDescriptions.all { description ->
-                currentRoot.findNodeByContentDescription(description) != null
-            }
+        var diagnostic = FrameworkTreeDiagnostic()
+        var readySnapshot: FrameworkWaveformSnapshot? = null
+        // Root reacquisition alone does not require a cache refresh. Keep the same
+        // complete, owned snapshot for the assertions and the real framework action.
+        waitForFrameworkCondition(30_000, { diagnostic }) {
+            val current = automation.freshOwnedWaveformSnapshot(
+                targetPackage,
+                orderedDescriptions,
+                onDiagnostic = { diagnostic = it },
+            ) ?: return@waitForFrameworkCondition false
+            readySnapshot = current
+            true
         }
-        val readyRoot = requireNotNull(automation.rootInActiveWindow) {
+        val snapshot = requireNotNull(readySnapshot) {
             "UiAutomation must expose the ready accessibility window"
         }
-        val frameworkNodes = orderedDescriptions.map { description ->
-            requireNotNull(readyRoot.findNodeByContentDescription(description)) {
-                "$description must be present in the framework accessibility tree"
-            }
-        }
+        val frameworkNodes = snapshot.nodes
 
         assertEquals(
             "Framework depth-first tree order must follow S, E, then numbered chop markers",
             orderedDescriptions,
-            readyRoot.depthFirstDescriptions().filter { it in orderedDescriptions },
+            snapshot.depthFirstDescriptions,
         )
         frameworkNodes.forEachIndexed { index, node ->
             assertTrue(
@@ -236,21 +241,41 @@ class SourceWaveformDeviceTest {
         }
 
         val firstMarker = frameworkNodes[2]
-        val initialState = firstMarker.stateDescription?.toString()
+        val initialState = requireNotNull(androidx.core.view.accessibility.AccessibilityNodeInfoCompat.wrap(firstMarker).stateDescription?.toString()) {
+            "The framework marker must expose its initial position state"
+        }
         val laterAction = firstMarker.actionList.firstOrNull { it.label?.toString() == "少し後へ" }
         assertNotNull("Framework node must expose the custom nudge action", laterAction)
         assertTrue(firstMarker.performAction(laterAction!!.id))
-        composeRule.waitUntil(timeoutMillis = 5_000) {
-            automation.rootInActiveWindow
-                ?.findNodeByContentDescription("チョップ1 の位置")
-                ?.stateDescription
-                ?.toString() != initialState
+        var changedState: String? = null
+        waitForFrameworkCondition(5_000, { diagnostic }) {
+            val current = automation.freshOwnedWaveformSnapshot(
+                targetPackage,
+                orderedDescriptions,
+                onDiagnostic = { diagnostic = it },
+            ) ?: return@waitForFrameworkCondition false
+            val currentState = androidx.core.view.accessibility.AccessibilityNodeInfoCompat.wrap(current.nodes[2]).stateDescription?.toString()
+            if (currentState != null && currentState != initialState) {
+                changedState = currentState
+                true
+            } else {
+                false
+            }
         }
-        val changedState = automation.rootInActiveWindow
-            ?.findNodeByContentDescription("チョップ1 の位置")
-            ?.stateDescription
-            ?.toString()
-        assertNotEquals(initialState, changedState)
+        assertNotEquals(initialState, requireNotNull(changedState))
+    }
+
+    private fun waitForFrameworkCondition(
+        timeoutMillis: Long,
+        diagnostic: () -> FrameworkTreeDiagnostic,
+        condition: () -> Boolean,
+    ) {
+        try {
+            composeRule.waitUntil(timeoutMillis = timeoutMillis, condition = condition)
+        } catch (failure: ComposeTimeoutException) {
+            // Only fixed fixture ownership/presence flags are emitted, never a UI tree.
+            throw AssertionError(diagnostic().asJson(), failure)
+        }
     }
 
     @Test
@@ -382,17 +407,74 @@ class SourceWaveformDeviceTest {
     }
 }
 
-private fun AccessibilityNodeInfo.findNodeByContentDescription(description: String): AccessibilityNodeInfo? {
-    if (contentDescription?.toString() == description) return this
-    repeat(childCount) { index ->
-        getChild(index)?.findNodeByContentDescription(description)?.let { return it }
-    }
-    return null
+private data class FrameworkTreeDiagnostic(
+    val rootNull: Boolean = true,
+    val ownedWindow: Boolean = false,
+    val presentMask: Int = 0,
+    val cacheClearSucceeded: Boolean = false,
+) {
+    fun asJson(): String =
+        "{\"rootNull\":$rootNull,\"ownedWindow\":$ownedWindow," +
+            "\"presentMask\":$presentMask,\"cacheClearSucceeded\":$cacheClearSucceeded}"
 }
 
-private fun AccessibilityNodeInfo.depthFirstDescriptions(): List<String> = buildList {
-    contentDescription?.toString()?.let(::add)
-    repeat(childCount) { index ->
-        getChild(index)?.let { addAll(it.depthFirstDescriptions()) }
+private data class FrameworkWaveformSnapshot(
+    val nodes: List<AccessibilityNodeInfo>,
+    val depthFirstDescriptions: List<String>,
+)
+
+private fun UiAutomation.freshOwnedWaveformSnapshot(
+    targetPackage: String,
+    expectedDescriptions: List<String>,
+    onDiagnostic: (FrameworkTreeDiagnostic) -> Unit,
+): FrameworkWaveformSnapshot? {
+    val cacheClearSucceeded = if (Build.VERSION.SDK_INT >= 34) clearCache() else false
+    val root = rootInActiveWindow
+    if (root == null) {
+        onDiagnostic(FrameworkTreeDiagnostic(cacheClearSucceeded = cacheClearSucceeded))
+        return null
     }
+    var ownedWindow = root.packageName?.toString() == targetPackage
+    if (!ownedWindow) {
+        onDiagnostic(FrameworkTreeDiagnostic(rootNull = false, cacheClearSucceeded = cacheClearSucceeded))
+        return null
+    }
+    val nodes = arrayOfNulls<AccessibilityNodeInfo>(expectedDescriptions.size)
+    val depthFirstDescriptions = mutableListOf<String>()
+    var presentMask = 0
+    var fresh = true
+    fun visit(node: AccessibilityNodeInfo) {
+        // Do not inspect another app's node payload or descend into its tree.
+        if (node.packageName?.toString() != targetPackage) return
+        if (Build.VERSION.SDK_INT < 34 && !node.refresh()) {
+            fresh = false
+            return
+        }
+        if (node.packageName?.toString() != targetPackage) {
+            if (node === root) ownedWindow = false
+            return
+        }
+        val description = node.contentDescription?.toString()
+        val expectedIndex = if (description == null) -1 else expectedDescriptions.indexOf(description)
+        if (expectedIndex >= 0) {
+            nodes[expectedIndex] = node
+            depthFirstDescriptions.add(expectedDescriptions[expectedIndex])
+            presentMask = presentMask or (1 shl expectedIndex)
+        }
+        repeat(node.childCount) { index -> node.getChild(index)?.let(::visit) }
+    }
+    visit(root)
+    onDiagnostic(
+        FrameworkTreeDiagnostic(
+            rootNull = false,
+            ownedWindow = ownedWindow,
+            presentMask = presentMask,
+            cacheClearSucceeded = cacheClearSucceeded,
+        ),
+    )
+    if (!fresh || !ownedWindow || nodes.any { it == null }) return null
+    return FrameworkWaveformSnapshot(
+        nodes = nodes.map { requireNotNull(it) },
+        depthFirstDescriptions = depthFirstDescriptions.toList(),
+    )
 }
