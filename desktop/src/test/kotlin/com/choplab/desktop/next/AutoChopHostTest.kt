@@ -261,15 +261,41 @@ class AutoChopHostTest {
                 val host = DesktopEditorPorts(backend) { null }
                 val presenter = ContinuousEditorPresenter(backend.studio, scope, host)
                 val timingActions = mutableListOf<ContinuousEditorAction>()
+                val timingObservations = mutableListOf<String>()
                 val scene = ImageComposeScene(width = width, height = height, density = Density(1f, font), coroutineContext = coroutineContext) {
                     val state by presenter.state.collectAsState()
                     ContinuousEditor(state, { action ->
                         if (action == ContinuousEditorAction.OpenLiveChopTiming || action == ContinuousEditorAction.CloseLiveChopTiming ||
-                            action is ContinuousEditorAction.SetLiveChopCorrection) timingActions += action
+                            action is ContinuousEditorAction.SetLiveChopCorrection) {
+                            timingActions += action
+                            timingObservations += "${System.nanoTime()}: $action ui=${state.liveChopTiming} " +
+                                "probe=${backend.engine.liveChopProbe()} work=${backend.studio.work.value} driver=${backend.engine.status.value}"
+                        }
                         presenter.onAction(action)
                     }, presenter::readout)
                 }
                 try {
+                    fun timingDiagnostics(): String = "$locale ${width}x$height font=$font " +
+                        "state=${presenter.state.value.liveChopTiming}, owners=${scene.semanticsOwners.size}, " +
+                        "selected=${scene.nodes().firstOrNull { it.config.getOrNull(SemanticsProperties.TestTag) == "ce-live-timing-MANUAL" }?.config?.getOrNull(SemanticsProperties.Selected)}, " +
+                        "slider=${scene.nodes().firstOrNull { it.config.getOrNull(SemanticsProperties.TestTag) == "ce-live-timing-slider" }?.config?.getOrNull(SemanticsProperties.ProgressBarRangeInfo)}, " +
+                        "status=${presenter.state.value.status}, work=${backend.studio.work.value}, driver=${backend.engine.status.value}, " +
+                        "probe=${backend.engine.liveChopProbe()}, source=${host.sourcePreview?.state?.value}, actions=$timingActions, observations=$timingObservations"
+                    suspend fun awaitTimingFrame(condition: () -> Boolean) {
+                        // As in VocalGuidePanelTest, wait for the frame-clock work to finish; a
+                        // guessed number of rendered frames can leave a scroll/radio animation active.
+                        do { scene.render(System.nanoTime()).close(); delay(1) } while (!condition() || scene.hasInvalidations())
+                    }
+                    suspend fun setManualDraft() {
+                        scene.pointer("ce-live-timing-MANUAL")
+                        awaitTimingFrame { scene.tag("ce-live-timing-MANUAL").config.getOrNull(SemanticsProperties.Selected) == true }
+                        scene.reach("ce-live-timing-slider")
+                        assertTrue(scene.tag("ce-live-timing-slider").config[SemanticsActions.SetProgress].action!!(37f), timingDiagnostics())
+                        awaitTimingFrame {
+                            scene.tag("ce-live-timing-MANUAL").config.getOrNull(SemanticsProperties.Selected) == true &&
+                                scene.tag("ce-live-timing-slider").config.getOrNull(SemanticsProperties.ProgressBarRangeInfo)?.current == 37f
+                        }
+                    }
                     suspend fun awaitTimingDialog(open: Boolean) {
                         // Actor completion and popup input ownership are separate from an enabled background tag.
                         val reached = withTimeoutOrNull(10_000) {
@@ -297,9 +323,7 @@ class AutoChopHostTest {
                         assertEquals(1, timingActions.count { it == ContinuousEditorAction.OpenLiveChopTiming }, "First open must be emitted by its one pointer input")
                     }
                     awaitTimingDialog(true)
-                    scene.pointer("ce-live-timing-MANUAL")
-                    scene.reach("ce-live-timing-slider")
-                    assertTrue(scene.tag("ce-live-timing-slider").config[SemanticsActions.SetProgress].action!!(37f))
+                    assertEquals(true, withTimeoutOrNull(15_000) { setManualDraft(); true }, "Cancel draft: ${timingDiagnostics()}")
                     // Delay the real queued cancel at its edit lock. An enabled background control is not
                     // evidence that the modal has closed, even when a fixed number of frames has elapsed.
                     val editLock = ContinuousEditorPresenter::class.java.getDeclaredField("serialized").run {
@@ -328,15 +352,35 @@ class AutoChopHostTest {
                         assertEquals(2, timingActions.count { it == ContinuousEditorAction.OpenLiveChopTiming }, "Reopen must be emitted by its one pointer input")
                     }
                     awaitTimingDialog(true)
-                    scene.pointer("ce-live-timing-MANUAL")
-                    scene.reach("ce-live-timing-slider")
-                    assertTrue(scene.tag("ce-live-timing-slider").config[SemanticsActions.SetProgress].action!!(37f))
-                    scene.settle()
-                    val png = Path.of("build/reports/ui-evidence/live-chop/timing-${locale.language}-${width}x$height.png")
-                    Files.createDirectories(png.parent)
-                    scene.render(System.nanoTime()).use { image -> image.encodeToData(EncodedImageFormat.PNG)!!.use { Files.write(png, it.bytes) } }
-                    scene.pointer("ce-live-timing-apply")
-                    until { presenter.state.value.liveChopTiming.correction == LiveChopCorrection(LiveChopTimingMode.MANUAL, 37) }
+                    val manual = LiveChopCorrection(LiveChopTimingMode.MANUAL, 37)
+                    var acknowledgement = "MANUAL selection and visible 37 ms draft"
+                    val committed = try {
+                        // One deadline covers the displayed draft, its one real pointer input and the actor commit.
+                        withTimeoutOrNull(15_000) {
+                            setManualDraft()
+                            val route = assertNotNull(presenter.state.value.liveChopTiming.route, timingDiagnostics())
+                            val priorApplies = timingActions.count { it is ContinuousEditorAction.SetLiveChopCorrection }
+                            val png = Path.of("build/reports/ui-evidence/live-chop/timing-${locale.language}-${width}x$height.png")
+                            Files.createDirectories(png.parent)
+                            scene.render(System.nanoTime()).use { image -> image.encodeToData(EncodedImageFormat.PNG)!!.use { Files.write(png, it.bytes) } }
+                            acknowledgement = "Apply pointer and payload"
+                            scene.pointer("ce-live-timing-apply", stableHit = true) {
+                                val applies = timingActions.filterIsInstance<ContinuousEditorAction.SetLiveChopCorrection>()
+                                assertEquals(priorApplies + 1, applies.size, "Apply must be emitted by its one pointer input: ${timingDiagnostics()}")
+                                assertEquals(ContinuousEditorAction.SetLiveChopCorrection(route, manual), applies.last(), timingDiagnostics())
+                            }
+                            acknowledgement = "actor commit and popup release"
+                            awaitTimingFrame {
+                                val timing = presenter.state.value.liveChopTiming
+                                timing.correction == manual && !timing.open && scene.semanticsOwners.size == 1 &&
+                                    scene.nodes().none { it.config.getOrNull(SemanticsProperties.TestTag) == "ce-live-timing-panel" }
+                            }
+                            true
+                        }
+                    } catch (failure: AssertionError) {
+                        fail("At $acknowledgement: ${timingDiagnostics()}", failure)
+                    }
+                    assertEquals(true, committed, "Timed out at $acknowledgement: ${timingDiagnostics()}")
                     assertEquals(before, backend.studio.document.value)
                     scene.pointer("ce-live-chop"); until { presenter.state.value.liveChopping }; scene.settle()
                     scene.reach("ce-pad-2"); scene.fullHit("ce-pad-2", width, height)
@@ -433,7 +477,7 @@ class AutoChopHostTest {
         assertTrue(bounds.left >= 0 && bounds.top >= 0 && bounds.right <= width && bounds.bottom <= height)
         assertTrue(bounds.width >= node.size.width - 1 && bounds.height >= node.size.height - 1)
     }
-    private suspend fun ImageComposeScene.pointer(value: String, afterRelease: suspend () -> Unit = {}) {
+    private suspend fun ImageComposeScene.pointer(value: String, stableHit: Boolean = false, afterRelease: suspend () -> Unit = {}) {
         ready(value)
         reach(value)
         val node = tag(value)
@@ -442,6 +486,7 @@ class AutoChopHostTest {
         val center = node.boundsInWindow.center
         sendPointerEvent(PointerEventType.Press, center, type = PointerType.Mouse, buttons = PointerButtons(isPrimaryPressed = true), button = PointerButton.Primary)
         render(System.nanoTime()).close()
+        if (stableHit) assertEquals(center, tag(value).boundsInWindow.center, "$value moved during its pointer press")
         sendPointerEvent(PointerEventType.Release, center, type = PointerType.Mouse, buttons = PointerButtons(), button = PointerButton.Primary)
         afterRelease()
         settle()
