@@ -1,0 +1,3 @@
+<resources>
+    <string name="ce_separate_model_download">初回の分離では検証済みモデル（約%1$d MB）を取得します。私有キャッシュへ保存し、次回からオフラインで再利用します。取消で取得を止められます。</string>
+</resources>

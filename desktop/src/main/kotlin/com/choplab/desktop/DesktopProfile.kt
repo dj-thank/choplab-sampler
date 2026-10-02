@@ -28,5 +28,8 @@ internal object DesktopProfile {
         preview: Boolean = this.preview,
     ): File = File(File(temporaryRoot, directoryName(preview)), "recordings")
 
+    /** Fixed models are shared by the legacy/NEXT workers, outside projects and audio libraries. */
+    fun modelDirectory(): File = File(dataDirectory(), "models")
+
     private fun directoryName(preview: Boolean) = if (preview) "ChopLab Preview" else "ChopLab"
 }

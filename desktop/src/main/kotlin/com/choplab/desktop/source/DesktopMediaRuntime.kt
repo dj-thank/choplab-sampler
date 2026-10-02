@@ -24,7 +24,7 @@ object DesktopMediaRuntime {
             File("../work/media-tools"),
         )
         return locateDesktopMediaTools(explicit, defaultMediaSearchDirectories(path), windows)
-            ?: throw SourceImportUserError("取り込み用ツールがありません。ffmpeg、ffprobe、yt-dlp、node を用意するか、ChopLabのアプリ一式を使用してください")
+            ?: throw SourceImportUserError("取り込み用ツールがありません。ChopLabのアプリ一式を使用するか、ffmpeg、ffprobe、yt-dlp、Node を用意してください")
     }
 }
 
@@ -69,7 +69,7 @@ class DesktopYoutubeBackend(private val originalAudio: Boolean = false) : Youtub
     override fun cancel(jobId:String) { processes[jobId]?.let(::terminate) }
     private fun yt(arguments:List<String>,id:String,progress:(Float)->Unit = {}):String {
         val tools=DesktopMediaRuntime.tools()
-        return run(tools.ytDlp, listOf("--ffmpeg-location",tools.ffmpeg.parentFile.absolutePath,"--js-runtimes","node:${tools.node.absolutePath}")+arguments,id,progress)
+        return run(tools.ytDlp, listOf("--ffmpeg-location",tools.ffmpeg.parentFile.absolutePath,"--js-runtimes",tools.javascriptArgument)+arguments,id,progress)
     }
     override fun search(query:String,jobId:String)=SourceRecipes.parseCandidates(yt(SourceRecipes.searchArguments(query),jobId))
     override fun info(url:String,jobId:String)=SourceRecipes.parseInfo(yt(SourceRecipes.infoArguments(url),jobId))

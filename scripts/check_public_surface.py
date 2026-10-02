@@ -23,8 +23,10 @@ from pathlib import Path, PurePosixPath
 
 if __package__:
     from .android_runtime_policy import load_pins, runtime_candidate, verify_runtime_content, valid_resource_table
+    from . import windows_audio_runtime
 else:
     from android_runtime_policy import load_pins, runtime_candidate, verify_runtime_content, valid_resource_table
+    import windows_audio_runtime
 
 
 SENSITIVE_SUFFIXES = {
@@ -102,6 +104,7 @@ PACKAGED_APP_NESTED_ARCHIVE_COUNT_LIMIT = 80
 PACKAGED_APP_ARCHIVE_NAMES = frozenset({
     "ChopLab-windows-app-image.zip",
     "ChopLab-windows-preview.zip",
+    "ChopLab-windows-next.zip",
     "ChopLab-mac-next-preview.zip",
 })
 ZIP_NESTED_MEMBER_LIMIT = 16 * 1024 * 1024
@@ -167,7 +170,7 @@ ZIP_BINARY_SECRET_TOTAL_LIMIT = 384 * 1024 * 1024
 ZIP_PACKAGED_RUNTIME_MEMBER_LIMIT = 320 * 1024 * 1024
 ZIP_PACKAGED_RUNTIME_TOTAL_LIMIT = 1024 * 1024 * 1024
 PACKAGED_RUNTIME_TOOL_NAMES = frozenset(
-    {"ffmpeg.exe", "ffprobe.exe", "node.exe", "yt-dlp.exe"}
+    {"ffmpeg.exe", "ffprobe.exe", "node.exe", "qjs.exe", "yt-dlp.exe"}
 )
 # A released build of FFmpeg or Node carries strings that read like credentials -- PEM
 # headers and key-shaped literals in its own test material -- so scanning those bytes for
@@ -192,6 +195,7 @@ SHA256_TEXT = re.compile(r"\A[0-9a-f]{64}\Z")
 APK_SIGNING_BLOCK_MAGIC = b"APK Sig Block 42"
 APK_SIGNING_BLOCK_MAX_SIZE = 16 * 1024 * 1024
 APK_SIGNING_BLOCK_PAIR_LIMIT = 128
+APK_SIGNING_BLOCK_ALIGNMENT = 4096
 APK_SIGNATURE_SUFFIXES = {".dsa", ".ec", ".rsa"}
 APK_BINARY_MEMBER_SCAN_LIMIT = 32 * 1024 * 1024
 APK_BINARY_TOTAL_SCAN_LIMIT = 64 * 1024 * 1024
@@ -1202,7 +1206,13 @@ def is_packaged_runtime_binary_path(
     if len(parts) != 3 or parts[0] not in {"choplab", "choplab preview"}:
         return False
     if parts[1] == "tools":
-        return parts[2] in PACKAGED_RUNTIME_TOOL_NAMES
+        if parts[2] in PACKAGED_RUNTIME_TOOL_NAMES:
+            return True
+        try:
+            files = windows_audio_runtime.pinned_files()
+            return any(name.lower() == parts[2] and "/" not in name and name.lower().endswith(".dll") for name in files)
+        except (OSError, ValueError, KeyError, TypeError):
+            return False
     if parts[1] == "models":
         return parts[2].endswith(".onnx")
     return (
@@ -1218,6 +1228,8 @@ def is_digest_verified_runtime_path(path: PurePosixPath) -> bool:
     mac = mac_packaged_runtime_parts(path)
     if mac is not None:
         return len(mac) == 2 and mac[0] in {"tools", "models"}
+    if len(parts) == 3 and parts[0] in {"choplab", "choplab preview"} and parts[1] == "app":
+        return parts[2].startswith("onnxruntime-") and parts[2].endswith(".jar")
     return len(parts) == 3 and parts[0] in {"choplab", "choplab preview"} and parts[1] in PACKAGED_RUNTIME_MANIFESTS
 
 
@@ -1265,6 +1277,26 @@ def packaged_runtime_digest_findings(
     """Check a packaged third-party binary against the digest the app-image records."""
     mac = mac_packaged_runtime_parts(entry)
     scope = mac[0] if mac is not None else entry.parts[1].lower()
+    if mac is None and scope == "app":
+        # No broad binary bypass: this Windows-only derived JAR is tied to its upstream
+        # Maven bytes and a reproducible, unchanged-entry projection checked at package time.
+        try:
+            pins = json.loads((REPOSITORY_ROOT / "config/windows-onnxruntime.json").read_text(encoding="utf-8"))
+            expected = pins["windows"]
+        except (OSError, ValueError, KeyError):
+            return [f"{member_label}: Windows runtime pins are unavailable"]
+        if entry.name != expected["filename"] or declared_size != expected["bytes"] or len(content) != declared_size or hashlib.sha256(content).hexdigest() != expected["sha256"]:
+            return [f"{member_label}: content does not match the pinned Windows runtime derivation"] + scan_secret_bytes(member_label, content)
+        raw = read_small_archive_member(archive, str(entry.parent / "onnxruntime-windows.json"), PACKAGED_RUNTIME_MANIFEST_LIMIT)
+        try:
+            receipt = json.loads(raw.decode("utf-8")) if raw is not None else None
+            entries = receipt["entries"]
+            digest = hashlib.sha256(json.dumps(entries, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+            if receipt["upstream"] != pins["upstream"] or receipt["derived"] != expected or len(entries) != expected["entryCount"] or digest != expected["entriesSha256"]:
+                raise ValueError("Different derivation receipt")
+        except (ValueError, KeyError, TypeError, AttributeError):
+            return [f"{member_label}: missing or mismatched Windows runtime derivation receipt"]
+        return []
     manifest_name = str(entry.parent / "manifest.json") if mac is not None else PACKAGED_RUNTIME_MANIFESTS[scope].replace("ChopLab/", entry.parts[0] + "/", 1)
     if len(content) != declared_size:
         return [f"{member_label}: packaged runtime binary was read only in part"]
@@ -1296,6 +1328,36 @@ def packaged_runtime_digest_findings(
         return [
             f"{member_label}: content does not match the digest {manifest_name} records"
         ]
+    if mac is None and scope == "tools" and (entry.suffix.lower() == ".dll" or
+            (entry.name in {"ffmpeg.exe", "ffprobe.exe"} and manifest.get("ffmpegAudioInputsSha256") is not None)):
+        try:
+            profile = windows_audio_runtime.load_profile()
+            files = windows_audio_runtime.pinned_files(profile)
+            pin = files[entry.name]
+            if (actual != pin["sha256"] or declared_size != pin["bytes"] or
+                    manifest.get("ffmpegAudioInputsSha256") != windows_audio_runtime.inputs_hash(profile)):
+                raise ValueError("Different Windows audio runtime bytes or source profile")
+            # Bind the recipe/source and all notices, not just a self-reported
+            # hash for a DLL. Native members are independently checked above.
+            for name, expected_file in files.items():
+                if name.lower().endswith((".exe", ".dll")):
+                    continue
+                data = read_small_archive_member(archive, str(entry.parent / name), 512 * 1024)
+                if data is None or len(data) != expected_file["bytes"] or hashlib.sha256(data).hexdigest() != expected_file["sha256"]:
+                    raise ValueError("Missing or changed audio runtime notice/source receipt")
+        except (OSError, ValueError, KeyError, TypeError):
+            return [f"{member_label}: Windows FFmpeg differs from its source, artifact or notice pins"] + scan_secret_bytes(member_label, content)
+    if mac is None and scope == "tools" and entry.name == "qjs.exe":
+        try:
+            pin = json.loads((REPOSITORY_ROOT / "config/windows-quickjs.json").read_text(encoding="utf-8"))
+            binary, license_pin = pin["windows"], pin["license"]
+            if actual != binary["sha256"] or declared_size != binary["bytes"] or manifest.get("quickjsSource") != pin:
+                raise ValueError("QuickJS source/artifact identity mismatch")
+            license_bytes = read_small_archive_member(archive, str(entry.parent / license_pin["filename"]), 16 * 1024)
+            if license_bytes is None or len(license_bytes) != license_pin["bytes"] or hashlib.sha256(license_bytes).hexdigest() != license_pin["sha256"]:
+                raise ValueError("Missing or changed QuickJS license")
+        except (OSError, ValueError, KeyError, TypeError):
+            return [f"{member_label}: QuickJS differs from the pinned source, artifact or license"] + scan_secret_bytes(member_label, content)
     if scope == "models":
         pinned = pinned_separator_model_digest()
         if pinned is not None and pinned != actual:
@@ -2422,27 +2484,52 @@ def has_valid_icu_data_header(content: bytes, file_size: int) -> bool:
 def read_valid_apk_signing_block_values(
     stream: object,
     *,
-    block_start: int,
+    local_records_end: int,
     central_directory_start: int,
 ) -> list[bytes] | None:
-    block_size = central_directory_start - block_start
-    if block_size < 32 or block_size > APK_SIGNING_BLOCK_MAX_SIZE:
+    # Structural admission only; release signature verification remains apksigner's job.
+    # https://source.android.com/docs/security/features/apksigning/v2
+    span = central_directory_start - local_records_end
+    if (
+        local_records_end < 0
+        or span < 32
+        or span > APK_SIGNING_BLOCK_MAX_SIZE + APK_SIGNING_BLOCK_ALIGNMENT - 1
+    ):
         return None
     original_position: int | None = None
     try:
         original_position = stream.tell()
-        stream.seek(block_start)
-        leading_size_bytes = stream.read(8)
         stream.seek(central_directory_start - 24)
         trailing = stream.read(24)
-        if len(leading_size_bytes) != 8 or len(trailing) != 24:
+        if len(trailing) != 24 or trailing[8:] != APK_SIGNING_BLOCK_MAGIC:
             return None
-        leading_size = int.from_bytes(leading_size_bytes, "little")
         trailing_size = int.from_bytes(trailing[:8], "little")
+        block_size = trailing_size + 8
+        if block_size < 32 or block_size > APK_SIGNING_BLOCK_MAX_SIZE:
+            return None
+        block_start = central_directory_start - block_size
+        padding_size = block_start - local_records_end
+        if padding_size < 0:
+            return None
+        if padding_size:
+            # apksig generateApkSigningBlockPadding adds only the zero bytes needed
+            # to reach the next 4096-byte boundary; generateApkSigningBlock aligns
+            # the block's size too. This does not admit arbitrary ZIP gaps.
+            # https://android.googlesource.com/platform/tools/apksig/+/d0dbdf6ed826a2b5ceff4476cfcd7d6ae27252ba/src/main/java/com/android/apksig/internal/apk/ApkSigningBlockUtils.java
+            if (
+                padding_size != -local_records_end % APK_SIGNING_BLOCK_ALIGNMENT
+                or block_size % APK_SIGNING_BLOCK_ALIGNMENT
+            ):
+                return None
+            stream.seek(local_records_end)
+            padding = stream.read(padding_size)
+            if len(padding) != padding_size or any(padding):
+                return None
+        stream.seek(block_start)
+        leading_size_bytes = stream.read(8)
         if (
-            trailing[8:] != APK_SIGNING_BLOCK_MAGIC
-            or leading_size != trailing_size
-            or leading_size + 8 != block_size
+            len(leading_size_bytes) != 8
+            or int.from_bytes(leading_size_bytes, "little") != trailing_size
         ):
             return None
 
@@ -2844,6 +2931,11 @@ def scan_zip(
 
             for info in entries:
                 name = info.filename
+                if info.orig_filename != name:
+                    findings.append(
+                        f"{archive_label}: archive entry {name!r}: ZIP filename "
+                        "normalization is not allowed"
+                    )
                 if "\\" in name:
                     findings.append(
                         f"{archive_label}: archive entry {name!r}: Windows path "
@@ -3804,7 +3896,7 @@ def scan_zip(
                         pair_values = (
                             read_valid_apk_signing_block_values(
                                 stream,
-                                block_start=expected_offset,
+                                local_records_end=expected_offset,
                                 central_directory_start=archive.start_dir,
                             )
                             if apk_archive and stream is not None
