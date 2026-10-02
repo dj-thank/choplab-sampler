@@ -203,6 +203,8 @@ BANK/PAD編集候補はAstra Max担当がcontroller6/panel3/archive1件、root�
 
 Google提案基盤は `LlmProvider` と薄いHTTP adapter、送信内容と同意、厳密schema/かな再計算、usage実値と料金不明、429待ち/明示再試行、取消/遅着/revision/終了を実装した。通常hostは用途・利用条件の実確認までUNVERIFIEDで送信を無効にする。HTTP adapter→controller→Studio expectedRevision→1Undo→LRC/archive/autosave再開の本番経路2件を含む19件が成功し、終了が入力検証と競合しても鍵やjobを残さない回帰も確認した。現在は本文を手動start tick/行長で配置し、title/sectionは提案のmetadataとして表示する。構造の永続化・FlowPlanner・TTS・安全な鍵保存は後続実装で、実Google API/課金・provider/public受入は未確認。本番VOCAL入口の候補 `fe07111`は別のhost接続変更として統合する。rollbackは本PRのrevert、元の制作と音声bytesを保持する。
 
+Google作詞のowner session接続はbase `9ed970ab` の限定20pathを最新main `268e809f` へ通常mergeした `73bc41db` でLOCAL_PASS。通常Android/Desktop hostの既定UNVERIFIEDを保持し、現在dialog/key/modelに束縛した確認済みrecord、整数の費用上界・thinkingを含む課金output上限・期限・毎回同意が揃う1回だけをjob前に消費、HTTP直前に失効を再検査する。2026-10-03 02:51–02:54 JST、Mac/JDK21/max1/2GiBのfresh 8class36method（failure/error/skip0）とAndroid Preview compileが成功。通常Desktop hostのowned fake HTTP→schema/かな→preview→明示1Undo→archive/autosave、未確認/不足/不一致/overflow/予算超過/期限切れの0 POST、取消/失敗枠の非復活、条件変更による旧同意拒否、秘密非保存を確認。価格/model既定・利用者秘密の探索・依存追加・全体budget画面は加えていない。rootがcode review/全978入力照合とmerge後の実XMLをreadbackし、SOURCE/Practice監視も保持した。実ownerの用途/適合/区分/model/1回予算条件は未確認で実Google送信0回、課金・provider/device/Humanは未受入。必須CI・main統合と最終packageは継続し、rollbackは本限定変更のrevert。
+
 ## 要求を落とさない対応表
 
 | 要求 | 正本・担当段階 | 受入の焦点 |
