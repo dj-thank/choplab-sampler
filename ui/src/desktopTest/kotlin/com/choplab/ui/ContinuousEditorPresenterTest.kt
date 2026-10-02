@@ -6,6 +6,7 @@ import com.choplab.ui.chop.*
 import com.choplab.core.*
 import com.choplab.core.ai.*
 import com.choplab.core.edit.Intent
+import com.choplab.core.edit.StretchDraft
 import com.choplab.core.kits.DrumKits
 import com.choplab.core.model.*
 import com.choplab.core.pattern.PatternProblem
@@ -16,6 +17,7 @@ import com.choplab.engine.PlayMode
 import com.choplab.ui.ai.*
 import com.choplab.ui.analysis.*
 import com.choplab.ui.vocal.*
+import com.choplab.ui.stretch.*
 import com.choplab.ui.pattern.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.first
@@ -29,6 +31,7 @@ class ContinuousEditorPresenterTest {
         for (target in listOf(ContinuousEditorAction.OpenSourceAnalysis, ContinuousEditorAction.OpenVocalCoach,
             ContinuousEditorAction.OpenVocalPitch, ContinuousEditorAction.OpenVocalGuide,
             ContinuousEditorAction.OpenLiveChopTiming, ContinuousEditorAction.BeginLiveChop,
+            ContinuousEditorAction.OpenBeatStretch(StretchTarget(StretchKind.PAD, "0")),
             ContinuousEditorAction.Mixer(com.choplab.ui.mixer.MixerAction.Open()))) {
             lateinit var ports: ChopModalPorts
             val h = Harness(decoratePorts = { ChopModalPorts(it).also { p -> ports = p } }, adjust = ::chopModalProject)
@@ -48,6 +51,7 @@ class ContinuousEditorPresenterTest {
                 assertNotSame(chop, h.presenter.autoChop.value)
                 assertNull(h.presenter.sourceAnalysis.value); assertNull(h.presenter.vocalCoach.value)
                 assertNull(h.presenter.vocalPitch.value); assertNull(h.presenter.vocalGuide.value)
+                assertNull(h.presenter.beatStretch.value)
                 h.until { !it.liveChopping && !it.liveChopTiming.open }
                 h.until { it.mixer.draft == null }
                 assertEquals(before, h.studio.document.value)
@@ -93,7 +97,8 @@ class ContinuousEditorPresenterTest {
                 val actions = (if (chop == null) listOf(ContinuousEditorAction.AutoChop) else listOf(
                     ContinuousEditorAction.OpenSourceAnalysis, ContinuousEditorAction.OpenVocalCoach, ContinuousEditorAction.OpenVocalPitch,
                     ContinuousEditorAction.OpenVocalGuide, ContinuousEditorAction.CloseAutoChop)) +
-                    listOf(ContinuousEditorAction.OpenLiveChopTiming, ContinuousEditorAction.BeginLiveChop)
+                    listOf(ContinuousEditorAction.OpenLiveChopTiming, ContinuousEditorAction.BeginLiveChop,
+                        ContinuousEditorAction.OpenBeatStretch(StretchTarget(StretchKind.PAD, "0")))
                 for (action in actions) assertFalse(withTimeout(1_000) { h.presenter.dispatch(action) }, "$kind: $action")
                 if (analysis != null) assertSame(analysis, h.presenter.sourceAnalysis.value)
                 if (guide != null) assertSame(guide, h.presenter.vocalGuide.value)
@@ -106,6 +111,58 @@ class ContinuousEditorPresenterTest {
                 assertEquals(before.project, h.studio.document.value.project)
             } finally { release.complete(Unit); h.close() }
         }
+    }
+
+    @Test fun stretchTransfersTheSharedSourceWithAnalysisChopVocalAndLiveEntriesWithoutEditing() = runBlocking<Unit> {
+        for (other in listOf(ContinuousEditorAction.OpenSourceAnalysis, ContinuousEditorAction.AutoChop,
+            ContinuousEditorAction.OpenVocalCoach, ContinuousEditorAction.OpenVocalPitch, ContinuousEditorAction.OpenVocalGuide,
+            ContinuousEditorAction.OpenLiveChopTiming, ContinuousEditorAction.BeginLiveChop)) {
+            lateinit var ports: ChopModalPorts
+            val h = Harness(decoratePorts = { ChopModalPorts(it).also { p -> ports = p } }, adjust = ::chopModalProject)
+            try {
+                val before = h.studio.document.value
+                assertTrue(h.presenter.dispatch(other))
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenBeatStretch(StretchTarget(StretchKind.PAD, "0"))))
+                val stretch = assertNotNull(h.presenter.beatStretch.value)
+                assertNull(h.presenter.sourceAnalysis.value); assertNull(h.presenter.autoChop.value)
+                assertNull(h.presenter.vocalCoach.value); assertNull(h.presenter.vocalPitch.value); assertNull(h.presenter.vocalGuide.value)
+                assertTrue(stretch.dispatch(StretchAction.Bpm("100"))); assertTrue(stretch.dispatch(StretchAction.Prepare))
+                assertTrue(stretch.dispatch(StretchAction.Stretched))
+                assertEquals(VocalPreviewOwner.STRETCH, ports.preview.state.value.owner)
+                assertTrue(h.presenter.dispatch(other), other.toString())
+                assertNull(h.presenter.beatStretch.value)
+                assertEquals(StretchPhase.CLOSED, stretch.state.value.phase)
+                assertNotEquals(VocalPreviewOwner.STRETCH, ports.preview.state.value.owner)
+                assertEquals(before, h.studio.document.value)
+            } finally { h.close() }
+        }
+    }
+
+    @Test fun stretchApplyingRejectsSourceSwitchesAndRecordingBeforeItsSingleUndoCommit() = runBlocking<Unit> {
+        val entered = CompletableDeferred<Unit>(); val release = CompletableDeferred<Unit>()
+        val h = Harness(decoratePorts = { ChopModalPorts(it) }, adjust = ::chopModalProject)
+        try {
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenBeatStretch(StretchTarget(StretchKind.PAD, "0"))))
+            val stretch = assertNotNull(h.presenter.beatStretch.value)
+            assertTrue(stretch.dispatch(StretchAction.Bpm("100"))); assertTrue(stretch.dispatch(StretchAction.Prepare))
+            val before = h.studio.document.value
+            h.engine.duringPrepare = { entered.complete(Unit); release.await() }
+            val applying = async { stretch.dispatch(StretchAction.Apply) }
+            withTimeout(2_000) { entered.await() }
+            assertEquals(StretchPhase.APPLYING, stretch.state.value.phase)
+            for (action in listOf(ContinuousEditorAction.OpenSourceAnalysis, ContinuousEditorAction.AutoChop,
+                ContinuousEditorAction.OpenVocalCoach, ContinuousEditorAction.OpenVocalPitch, ContinuousEditorAction.OpenVocalGuide,
+                ContinuousEditorAction.OpenLiveChopTiming, ContinuousEditorAction.BeginLiveChop, ContinuousEditorAction.CloseBeatStretch,
+                ContinuousEditorAction.RecordVoice, ContinuousEditorAction.RecordHits, ContinuousEditorAction.RecordSource,
+                ContinuousEditorAction.RecordSystemSource)) {
+                assertFalse(withTimeout(1_000) { h.presenter.dispatch(action) }, action.toString())
+            }
+            assertSame(stretch, h.presenter.beatStretch.value)
+            assertEquals(before, h.studio.document.value)
+            release.complete(Unit); assertTrue(applying.await()); h.engine.duringPrepare = null
+            assertEquals(before.revision + 1, h.studio.document.value.revision)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo)); assertEquals(before.project, h.studio.document.value.project)
+        } finally { release.complete(Unit); h.close() }
     }
 
     @Test fun liveChopEntriesCloseSourceProposalsWithoutChangingTheDocument() = runBlocking<Unit> {
@@ -168,6 +225,8 @@ class ContinuousEditorPresenterTest {
         val preview = object : VocalPreviewPort {
             override val state = MutableStateFlow(VocalPreviewState())
             override suspend fun start(asset: Asset, expectedRevision: Long) = startRange(asset, FrameRange(0, asset.frames), expectedRevision, VocalPreviewOwner.GUIDE)
+            override suspend fun start(asset: Asset, expectedRevision: Long, loop: Boolean, owner: VocalPreviewOwner) =
+                startRange(asset, FrameRange(0, asset.frames), expectedRevision, owner)
             override suspend fun startRange(asset: Asset, range: FrameRange, expectedRevision: Long, owner: VocalPreviewOwner): TtsResult<Unit> {
                 state.value = VocalPreviewState(VocalPreviewPhase.PLAYING, true, asset.hash, owner = owner)
                 return TtsResult.Success(Unit)
@@ -179,6 +238,16 @@ class ContinuousEditorPresenterTest {
             override fun frame() = 0L
         }
         override val sourcePreview: VocalPreviewPort = preview
+        override val beatStretch = object : BeatStretchHost {
+            override val preview = this@ChopModalPorts.preview
+            override suspend fun render(project: Project, draft: StretchDraft, progress: (Int, Int) -> Unit): Asset {
+                val source = project.asset(draft.sourceAssetHash)
+                if (draft.sourceMilliBpm == draft.targetMilliBpm) return source
+                val frames = stretchFrames(source, draft.sourceRange, draft.sourceMilliBpm, draft.targetMilliBpm)
+                return Asset("e".repeat(64), "wav", 44 + frames * 8, 48_000, 2, frames, "Stretched", AssetRole.RENDERED, derivedFrom = source.hash)
+            }
+            override suspend fun original(project: Project, draft: StretchDraft) = project.asset(draft.sourceAssetHash)
+        }
         var worker: AutoChopPort? = null
         override val autoChop get() = worker
         override val sourceAnalysisAvailable = true

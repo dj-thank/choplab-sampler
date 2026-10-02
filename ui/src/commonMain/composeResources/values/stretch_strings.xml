@@ -1,0 +1,24 @@
+<resources>
+    <string name="stretch_title">Tempo stretch</string>
+    <string name="stretch_boundary">Match this sound to the song tempo while keeping its pitch and stereo image. The original is kept. After a tempo change, prepare and apply again.</string>
+    <string name="stretch_source_bpm">Original BPM (40–240)</string>
+    <string name="stretch_target_bpm">Song BPM: %1$s</string>
+    <string name="stretch_ratio">New duration: %1$s × original</string>
+    <string name="stretch_saved">Saved: %1$s → %2$s BPM. Reprocessing uses the original.</string>
+    <string name="stretch_prepare">Prepare stretch</string>
+    <string name="stretch_original">A · Original sound</string>
+    <string name="stretch_processed">B · Stretched sound</string>
+    <string name="stretch_progress">Preparing… %1$d%%</string>
+    <string name="stretch_apply">Apply stretch</string>
+    <string name="stretch_applied">Applied. Undo restores the previous sound.</string>
+    <string name="stretch_cancel">Cancel / stop preview</string>
+    <string name="stretch_reload">Reload current edit</string>
+    <string name="stretch_stale">The sound or song changed. Reload before preparing again.</string>
+    <string name="stretch_no_target">Select a PAD with a sound or a placed clip.</string>
+    <string name="stretch_invalid">Enter a BPM from 40 to 240. Very short ranges cannot be stretched.</string>
+    <string name="stretch_limit">This result exceeds the audio, storage or song limit. Use a shorter range.</string>
+    <string name="stretch_recording">Finish recording before stretching a sound.</string>
+    <string name="stretch_busy">Another operation is still releasing its audio. Try again when it finishes.</string>
+    <string name="stretch_preview_failed">The preview could not start. Your edit is unchanged.</string>
+    <string name="stretch_failed">The stretch could not finish. Your edit is unchanged.</string>
+</resources>

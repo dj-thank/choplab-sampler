@@ -114,6 +114,7 @@ py -3 -m venv work/windows-acceptance-python
 - persistence: roundtrip、hash/channel/frame、未知schema/重複/path/ZIP bomb/上限、atomic publish、中断/容量不足、復旧3世代とUndo資産保全。
 - audio: [AUDIO](AUDIO.md) の固定fixture、command frame、block一致、左右、quantize/tail、停止/steal/loopと負経路。
 - UI: SOURCE→CHOP→PAD→step→再生→書出し→保存→再開→Undoの通し、文字倍率1.3/2.0、scroll/focus/keyboard。kit変更・loop・record/interrupt/route loss・共有/.choplib・アクセス不能資産を追加。
+- BEATテンポ伸縮: ja/en・広幅/390px文字2倍の実host入力でPAD/clipの素材BPM→準備→原音/処理後A/B→明示1Undo/Redo→24bit WAV→archive/autosave再開。BPM変更だけでは音源不変、明示再処理は元音から、1:1は元範囲へ戻ることを確認する。取消/閉じる/対象変更/保存/録音/古revision/終了後の遅着、不完全結果、worker busy、RAM/disk/scratch/project上限を拒否し、原bytes/左右/来歴とSOURCE復帰を照合する。長尺400秒のpaged/4096frame/shared budget、音程・transient oracleとHuman聴感は別結果にする。
 - online/AI: fake contractの後に明示された実accountで確認。取消/429/失効/遅い応答、metadataと音声の分離を試す。
 - package: Windowsの実app-imageをWindowsで起動/停止、native処理を確認。Androidは対象variantのlint/assemble、signature/package/version/hashをreadback。
 
