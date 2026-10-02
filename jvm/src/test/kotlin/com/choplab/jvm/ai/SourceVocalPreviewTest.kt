@@ -112,7 +112,10 @@ class SourceVocalPreviewTest {
             waitUntil { f.preview.state.value.phase == VocalPreviewPhase.PLAYING }
             f.lost.set(true)
             waitUntil { f.engine.status.value.phase == DriverPhase.EDITING_ONLY }
+            assertEquals(OriginalPlaybackProbe.Unavailable, f.engine.originalPlaybackProbe())
             waitUntil { f.preview.state.value.phase == VocalPreviewPhase.FAILED }
+            assertEquals(TtsProblem.FAILED, f.preview.state.value.failure?.problem,
+                "Unavailable output must not be mistaken for successful preview completion")
             f.lost.set(false); f.engine.reattach()
             waitUntil { f.engine.status.value.phase == DriverPhase.ATTACHED && !f.preview.state.value.ownsSource }
             assertEquals(before, f.studio.document.value)

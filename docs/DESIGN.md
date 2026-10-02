@@ -51,3 +51,5 @@ CHOPの自動チョップは既存工程から補助窓を開き、選択範囲�
 スマホ縦/横、tablet、Windows、font scale1.0/1.3/2.0、狭い幅/高さで、全操作へ到達・scroll・focus・keyboard・48dp・ラベル切れを確認します。画像はsame stateで比較し、ImageComposeSceneのPNGと入力testをセットにします。
 
 PAD semanticsは完全なBANK/PAD名、割当、play mode、content kindを保持します。sliderの値・増減、checked state、disabled理由、statusの全文にも到達可能にします。Windowsのnative menu/dialogはWindowsで、TalkBackの読み上げ/順序は実機で確認します。PNGやsemantics callbackを人間の操作感・音・読み上げの代用にしません。
+
+LiveChopのタイミング設定もCHOP内の補助窓に置く。出力推定/手動合計遅延を選び、1ms補正、適用・取消・全停止を大きい操作対象で示す。`ESTIMATED`/`MANUAL`と不明・変更時の失効を表示し、実測済みの表示を作らない。設定は文書やUndoを変更せず、押下時の読み取りをreleaseまで保持して、スクロール取消や古いpassの押下を切断へ変えない。4工程・大PAD・原曲SOURCE/HANDは維持する。

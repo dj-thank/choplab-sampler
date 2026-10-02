@@ -70,6 +70,8 @@ interface ContinuousEditorPorts {
     suspend fun peaks(asset: Asset): List<Float>
     fun readout(): ContinuousEditorReadout
     fun originalPlaying(): Boolean? = null
+    fun liveChopOutput(): LiveChopOutput? = null
+    fun liveChopProbe(): LiveChopProbe = liveChopOutput()?.let { LiveChopProbe.Ready(it) } ?: LiveChopProbe.Unavailable
     fun playingPads(): Set<Int>? = null
     suspend fun setSongMonitorGain(gain: Float): Boolean
     val originalAvailable: Boolean get() = false
@@ -124,12 +126,6 @@ interface ContinuousEditorPorts {
 
 /** How opening the microphone went: running, not allowed, no usable input, or no room left to store a take. */
 enum class VoiceStart { STARTED, DENIED, UNAVAILABLE, NO_ROOM }
-
-/**
- * How far behind the engine the user hears the original, which live chop subtracts from a tap: the earlier app's
- * fixed 60 ms until the output's measured latency is used.
- */
-private const val LIVE_CHOP_LATENCY_SECONDS = .06
 
 /** BANK D holds voice takes, as in the earlier app. */
 private const val VOICE_BANK = 3
@@ -221,6 +217,9 @@ private data class EditorView(
     val liveChop: List<Int>? = null,
     /** Live chop passes begun so far: a reading of the original taken before a pass began cannot end that pass. */
     val livePasses: Int = 0,
+    val liveIdentity: Any? = null,
+    val liveRevision: Long = -1,
+    val liveTiming: LiveChopTimingState = LiveChopTimingState(),
     /** The take being recorded; null when the microphone is off. */
     val voice: VoiceRecording? = null,
     val startingVoice: Boolean = false,
@@ -452,6 +451,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
             } }
             ports.playingPads()?.let { pads -> view.update { it.copy(playingPads = pads) } }
             endLostScratch()
+            refreshLiveChopTiming(passes)
             endLiveChopPastRange(passes)
             endVoiceWithTheSong()
             endHitsWithTheSong()
@@ -473,7 +473,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         val fraction = if (held?.target == ContinuousScratchTarget.ORIGINAL && clock.handSourceFrame >= 0)
             ((clock.handSourceFrame - held.start) / (held.end - held.start)).toFloat().coerceIn(0f, 1f)
             else held?.fraction ?: lastScratchFraction
-        return clock.copy(scratchFraction = fraction,
+        return clock.copy(scratchFraction = fraction, liveChopGesture = captureLiveChop(),
             recordingMillis = if (view.value.systemSource) ports.systemAudioCapture?.recordedMillis ?: 0 else ports.voiceRecordedMillis())
     }
     fun diagnostics(): ContinuousDiagnostics? = ports.diagnostics()
@@ -529,7 +529,8 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
             if (!closeVocalPitch()) return false
             if (ports.vocalPitch?.preview?.stop(VocalPreviewOwner.PITCH) is TtsResult.Failure) return false
         }
-        if (action in listOf(ContinuousEditorAction.OpenVocalPractice, ContinuousEditorAction.OpenVocalPitch, ContinuousEditorAction.OpenVocalCoach, ContinuousEditorAction.AutoChop) &&
+        if (action in listOf(ContinuousEditorAction.OpenVocalPractice, ContinuousEditorAction.OpenVocalPitch, ContinuousEditorAction.OpenVocalCoach,
+                ContinuousEditorAction.AutoChop, ContinuousEditorAction.OpenLiveChopTiming, ContinuousEditorAction.BeginLiveChop) &&
             (vocal.value?.state?.value?.phase == VocalGuidePhase.APPLYING || !closeSourceAnalysis())) return false
         if (action is ContinuousEditorAction.Mixer && !closeSourceAnalysis()) return false
         if (action is ContinuousEditorAction.Navigate && action.stage != view.value.stage) punchEditor.value?.closeAndJoin()
@@ -539,6 +540,9 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         if (closesAutoChop(action) && !closeAutoChop()) return false
         if (action != ContinuousEditorAction.OpenSourceAnalysis && (closesAutoChop(action) ||
             action == ContinuousEditorAction.AutoChop || action is ContinuousEditorAction.Mixer) && !closeSourceAnalysis()) return false
+        if ((closesAutoChop(action) && action != ContinuousEditorAction.OpenLiveChopTiming) ||
+            action == ContinuousEditorAction.AutoChop || action == ContinuousEditorAction.StopAll)
+            view.update { it.copy(liveTiming = it.liveTiming.copy(open = false)) }
         if (action == ContinuousEditorAction.StopAll) chops.value?.cancel()
 
         if (action in listOf(ContinuousEditorAction.RecordVoice, ContinuousEditorAction.RecordHits,
@@ -576,7 +580,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 ContinuousEditorAction.RecordSystemSource) || action is ContinuousEditorAction.Lyrics)) closeVocalPunch()
             val project = studio.document.value.project
             if (action is ContinuousEditorAction.BankPadEdit || action is ContinuousEditorAction.Lyrics ||
-                action in listOf(ContinuousEditorAction.AutoChop, ContinuousEditorAction.OpenSourceAnalysis, ContinuousEditorAction.OpenVocalPunch, ContinuousEditorAction.OpenVocalTakes,
+                action in listOf(ContinuousEditorAction.OpenLiveChopTiming, ContinuousEditorAction.BeginLiveChop, ContinuousEditorAction.AutoChop, ContinuousEditorAction.OpenSourceAnalysis, ContinuousEditorAction.OpenVocalPunch, ContinuousEditorAction.OpenVocalTakes,
                     ContinuousEditorAction.OpenFourStems, ContinuousEditorAction.OpenVocalPractice, ContinuousEditorAction.OpenVocalPitch, ContinuousEditorAction.OpenVocalCoach, ContinuousEditorAction.OpenVocalGuide, ContinuousEditorAction.OpenLyricProposal,
                     ContinuousEditorAction.OpenStepPatterns, ContinuousEditorAction.ImportOnline)) mixerEditor.dispatch(MixerAction.Cancel)
             val preparingRecording = action in listOf(ContinuousEditorAction.RecordVoice, ContinuousEditorAction.RecordHits,
@@ -702,35 +706,77 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                     if (ok && grip?.target == ContinuousScratchTarget.ORIGINAL) letGoScratch()
                     view.update { it.copy(originalPlaying = if (ok) false else it.originalPlaying, liveChop = null) }
                 }
+                ContinuousEditorAction.OpenLiveChopTiming -> {
+                    if (!prepareLiveChopEntry()) false else {
+                        releaseHeld()
+                        if (!letGoScratch() || !endLiveChop()) false else {
+                            updateLiveChopTiming(ports.liveChopProbe())
+                            view.update { it.copy(liveTiming = it.liveTiming.copy(open = true)) }; true
+                        }
+                    }
+                }
+                ContinuousEditorAction.CloseLiveChopTiming -> { view.update { it.copy(liveTiming = it.liveTiming.copy(open = false)) }; true }
+                is ContinuousEditorAction.SetLiveChopCorrection -> {
+                    val probe = ports.liveChopProbe()
+                    if (bankPadBlock(view.value, studio.work.value) != null || probe.route != action.route || !endLiveChop()) {
+                        updateLiveChopTiming(probe); false
+                    } else {
+                        view.update { it.copy(liveTiming = it.liveTiming.copy(route = probe.route, correction = action.correction,
+                            estimatedMillis = (probe as? LiveChopProbe.Ready)?.output?.estimatedDelayNanos?.div(1_000_000L)?.toInt(), open = false, problem = null)) }; true
+                    }
+                }
                 ContinuousEditorAction.BeginLiveChop -> project.source?.let { source ->
-                    releaseHeld()
-                    // Like the earlier app, a pass plays the original from the top of the range.
-                    val started = ports.seekOriginal(source.range.start) && ports.playOriginal(project.asset(source.assetHash))
-                    if (started) view.update { it.copy(originalPlaying = true, liveChop = emptyList(), livePasses = it.livePasses + 1) }
-                    started
+                    if (!prepareLiveChopEntry()) false else {
+                        releaseHeld()
+                        val probe = ports.liveChopProbe()
+                        updateLiveChopTiming(probe)
+                        val ready = (probe as? LiveChopProbe.Ready)?.output
+                        if (ready == null || view.value.liveTiming.correction.delayNanos(ready) == null) {
+                            view.update { it.copy(liveTiming = it.liveTiming.copy(problem = LiveChopTimingProblem.UNAVAILABLE)) }; false
+                        } else {
+                            val started = ports.seekOriginal(source.range.start) && ports.playOriginal(project.asset(source.assetHash))
+                            val current = if (started) ports.liveChopProbe() else LiveChopProbe.Unavailable
+                            if (started && current.route == ready.route) {
+                                view.update { it.copy(originalPlaying = true, liveChop = emptyList(), livePasses = it.livePasses + 1,
+                                    liveIdentity = Any(), liveRevision = studio.document.value.revision,
+                                    liveTiming = it.liveTiming.copy(problem = null, open = false)) }; true
+                            } else { if (started) ports.stopOriginal(); updateLiveChopTiming(current); false }
+                        }
+                    }
                 } ?: false
                 ContinuousEditorAction.EndLiveChop -> endLiveChop()
                 is ContinuousEditorAction.CapturePad -> {
-                    val pass = view.value.liveChop
+                    val v = view.value
+                    val pass = v.liveChop
                     val source = project.source
-                    // A tap still queued when its pass ended (the original reached the end meanwhile) cuts nothing.
-                    if (pass == null || source == null) true else {
-                        // The PAD was pressed on what was heard, which the output plays this far behind the engine
-                        // (the earlier app's 60 ms), in source frames at the original's key.
-                        val rate = 2.0.pow(source.pitchSemitones / 12.0)
-                        val heard = action.originalFrame - (LIVE_CHOP_LATENCY_SECONDS * project.asset(source.assetHash).sampleRate * rate).roundToLong()
-                        // Heard after the range ends (the pass ends there): there is nothing left to cut.
-                        if (heard >= source.range.end) true else {
-                            val chopped = edit(Intent.LiveChop(action.padId, heard, pass.frozen()))
+                    val press = action.gesture
+                    val current = ports.liveChopProbe()
+                    if (pass == null || source == null || v.liveIdentity !== press.pass) true
+                    else if (bankPadBlock(v, studio.work.value) != null || press.revision != studio.document.value.revision ||
+                        v.liveRevision != press.revision || current.route != press.output.route || v.liveTiming.route != current.route) {
+                        endLiveChop()
+                        updateLiveChopTiming(current)
+                        view.update { it.copy(liveTiming = it.liveTiming.copy(problem = if (current.route != v.liveTiming.route)
+                            LiveChopTimingProblem.INVALIDATED else LiveChopTimingProblem.STALE)) }; false
+                    } else {
+                        val cut = liveChopCut(press.output, v.liveTiming.correction, project.asset(source.assetHash).sampleRate,
+                            source.pitchSemitones, source.range)
+                        if (cut == null) {
+                            if (v.liveTiming.correction.delayNanos(press.output) == null)
+                                view.update { it.copy(liveTiming = it.liveTiming.copy(problem = LiveChopTimingProblem.UNAVAILABLE)) }
+                            true
+                        } else {
+                            val chopped = send(Action.Edit(Intent.LiveChop(action.padId, cut.requestedSourceFrame, pass.frozen()), press.revision))
                             if (chopped) {
-                                view.update { it.copy(liveChop = it.liveChop?.let { cut -> cut - action.padId + action.padId }) }
+                                view.update { it.copy(liveChop = it.liveChop?.let { pads -> pads - action.padId + action.padId },
+                                    liveRevision = studio.document.value.revision, liveTiming = it.liveTiming.copy(lastCut = cut, problem = null)) }
                                 send(Action.SelectPad(action.padId))
                             }
                             chopped
                         }
                     }
                 }
-                is ContinuousEditorAction.SeekOriginal -> ports.seekOriginal(action.sourceFrame)
+                is ContinuousEditorAction.SeekOriginal -> endLiveChop() && ports.seekOriginal(action.sourceFrame)
                 is ContinuousEditorAction.SetOriginalMonitorGain -> {
                     requireGain(action.gain); ports.setOriginalMonitorGain(action.gain).also { ok -> if (ok) view.update { it.copy(originalGain = action.gain) } }
                 }
@@ -1016,7 +1062,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         ContinuousEditorAction.OpenVocalGuide, ContinuousEditorAction.OpenLyricProposal, ContinuousEditorAction.OpenStepPatterns,
         ContinuousEditorAction.OpenFourStems, ContinuousEditorAction.OpenVocalTakes, ContinuousEditorAction.OpenVocalPunch,
         ContinuousEditorAction.OpenVocalPractice, ContinuousEditorAction.OpenVocalPitch, ContinuousEditorAction.OpenVocalCoach, ContinuousEditorAction.OpenSourceAnalysis,
-        ContinuousEditorAction.OpenScratch, ContinuousEditorAction.ImportAudio, ContinuousEditorAction.ImportLibrary,
+        ContinuousEditorAction.OpenScratch, ContinuousEditorAction.OpenLiveChopTiming, ContinuousEditorAction.BeginLiveChop, ContinuousEditorAction.ImportAudio, ContinuousEditorAction.ImportLibrary,
         ContinuousEditorAction.ImportOnline, ContinuousEditorAction.SeparateSource, ContinuousEditorAction.OpenProject,
         ContinuousEditorAction.RecordSource, ContinuousEditorAction.RecordSystemSource, ContinuousEditorAction.RecordVoice,
         ContinuousEditorAction.RecordHits -> true
@@ -1083,7 +1129,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         if (sourcePreview?.state?.value?.ownsSource != true) return false
         return when (action) {
             ContinuousEditorAction.PlayOriginal, is ContinuousEditorAction.SeekOriginal, is ContinuousEditorAction.SetOriginalMonitorGain,
-            is ContinuousEditorAction.SetOriginalPitch, is ContinuousEditorAction.SetSourceRange, ContinuousEditorAction.BeginLiveChop,
+            is ContinuousEditorAction.SetOriginalPitch, is ContinuousEditorAction.SetSourceRange,
             ContinuousEditorAction.OpenScratch, ContinuousEditorAction.ScratchHold, is ContinuousEditorAction.ScratchDrag,
             is ContinuousEditorAction.ScratchNudge, ContinuousEditorAction.ReloadAudio -> true
             else -> false
@@ -2422,6 +2468,56 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         if (view.value.liveChop == null || !pastRange() || !serialized.tryLock()) return
         try { if (view.value.livePasses == pass && pastRange()) endLiveChop() } finally { serialized.unlock() }
     }
+    /** Called at pointer-down, before a cancellable release wait. */
+    fun captureLiveChop(): ContinuousChopGesture? {
+        val v = view.value
+        if (v.liveChop == null) return null
+        val identity = v.liveIdentity ?: return null
+        val revision = studio.document.value.revision
+        if (revision != v.liveRevision) return null
+        val output = ports.liveChopOutput() ?: return null
+        if (view.value.liveIdentity !== identity || revision != studio.document.value.revision) return null
+        return ContinuousChopGesture(identity, revision, output)
+    }
+
+    private suspend fun prepareLiveChopEntry(): Boolean {
+        // Recheck after waiting for the edit lock; a prepared proposal may now own its commit.
+        if (vocal.value?.state?.value?.phase == VocalGuidePhase.APPLYING || !closeSourceAnalysis() ||
+            bankPadBlock(view.value, studio.work.value) != null || !closeFourStems() || !closeVocalTakes() ||
+            !closeVocalPunch() || !closeOnline() || !stopSourcePreview()) return false
+        closeLyricProposal(); closeStepPatterns(); closeVocalGuide()
+        lyricEditor.dispatch(LyricAction.Close); bankPadEditor.dispatch(BankPadEditAction.Cancel)
+        return true
+    }
+
+    private suspend fun updateLiveChopTiming(probe: LiveChopProbe) {
+        if (view.value.liveTiming.route != null && view.value.liveTiming.route != probe.route) endLiveChop()
+        view.update { v ->
+            val old = v.liveTiming
+            val changed = old.route != null && old.route != probe.route
+            v.copy(liveTiming = old.copy(route = probe.route,
+                estimatedMillis = (probe as? LiveChopProbe.Ready)?.output?.estimatedDelayNanos?.div(1_000_000L)?.toInt(),
+                correction = if (changed) LiveChopCorrection() else old.correction,
+                problem = if (changed) LiveChopTimingProblem.INVALIDATED else old.problem,
+                lastCut = if (changed) null else old.lastCut))
+        }
+    }
+
+    private suspend fun refreshLiveChopTiming(pass: Int) {
+        if (!serialized.tryLock()) return
+        try {
+            if (view.value.livePasses != pass) return
+            val probe = ports.liveChopProbe()
+            val v = view.value
+            if (v.liveChop != null && (probe.route != v.liveTiming.route || studio.document.value.revision != v.liveRevision)) {
+                endLiveChop()
+                view.update { it.copy(liveTiming = it.liveTiming.copy(problem = if (probe.route != v.liveTiming.route)
+                    LiveChopTimingProblem.INVALIDATED else LiveChopTimingProblem.STALE)) }
+            }
+            updateLiveChopTiming(probe)
+        } finally { serialized.unlock() }
+    }
+
     /** Ends a running live chop pass together with the original it plays. */
     private suspend fun endLiveChop(): Boolean {
         if (view.value.liveChop == null) return true
@@ -2561,7 +2657,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         val kitSounds = p.pads.map { pad -> pad.assetHash?.let { DrumKits.identify(p.asset(it)) } }
         return ContinuousEditorState(stage = v.stage, projectTitle = p.title, original = source,
             exportBits = v.exportBits, exportTail = v.exportTail, stemProgress = input.work.stemProgress,
-            originalPlaying = v.originalPlaying && !v.vocalPreview, vocalPreview = v.vocalPreview, liveChopping = v.liveChop != null, recordingVoice = v.voice != null,
+            originalPlaying = v.originalPlaying && !v.vocalPreview, vocalPreview = v.vocalPreview, liveChopping = v.liveChop != null, liveChopTiming = v.liveTiming, recordingVoice = v.voice != null,
             startingVoiceRecording = v.startingVoice, recordingHits = v.hits != null,
             recordingGuide = RecordingGuideState(input.metronome, v.countInBars, input.countInBeats, !busy && !recording && input.attached),
             recordingSource = v.recordingSource, recordingSystemAudio = v.systemSource,

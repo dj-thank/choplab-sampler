@@ -32,9 +32,21 @@ internal class JavaSoundSink(private val line: SourceDataLine, override val enco
         if (available <= 0) return 0
         return line.write(bytes, offset, minOf(length, available)).also { framesWritten += it / frameBytes }
     }
+    private val timingLock = Any()
+    private var timingGeneration = 0L
+    private var previousPosition = -1L
+    override fun timingEpoch(): Long = synchronized(timingLock) { check(line.isOpen); timingGeneration }
+    override fun timingSampleRate(): Int = line.format.sampleRate.toInt()
+    override fun timingChannels(): Int = line.format.channels
     override fun bufferFrames(): Int = line.bufferSize / frameBytes
     override fun underruns(): Int = dry
-    override fun pendingFrames(): Long = (framesWritten - line.longFramePosition).coerceAtLeast(0)
+    override fun pendingFrames(): Long = synchronized(timingLock) {
+        check(line.isOpen)
+        val position = line.longFramePosition
+        if (previousPosition >= 0 && position < previousPosition) timingGeneration++
+        previousPosition = position
+        (framesWritten - position).coerceAtLeast(0)
+    }
     override fun close() { try { line.stop(); line.flush() } finally { line.close() } }
     companion object {
         fun open(): AudioSink {

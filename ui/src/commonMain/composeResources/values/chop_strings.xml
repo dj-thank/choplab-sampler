@@ -28,4 +28,16 @@
     <string name="chop_auto_apply">Apply cuts</string>
     <string name="chop_auto_cancel">Cancel</string>
     <string name="chop_auto_assign">Slice to BANK %1$s PAD %2$d</string>
+    <string name="chop_timing_title">Chop timing</string>
+    <string name="chop_timing_estimated">Estimate from output</string>
+    <string name="chop_timing_manual">Set total delay manually</string>
+    <string name="chop_timing_estimated_value">ESTIMATED · %1$d ms</string>
+    <string name="chop_timing_manual_value">MANUAL · %1$d ms</string>
+    <string name="chop_timing_unknown">Output delay is unknown</string>
+    <string name="chop_timing_hint">The estimate follows this output. It is not a measured round-trip latency. Settings reset when the output, format, buffer or clock changes.</string>
+    <string name="chop_timing_manual_hint">Larger values move the cut earlier. Adjust the total delay while listening, in 1 ms steps. This setting lasts for this output session.</string>
+    <string name="chop_timing_invalidated">Timing changed. The pass ended and its correction was reset.</string>
+    <string name="chop_timing_unavailable">Timing is unavailable. Choose a manual total delay or reopen the output.</string>
+    <string name="chop_timing_stale">The document changed. This pass ended without applying the old press.</string>
+    <string name="chop_timing_apply">Apply timing</string>
 </resources>
