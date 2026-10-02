@@ -12,6 +12,7 @@ import com.choplab.desktop.audio.DesktopTransport
 import com.choplab.desktop.audio.DesktopScratchPlayer
 import com.choplab.desktop.audio.ScratchVoicePlayer
 import com.choplab.sampler.separation.DrumSeparationService
+import com.choplab.sampler.separation.SeparatorModelStore
 import com.choplab.desktop.separation.defaultSeparatorModelsDir
 import com.choplab.desktop.separation.defaultSeparatorModelStore
 import com.choplab.desktop.persistence.DesktopBeatFiles
@@ -206,12 +207,13 @@ class DesktopSamplerController(
 
     private var drumSeparationService: DrumSeparationService? = null
     private var drumSeparationWorkDir: File? = null
+    internal var separatorModelStoreFactory: () -> SeparatorModelStore = ::defaultSeparatorModelStore
 
     private fun separationService(): DrumSeparationService = synchronized(this) {
         drumSeparationService ?: DrumSeparationService(
             defaultSeparatorModelsDir(),
             DesktopAudioDecoder::decode,
-            modelProvider = defaultSeparatorModelStore().let { store -> { progress, cancelled -> store.ensure(progress, cancelled) } },
+            modelProvider = separatorModelStoreFactory().let { store -> { progress, cancelled -> store.ensure(progress, cancelled) } },
         ).also { drumSeparationService = it }
     }
 

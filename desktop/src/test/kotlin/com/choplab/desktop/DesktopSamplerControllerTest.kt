@@ -11,6 +11,7 @@ import com.choplab.desktop.persistence.DesktopProjectFiles
 import com.choplab.sampler.audio.PatternRenderer
 import com.choplab.sampler.audio.WavFileWriter
 import com.choplab.sampler.model.PadModel
+import com.choplab.sampler.model.DrumSeparationPhase
 import com.choplab.sampler.model.PadContentKind
 import com.choplab.sampler.model.PcmAudio
 import com.choplab.sampler.model.PatternArrangement
@@ -26,6 +27,8 @@ import com.choplab.sampler.model.stepKey
 import com.choplab.sampler.model.selectedPadPage
 import com.choplab.sampler.model.materializedPatternArrangement
 import com.choplab.sampler.persistence.AtomicProjectStore
+import com.choplab.sampler.separation.SeparatorModelStore
+import com.choplab.sampler.separation.SeparatorSpec
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -34,15 +37,19 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.nio.file.Files
 import java.io.File
+import java.io.IOException
+import java.io.InputStream
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import com.choplab.sampler.ui.PadTriggerOwnership
 import com.choplab.sampler.ui.WorkflowStage
 import kotlin.concurrent.thread
 import kotlin.test.Test
+import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
@@ -363,9 +370,10 @@ class DesktopSamplerControllerTest {
     }
 
     @Test
-    fun drumSeparationRequiresLoadedSourceAndBundledModel() {
+    fun drumSeparationRequiresLoadedSourceBeforeAcquiringModel() {
         val engine = FakeAudioEngine()
         val controller = DesktopSamplerController(engine, autosaveStore = null, recoverAutosaveOnStart = false)
+        controller.separatorModelStoreFactory = { error("No model acquisition without a source") }
         try {
             controller.separateDrumsFromCurrentSource()
             assertEquals("先に素材を入れてください", controller.state.value.statusMessage)
@@ -376,30 +384,89 @@ class DesktopSamplerControllerTest {
     }
 
     @Test
-    fun drumSeparationWithoutModelExplainsTheAppImageRequirement() {
-        val directory = Files.createTempDirectory("choplab-separation-guard").toFile()
-        val emptyModels = Files.createTempDirectory("choplab-no-models").toFile()
+    fun drumSeparationDownloadsMissingModelAndReportsFailureWithoutChangingProduction() {
+        assertMissingModelAcquisition(cancel = false)
+    }
+
+    @Test
+    fun drumSeparationCancelsMissingModelDownloadWithoutPublishingUnverifiedBytes() {
+        assertMissingModelAcquisition(cancel = true)
+    }
+
+    private fun assertMissingModelAcquisition(cancel: Boolean) {
+        val directory = Files.createTempDirectory("choplab-model-acquisition").toFile()
+        val emptyModels = directory.resolve("models")
         val source = directory.resolve("song.wav")
         WavFileWriter(source, sampleRate = 48_000, channelCount = 1).use { writer ->
             writer.writePcm16(ShortArray(4_800) { 1000 })
         }
-        System.setProperty("choplab.separatorModels", emptyModels.absolutePath)
+        val originalBytes = source.readBytes()
+        val nextRead = CountDownLatch(1)
+        val finishRead = CountDownLatch(1)
+        val streamClosed = CountDownLatch(1)
+        val requests = AtomicInteger()
+        val chunkBytes = 4_096
+        val failure = "offline model download failed"
+        val caller = Thread.currentThread()
+        val models = SeparatorModelStore(emptyModels, open = { url ->
+            assertEquals(SeparatorSpec.MODEL_URL, url)
+            assertNotEquals(caller, Thread.currentThread(), "Model acquisition must use the separation worker")
+            requests.incrementAndGet()
+            SeparatorModelStore.Download(SeparatorSpec.MODEL_BYTES, object : InputStream() {
+                private var first = true
+                override fun read(): Int = error("The model store must read bounded blocks")
+                override fun read(bytes: ByteArray, offset: Int, length: Int): Int {
+                    if (first) {
+                        first = false
+                        assertTrue(length >= chunkBytes)
+                        bytes.fill(7, offset, offset + chunkBytes)
+                        return chunkBytes
+                    }
+                    // The store has already reported the first block's progress. Hold the
+                    // worker here so the UI assertions cannot race completion or cancellation.
+                    nextRead.countDown()
+                    check(finishRead.await(5, TimeUnit.SECONDS)) { "Fixture did not release the download" }
+                    throw IOException(failure)
+                }
+                override fun close() { streamClosed.countDown() }
+            })
+        })
         val engine = FakeAudioEngine()
         val controller = DesktopSamplerController(engine, autosaveStore = null, recoverAutosaveOnStart = false)
+        controller.separatorModelStoreFactory = { models }
         try {
             controller.loadWav(source)
             awaitCondition { controller.state.value.currentAudio?.name == "song.wav" }
+            val before = controller.state.value
             controller.separateDrumsFromCurrentSource()
-            assertEquals(
-                "分離モデルがありません。ChopLabのアプリ一式を使用してください",
-                controller.state.value.statusMessage,
-            )
-            assertNull(controller.state.value.drumSeparation)
+            assertTrue(nextRead.await(5, TimeUnit.SECONDS), "Missing model acquisition did not start")
+            val downloading = requireNotNull(controller.state.value.drumSeparation)
+            assertEquals(DrumSeparationPhase.RUNNING, downloading.phase)
+            assertEquals(chunkBytes.toFloat() / SeparatorSpec.MODEL_BYTES, downloading.progress)
+            assertEquals("分離モデルを取得しています（初回 約166MB）…", downloading.message)
+            controller.separateDrumsFromCurrentSource()
+            assertEquals(1, requests.get(), "A running download must not acquire the model twice")
+            assertTrue(emptyModels.resolve(SeparatorSpec.MODEL_FILE + ".part").isFile)
+            assertFalse(models.modelFile.exists())
+            assertNull(controller.consumeDrumSeparationResult())
+
+            if (cancel) controller.cancelDrumSeparation() else finishRead.countDown()
+            val expected = if (cancel) DrumSeparationPhase.CANCELLED else DrumSeparationPhase.FAILED
+            awaitCondition { controller.state.value.drumSeparation?.phase == expected }
+            val terminal = controller.state.value
+            assertEquals(if (cancel) "中止しました" else failure, terminal.drumSeparation?.message)
+            assertEquals(if (cancel) "ドラム分離を中止しました" else "ドラム分離に失敗しました: $failure", terminal.statusMessage)
+            assertEquals(before, terminal.copy(drumSeparation = before.drumSeparation, statusMessage = before.statusMessage))
+            assertContentEquals(originalBytes, source.readBytes())
+            assertNull(controller.consumeDrumSeparationResult())
+            assertFalse(models.modelFile.exists(), "An incomplete model must never be published")
+            assertFalse(emptyModels.resolve(SeparatorSpec.MODEL_FILE + ".part").exists())
+            assertTrue(streamClosed.await(5, TimeUnit.SECONDS))
         } finally {
-            System.clearProperty("choplab.separatorModels")
+            finishRead.countDown()
             controller.close()
+            if (requests.get() > 0) streamClosed.await(5, TimeUnit.SECONDS)
             directory.deleteRecursively()
-            emptyModels.deleteRecursively()
         }
     }
 
