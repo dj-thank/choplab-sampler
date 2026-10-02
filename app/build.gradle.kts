@@ -56,6 +56,8 @@ val prepareSourceNotices = tasks.register<PrepareSourceNotices>("prepareSourceNo
     destinationDirectory.set(layout.buildDirectory.dir("generated/source-notice-assets"))
     // Git revision/dirty state must be refreshed even when input text is unchanged.
     outputs.upToDateWhen { false }
+    // Refresh only this task-owned generated notice output, including legacy recipe names.
+    doFirst { project.delete(destinationDirectory.get().asFile) }
     val python = if (System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) "python" else "python3"
     commandLine(python, "scripts/prepare_source_notices.py", "--platform", "android", "--out",
         destinationDirectory.get().dir("source-notices").asFile.absolutePath)

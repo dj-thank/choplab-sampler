@@ -143,6 +143,8 @@ val prepareWindowsNotices = tasks.register<Exec>("prepareWindowsNotices") {
     workingDir(rootProject.projectDir)
     outputs.dir(windowsNoticesDirectory)
     outputs.upToDateWhen { false }
+    // Refresh only this task-owned generated notice output, including legacy recipe names.
+    doFirst { project.delete(windowsNoticesDirectory.get().asFile) }
     commandLine("python", "scripts/prepare_source_notices.py", "--platform", "windows", "--out",
         windowsNoticesDirectory.get().asFile.absolutePath)
 }

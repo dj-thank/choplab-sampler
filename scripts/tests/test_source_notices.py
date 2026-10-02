@@ -10,6 +10,7 @@ from unittest.mock import patch
 import zipfile
 
 from scripts import prepare_source_notices as notices
+from scripts.check_public_surface import scan_zip
 
 ROOT = Path(__file__).resolve().parents[2]
 REVISION = "a" * 40
@@ -78,6 +79,99 @@ class SourceNoticesTest(unittest.TestCase):
         self.assertEqual(first, self.archive.read_bytes())
         self.assertEqual(before, {name: (ROOT / name).read_bytes() for name in notices.INPUTS})
 
+    def test_recipe_display_preserves_exact_source_and_distinct_original_identity(self):
+        index = self.stage(require_committed=True)
+        recipes = [row for row in index["files"] if row.get("sourcePath", "").endswith(".py")]
+        self.assertEqual(9, len(recipes))
+        for row in recipes:
+            with self.subTest(source=row["sourcePath"]):
+                original = (ROOT / row["sourcePath"]).read_bytes()
+                displayed = (self.output / row["path"]).read_bytes()
+                self.assertEqual(row["sourcePath"] + ".txt", row["path"])
+                self.assertEqual("plain-source-text-v1", row["displayTransform"])
+                self.assertEqual(len(original), row["sourceBytes"])
+                self.assertEqual(notices.digest(original), row["sourceSha256"])
+                self.assertEqual(notices.digest(displayed), row["sha256"])
+                self.assertNotEqual(row["sha256"], row["sourceSha256"])
+                self.assertEqual(notices.immutable_url(REVISION, row["sourcePath"]), row["immutableUrl"])
+                header, body = displayed.split(notices.RECIPE_BEGIN, 1)
+                self.assertTrue(header.startswith(b"Source recipe display (plain text; not executable)\n"))
+                self.assertIn(row["sourcePath"].encode(), header)
+                self.assertIn(row["sourceSha256"].encode(), header)
+                self.assertIn(row["immutableUrl"].encode(), header)
+                self.assertEqual(original, body[:row["sourceBytes"]])
+                self.assertEqual(notices.RECIPE_END, body[row["sourceBytes"]:])
+                displayed.decode("utf-8")
+        self.assertIn("原source bytesは無改変", (self.output / notices.README).read_text())
+        self.assertIn("再build用の元 `.py`", (self.output / notices.README).read_text())
+        with zipfile.ZipFile(self.archive) as archive:
+            self.assertEqual(30, len(archive.namelist()))
+        notices.validate_archive(self.archive, REVISION)
+
+    def test_displayed_recipes_pass_apk_scan_while_raw_scripts_and_secrets_still_fail(self):
+        self.stage()
+        apk = self.directory / "notice-assets.apk"
+        files = {str(path.relative_to(self.output)).replace("\\", "/"): path.read_bytes()
+                 for path in self.output.rglob("*") if path.is_file()}
+
+        def write_apk(payload):
+            with zipfile.ZipFile(apk, "w") as archive:
+                for name, data in payload.items():
+                    archive.writestr("assets/source-notices/" + name, data)
+
+        write_apk(files)
+        self.assertEqual([], scan_zip(apk))
+        raw_recipes = dict(files)
+        for name in notices.INPUTS:
+            if name.endswith(".py"):
+                raw_recipes[notices.packaged_path(name)] = (ROOT / name).read_bytes()
+        write_apk(raw_recipes)
+        findings = scan_zip(apk)
+        self.assertEqual(5, len(findings))
+        self.assertTrue(all("unknown executable script in APK" in finding for finding in findings))
+        exposed = dict(files)
+        name = notices.packaged_path("scripts/build_android_audio_runtime.py")
+        exposed[name] = exposed[name].replace(notices.RECIPE_BEGIN,
+            notices.RECIPE_BEGIN + b"# " + b"github_pat_" + b"a" * 24 + b"\n", 1)
+        write_apk(exposed)
+        self.assertTrue(any("secret-shaped content" in finding for finding in scan_zip(apk)))
+
+    def test_recipe_header_and_body_cannot_be_replaced_with_coherently_rehashed_index(self):
+        source = "scripts/build_android_audio_runtime.py"
+        target = notices.packaged_path(source)
+        for part in ("header", "body"):
+            with self.subTest(part=part):
+                self.stage()
+                data = (self.output / target).read_bytes()
+                replacement = (data.replace(b"Source recipe display", b"Unreviewed source claim", 1)
+                               if part == "header" else data.replace(notices.RECIPE_BEGIN,
+                                   notices.RECIPE_BEGIN + b"# modified original body\n", 1))
+
+                def replace(name, value):
+                    if name == notices.ARCHIVE_ROOT + target:
+                        return replacement
+                    if name == notices.ARCHIVE_ROOT + notices.INDEX:
+                        document = json.loads(value)
+                        row = next(row for row in document["files"] if row["path"] == target)
+                        row.update(bytes=len(replacement), sha256=notices.digest(replacement))
+                        return (json.dumps(document, ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode()
+                    return value
+
+                self.rewrite_archive(replace)
+                with self.assertRaisesRegex(ValueError, "canonical bytes"):
+                    notices.validate_archive(self.archive, REVISION)
+
+    def test_reused_output_refuses_legacy_raw_recipe_before_writing_or_removing_it(self):
+        legacy = self.output / "scripts/build_android_audio_runtime.py"
+        legacy.parent.mkdir(parents=True)
+        original = (ROOT / "scripts/build_android_audio_runtime.py").read_bytes()
+        legacy.write_bytes(original)
+        with self.assertRaisesRegex(ValueError, "clean generated notice output"):
+            self.stage()
+        self.assertEqual(original, legacy.read_bytes())
+        self.assertFalse((self.output / "LICENSE").exists())
+        self.assertFalse((self.output / notices.packaged_path("scripts/build_android_audio_runtime.py")).exists())
+
     def test_dirty_recipe_has_no_false_immutable_link_and_publication_refuses(self):
         def dirty(root, *args):
             if args[0] == "status":
@@ -87,7 +181,7 @@ class SourceNoticesTest(unittest.TestCase):
             return committed_git(root, *args)
         with patch.object(notices, "git", side_effect=dirty):
             index = self.stage()
-            row = next(row for row in index["files"] if row["path"] == "scripts/build_windows_audio_runtime.py")
+            row = next(row for row in index["files"] if row["sourcePath"] == "scripts/build_windows_audio_runtime.py")
             self.assertIsNone(row["immutableUrl"])
             self.assertFalse(row["matchesRevision"])
             self.assertTrue(index["hasLocalChanges"])

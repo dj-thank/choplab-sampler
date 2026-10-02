@@ -38,9 +38,13 @@ INDEX = "SOURCE-INDEX.json"
 README = "SOURCE-INDEX.md"
 NIO_LICENSE = "licenses/desugar-configuration-LICENSE.txt"
 ARCHIVE_ROOT = "source-notices/"
-# Android's asset merger ignores dot directories. Keep the source identity in
-# the index while giving the workflow an ordinary, portable distribution path.
-PACKAGED_PATHS = {".github/workflows/next-native-candidate.yml": "recipes/next-native-candidate.yml"}
+# These allowlisted recipes are reference documents, never package runtime code.
+# Keep original source identities while making the bundled copies visible text.
+PACKAGED_PATHS = {name: name + ".txt" for name in INPUTS if name.endswith(".py")}
+# Android's asset merger ignores dot directories.
+PACKAGED_PATHS[".github/workflows/next-native-candidate.yml"] = "recipes/next-native-candidate.yml"
+RECIPE_BEGIN = b"----- BEGIN ORIGINAL SOURCE BYTES -----\n"
+RECIPE_END = b"\n----- END ORIGINAL SOURCE BYTES -----\n"
 UNRESOLVED = (
     {"id": "android-reused-native", "license": "NOASSERTION", "sourcePublicationVerified": False,
      "detail": "Reused AAR ELF components still need their exact source, Termux patches and build/install correspondence. The 18 header archives and Java source JAR are not that complete source."},
@@ -77,6 +81,17 @@ def immutable_url(revision: str, name: str) -> str:
 
 def packaged_path(name: str) -> str:
     return PACKAGED_PATHS.get(name, name)
+
+
+def recipe_display(name: str, data: bytes, url: str | None) -> bytes:
+    """A readable, reversible display document; the delimited source is unchanged."""
+    data.decode("utf-8")  # Source must remain readable text, not an encoded payload.
+    header = ("Source recipe display (plain text; not executable)\n"
+              f"sourcePath: {name}\nsourceBytes: {len(data)}\nsourceSha256: {digest(data)}\n"
+              f"immutableUrl: {url or 'unavailable: local source differs from recorded revision'}\n"
+              "Original source bytes are preserved between the explicit delimiters.\n"
+              "For rebuilding, obtain the original .py from its recorded URL or Git source snapshot.\n\n")
+    return header.encode("utf-8") + RECIPE_BEGIN + data + RECIPE_END
 
 
 def revision_matches(root: Path, revision: str, name: str, data: bytes) -> bool:
@@ -121,10 +136,16 @@ def create_files(root: Path, platform: str, *, require_committed: bool = False) 
         original = regular_file(root, name).read_bytes()
         matches = revision_matches(root, revision, name, original)
         output_name = packaged_path(name)
-        files[output_name] = markdown_for_bundle(root, revision, name, original) if name.endswith(".md") else original
-        entries.append({"path": output_name, "sourcePath": name, "bytes": len(files[output_name]), "sha256": digest(files[output_name]),
-                        "sourceSha256": digest(original), "matchesRevision": matches,
-                        "immutableUrl": immutable_url(revision, name) if matches else None})
+        url = immutable_url(revision, name) if matches else None
+        if name.endswith(".py"):
+            files[output_name] = recipe_display(name, original, url)
+        else:
+            files[output_name] = markdown_for_bundle(root, revision, name, original) if name.endswith(".md") else original
+        row = {"path": output_name, "sourcePath": name, "bytes": len(files[output_name]), "sha256": digest(files[output_name]),
+               "sourceSha256": digest(original), "matchesRevision": matches, "immutableUrl": url}
+        if name.endswith(".py"):
+            row.update(displayTransform="plain-source-text-v1", sourceBytes=len(original))
+        entries.append(row)
     modified = bool(git(root, "status", "--porcelain", "--untracked-files=normal").strip())
     if require_committed and (modified or not all(row["matchesRevision"] for row in entries)):
         raise ValueError("Publication index requires an unchanged committed source checkout")
@@ -162,6 +183,8 @@ def create_files(root: Path, platform: str, *, require_committed: bool = False) 
              "## 取得手順", "",
              "下表の固定manifestには取得URL・hash・source候補の区別があります。binary、header、source JARを完全な対応sourceと読み替えません。",
              "同梱recipeはそのmanifestを使う再現手順です。immutable linkは記録commitと入力bytesが一致するfileにだけ付けています。",
+             "Python recipeの `.py.txt` は表示用plain textです。説明headerと明示区切りを追加し、その間の原source bytesは無改変で保持します。packageから実行するファイルではありません。",
+             "indexの `sourcePath` / `sourceBytes` / `sourceSha256` は原本、`path` / `bytes` / `sha256` は表示copyを示します。再build用の元 `.py` は下表のrecorded revisionまたはGit source snapshotから取得してください。",
              "URLの到達性・source対応・公開提供は別途確認が必要です。Git source snapshotだけでは完全な対応sourceではありません。", "",
              "| File | Bundled copy | Immutable source |", "|---|---|---|"]
     for row in entries:
@@ -179,6 +202,11 @@ def create_files(root: Path, platform: str, *, require_committed: bool = False) 
 def stage(root: Path, output: Path, platform: str, *, archive: Path | None = None,
           require_committed: bool = False) -> dict:
     files = create_files(root, platform, require_committed=require_committed)
+    for name in INPUTS:
+        if name.endswith(".py") and ((output / name).exists() or (output / name).is_symlink()):
+            # Reused generated outputs must not silently retain the old executable
+            # presentation. Never delete an existing app/native file on its behalf.
+            raise ValueError("Legacy executable notice recipe remains; use a clean generated notice output")
     # Validate every destination before writing. Existing app/native files outside
     # this fixed set are untouched and never enter the sidecar archive.
     for name in files:
