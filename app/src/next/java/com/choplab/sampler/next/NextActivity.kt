@@ -126,6 +126,7 @@ class NextActivity : ComponentActivity() {
         val vocalGuide by session.presenter.vocalGuide.collectAsState()
         val fourStems by session.presenter.fourStems.collectAsState()
         val onlineSource by session.presenter.onlineSource.collectAsState()
+        val autoChop by session.presenter.autoChop.collectAsState()
         val vocalTakes by session.presenter.vocalTakes.collectAsState()
         val vocalPunch by session.presenter.vocalPunch.collectAsState()
         val failed by session.backend.persistenceFailure.collectAsState()
@@ -133,7 +134,7 @@ class NextActivity : ComponentActivity() {
             ContinuousEditor(if (failed) state.copy(status = ContinuousStatus.FAILED) else state,
                 session.presenter::onAction, session.presenter::readout, refresh, diagnostics = session.presenter::diagnostics, mixerReadout = session.presenter::readMixer,
                 lyricProposal = lyricProposal, stepPatterns = stepPatterns, vocalGuide = vocalGuide, fourStems = fourStems,
-                onlineSource = onlineSource, sourceAnalysis = sourceAnalysis, vocalTakes = vocalTakes, vocalPunch = vocalPunch, vocalPractice = vocalPractice, vocalPitch = vocalPitch, vocalCoach = vocalCoach, quickStart = session.quickStart)
+                autoChop = autoChop, onlineSource = onlineSource, sourceAnalysis = sourceAnalysis, vocalTakes = vocalTakes, vocalPunch = vocalPunch, vocalPractice = vocalPractice, vocalPitch = vocalPitch, vocalCoach = vocalCoach, quickStart = session.quickStart)
         }
     }
 

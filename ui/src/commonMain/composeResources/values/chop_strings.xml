@@ -1,0 +1,31 @@
+<resources>
+    <string name="chop_auto_title">Auto chop</string>
+    <string name="chop_auto_range">Selected range %1$s — %2$s</string>
+    <string name="chop_auto_equal">Equal slices</string>
+    <string name="chop_auto_attack">Detect attacks</string>
+    <string name="chop_auto_count">Slices: %1$d</string>
+    <string name="chop_auto_max_count">Maximum slices: %1$d</string>
+    <string name="chop_auto_threshold">Minimum level: %1$d dBFS</string>
+    <string name="chop_auto_gap">Minimum spacing: %1$d ms</string>
+    <string name="chop_auto_hint">Prepare cuts and listen to each slice before applying. Original audio and PADs stay intact. After applying, assign any slice to a PAD.</string>
+    <string name="chop_auto_prepare">Try cuts</string>
+    <string name="chop_auto_working">Finding cuts…</string>
+    <string name="chop_auto_short">This range is too short. Widen it or reduce the slice count or minimum spacing.</string>
+    <string name="chop_auto_none">No cuts found. Check for silence or sustained sound, lower the minimum level, or choose equal slices.</string>
+    <string name="chop_auto_dense">Too many cuts. Adjust minimum spacing, minimum level, or maximum slices. Existing cuts are unchanged.</string>
+    <string name="chop_auto_memory">Audio memory is full. Stop playback and try again.</string>
+    <string name="chop_auto_busy">Wait for the current operation to finish.</string>
+    <string name="chop_auto_recording">Finish recording, then reopen auto chop.</string>
+    <string name="chop_auto_stale">The project changed. Reopen auto chop.</string>
+    <string name="chop_auto_failed">Could not prepare cuts or preview. Check the audio and output.</string>
+    <string name="chop_auto_slice">Slice %1$d / %2$d: %3$s — %4$s</string>
+    <string name="chop_auto_previous">Previous</string>
+    <string name="chop_auto_next">Next</string>
+    <string name="chop_auto_preview">Preview this slice</string>
+    <string name="chop_auto_preview_loading">Preparing preview…</string>
+    <string name="chop_auto_preview_playing">Playing this slice</string>
+    <string name="chop_auto_stop_preview">Stop preview</string>
+    <string name="chop_auto_apply">Apply cuts</string>
+    <string name="chop_auto_cancel">Cancel</string>
+    <string name="chop_auto_assign">Slice to BANK %1$s PAD %2$d</string>
+</resources>

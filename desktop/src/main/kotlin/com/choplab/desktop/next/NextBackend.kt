@@ -34,6 +34,7 @@ class NextFileLocations {
 class NextBackend private constructor(private val shared: EditorBackend, val files: NextFileLocations, val voice: VoiceTakes,
     val systemAudio: com.choplab.ui.SystemAudioCapture?, private val decoder: DesktopOriginalAudioDecoder,
     internal val windowsAudio: NextWindowsAudio? = null) : AutoCloseable {
+    val autoChop: com.choplab.core.chop.AutoChopPort get() = shared.autoChop
     val studio: Studio get() = shared.studio
     val engine: StreamingEnginePort get() = shared.engine
     val assets: FileAssetStore get() = shared.assets
