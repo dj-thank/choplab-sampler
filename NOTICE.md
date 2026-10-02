@@ -4,6 +4,8 @@ ChopLab / おとひろい / Earth Song のオリジナルコードは [MIT Licen
 第三者のライブラリ、実行環境、モデル、同梱ツールには各提供元の条件が適用されます。
 この索引だけで、配布物のライセンス本文や対応するソースの提供を代替しません。
 
+配布時は `scripts/prepare_source_notices.py` がこの本文、独立したlicense全文、固定manifestとrecipe、`SOURCE-INDEX.json` / `SOURCE-INDEX.md` を同梱します。Androidは `assets/source-notices/`、Macは `Contents/app/`、Windowsはapp-image直下から読めます。共通のApache-2.0・LGPL-2.1・JNA表示とGPLv3本文の取得物・entry・hashは `config/source-notice-texts.json` に記録し、NIO configurationの本文は下記の固定bytesを使います。取得indexの生成は全依存のnotice網羅・完全な対応source・公開提供の認定ではありません。未解決のAndroid再利用native、NIO、Mac toolsはindexにも明記します。
+
 ## Built-in sounds
 
 DUSTY JAZZ、BOOM BAP、VINYL SOUL、LO-FI TAPE、CLEAN STUDIO は、

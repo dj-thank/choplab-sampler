@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "purpose": "Full texts for independent distribution assets; not complete dependency notice or source coverage.",
+  "texts": [
+    {
+      "path": "licenses/Apache-2.0.txt",
+      "bytes": 10174,
+      "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594",
+      "source": {
+        "coordinate": "net.java.dev.jna:jna:5.19.1",
+        "url": "https://repo.maven.apache.org/maven2/net/java/dev/jna/jna/5.19.1/jna-5.19.1.jar",
+        "bytes": 1950853,
+        "sha256": "4fb141dd8ef6b0585ffceea4bc49602fbc6312fa977e2c488794ea3e6aafecae",
+        "entry": "META-INF/AL2.0"
+      }
+    },
+    {
+      "path": "licenses/LGPL-2.1.txt",
+      "bytes": 24387,
+      "sha256": "c38856d04dc924d23f8d18b83238c3d56c44a5ada7d33fc4e185a9430078c8da",
+      "source": {
+        "coordinate": "net.java.dev.jna:jna:5.19.1",
+        "url": "https://repo.maven.apache.org/maven2/net/java/dev/jna/jna/5.19.1/jna-5.19.1.jar",
+        "bytes": 1950853,
+        "sha256": "4fb141dd8ef6b0585ffceea4bc49602fbc6312fa977e2c488794ea3e6aafecae",
+        "entry": "META-INF/LGPL2.1",
+        "textBytes": 24389,
+        "textSha256": "eea173a556abac0370461e57e12aab266894ea6be3874c2be05fd87871f75449"
+      },
+      "normalization": "Remove trailing horizontal whitespace on line 149 only; all license words and line breaks retained."
+    },
+    {
+      "path": "licenses/jna-NOTICE.txt",
+      "bytes": 797,
+      "sha256": "07c938b23950ab7d47a24ef35f9f5da3a05ae164278dc959ad6994135ed59ff1",
+      "source": {
+        "coordinate": "net.java.dev.jna:jna:5.19.1",
+        "url": "https://repo.maven.apache.org/maven2/net/java/dev/jna/jna/5.19.1/jna-5.19.1.jar",
+        "bytes": 1950853,
+        "sha256": "4fb141dd8ef6b0585ffceea4bc49602fbc6312fa977e2c488794ea3e6aafecae",
+        "entry": "META-INF/LICENSE"
+      }
+    },
+    {
+      "path": "licenses/GPL-3.0.txt",
+      "bytes": 35147,
+      "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+      "source": {
+        "manifest": "config/windows-ffmpeg-audio.json",
+        "entry": "ffmpeg-notices/ffmpeg/COPYING.GPLv3.txt",
+        "archive": {
+          "url": "https://ffmpeg.org/releases/ffmpeg-8.1.2.tar.xz",
+          "filename": "ffmpeg-8.1.2.tar.xz",
+          "bytes": 11710924,
+          "sha256": "464beb5e7bf0c311e68b45ae2f04e9cc2af88851abb4082231742a74d97b524c"
+        }
+      }
+    }
+  ]
+}

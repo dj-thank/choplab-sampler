@@ -14,6 +14,15 @@ def job_body(name: str, next_name: str) -> str:
 
 
 class ReleaseWorkflowContractTest(unittest.TestCase):
+    def test_source_notice_sidecar_is_required_scanned_and_in_both_exact_allowlists(self):
+        publish = WORKFLOW.split("  publish-release:", 1)[1]
+        self.assertIn("scripts/prepare_source_notices.py --platform all --require-committed", publish)
+        self.assertEqual(2, publish.count('            "ChopLab-${RELEASE_TAG}-source-notices.zip"\n'))
+        self.assertEqual(2, publish.count('            "ChopLab-${RELEASE_TAG}-source-notices.zip.sha256"\n'))
+        self.assertIn('--archive "dist/ChopLab-${RELEASE_TAG}-source-notices.zip"', publish)
+        self.assertLess(publish.index("scripts/prepare_source_notices.py"), publish.index("Scan final public archives"))
+        self.assertLess(publish.index("scripts/write_release_manifest.py"), publish.index("- name: Attest build provenance"))
+
     def test_android_release_runs_shared_host_contract(self) -> None:
         android = job_body("build-android", "build-windows")
 

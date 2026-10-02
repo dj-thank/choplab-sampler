@@ -306,6 +306,16 @@ jobs:
           }
           python3 scripts/release_metadata.py --tag "$RELEASE_TAG" --commit "$GITHUB_SHA" --verify-annotated-tag --check-monotonic --reachable-ref refs/remotes/origin/main
 
+      - name: Stage source acquisition index and full notices
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+        run: |
+          source_notices="dist/ChopLab-${RELEASE_TAG}-source-notices.zip"
+          python3 scripts/prepare_source_notices.py --platform all --require-committed \
+            --out work/release-source-notices --archive "$source_notices"
+          (cd dist && sha256sum "ChopLab-${RELEASE_TAG}-source-notices.zip" > "ChopLab-${RELEASE_TAG}-source-notices.zip.sha256")
+
       - name: Scan final public archives
         shell: bash
         env:
@@ -314,6 +324,7 @@ jobs:
           python3 scripts/check_public_surface.py \
             --archive "dist/ChopLab-${RELEASE_TAG}-android-release.apk" \
             --archive "dist/ChopLab-${RELEASE_TAG}-windows-app-image.zip" \
+            --archive "dist/ChopLab-${RELEASE_TAG}-source-notices.zip" \
             --text-file "dist/ChopLab-${RELEASE_TAG}-sbom.cdx.json"
 
       - name: Scan every release asset
@@ -328,6 +339,8 @@ jobs:
             "ChopLab-${RELEASE_TAG}-windows-app-image.zip.sha256"
             "ChopLab-${RELEASE_TAG}-sbom.cdx.json"
             "ChopLab-${RELEASE_TAG}-sbom.cdx.json.sha256"
+            "ChopLab-${RELEASE_TAG}-source-notices.zip"
+            "ChopLab-${RELEASE_TAG}-source-notices.zip.sha256"
           )
           mapfile -d '' -t release_assets < <(find dist -maxdepth 1 -type f -print0 | sort -z)
           [[ "${#release_assets[@]}" -gt 0 ]] || {
@@ -408,6 +421,8 @@ jobs:
             "ChopLab-${RELEASE_TAG}-windows-app-image.zip.sha256"
             "ChopLab-${RELEASE_TAG}-sbom.cdx.json"
             "ChopLab-${RELEASE_TAG}-sbom.cdx.json.sha256"
+            "ChopLab-${RELEASE_TAG}-source-notices.zip"
+            "ChopLab-${RELEASE_TAG}-source-notices.zip.sha256"
             "ChopLab-${RELEASE_TAG}-release-manifest.json"
             "SHA256SUMS"
           )

@@ -9,6 +9,9 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+from scripts import prepare_source_notices as NOTICES
+from scripts.tests.test_source_notices import committed_git
+
 
 SPEC = importlib.util.spec_from_file_location('package_mac_app', Path(__file__).parents[1] / 'package_mac_app.py')
 PACKAGE = importlib.util.module_from_spec(SPEC)
@@ -114,6 +117,10 @@ class MacPackageConfigurationTest(unittest.TestCase):
                     (app / 'Contents/runtime/Contents' / 'Home' / 'legal').mkdir(parents=True)
                     with (app / 'Contents/Info.plist').open('wb') as stream:
                         plistlib.dump({}, stream)
+                elif len(args) > 1 and Path(args[1]).name == 'prepare_source_notices.py':
+                    self.assertEqual('mac', args[args.index('--platform') + 1])
+                    with patch.object(NOTICES, 'git', side_effect=committed_git):
+                        NOTICES.stage(NOTICES.ROOT, Path(args[args.index('--out') + 1]), 'mac')
 
             with patch.object(PACKAGE, 'ROOT', root), patch.object(PACKAGE, 'run', side_effect=run), \
                     patch.object(PACKAGE.subprocess, 'check_output', return_value=''), \
@@ -136,6 +143,16 @@ class MacPackageConfigurationTest(unittest.TestCase):
                 self.assertEqual('1', plist['LSEnvironment']['ORT_DISABLE_TELEMETRY'])
             manifest = json.loads((plist_path.parents[2] / 'manifest.json').read_text())
             self.assertEqual('27.0', manifest['minimum_system_version'])
+            application = plist_path.parent / 'app'
+            source_index = json.loads((application / 'SOURCE-INDEX.json').read_text())
+            self.assertFalse(source_index['publicPass'])
+            for row in source_index['files']:
+                key = str(Path('Contents', 'app', row['path']))
+                self.assertEqual(row['sha256'], manifest['files'][key]['sha256'])
+            stage_index = next(i for i, command in enumerate(commands)
+                               if len(command) > 1 and Path(command[1]).name == 'prepare_source_notices.py')
+            sign_index = next(i for i, command in enumerate(commands) if command[0] == 'codesign')
+            self.assertLess(stage_index, sign_index)
 
 
 if __name__ == '__main__':

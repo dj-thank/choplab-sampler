@@ -54,6 +54,16 @@ class NextNativeWorkflowTest(unittest.TestCase):
         self.assertLess(body.index("check_public_surface.py"), body.index("uses: actions/upload-artifact"))
         self.assertIn("-SilentAudio", body)
 
+    def test_every_candidate_contains_a_scanned_committed_notice_sidecar(self):
+        for name in ("android-next", "windows-native", "windows-next"):
+            with self.subTest(job=name):
+                body = job(name)
+                self.assertIn("scripts/prepare_source_notices.py", body)
+                self.assertIn("--require-committed", body)
+                self.assertRegex(body, r"--archive [^\s]+/source-notices\.zip")
+                self.assertLess(body.index("scripts/prepare_source_notices.py"), body.index("uses: actions/upload-artifact"))
+                self.assertLess(body.rindex("check_public_surface.py"), body.index("uses: actions/upload-artifact"))
+
 
 if __name__ == "__main__":
     unittest.main()

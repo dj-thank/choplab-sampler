@@ -131,6 +131,10 @@ NewPipeExtractorはGPL-3.0-or-laterで、直接リンクした組合せをChopLa
 
 これらの未確認事項が残る間は `PUBLIC_PASS` にしません。sourceの公開場所や配布条件を変更する外部操作はrootの配布判断で実施し、秘密鍵・token・私有音声を対応sourceへ含めません。
 
+noticeの配達は `scripts/prepare_source_notices.py` で共通化します。Androidの `assets/source-notices/`、Macの `Contents/app/`、Windows app-image直下へ、正本NOTICE・LICENSE、独立したlicense本文、固定manifest、使用するrecipe、`SOURCE-INDEX.json` / `SOURCE-INDEX.md` を配置します。既存のnative ZIP内license、JARのThirdPartyNoticesとJavaのlegal文書は保持します。NOTICEから配布条件へのリンクは同梱文書で解決し、同梱しない参照とrecipeの外部linkには実際に同bytesのGit commitだけを使います。作業treeまたは入力がcommitと異なる場合はlocal変更を示し、source snapshot URLと該当fileのimmutable URLをnullにします。 Python recipeは説明headerと明示区切りを付けた `.py.txt` の参照用plain textで、区切りの間に元source bytes・copyright・shebangを無改変で保持します。indexのsourcePath/sourceBytes/sourceSha256は原本、path/bytes/sha256は表示copyを区別し、元 `.py` は固定URLまたはGit snapshotから取得します。変更されたheader/bodyもclean source checkoutによる全canonical bytes照合で拒否します。Android/WindowsのGradle taskは自分のgenerated notice出力だけを毎回再生成し、旧recipeをpackageへ残しません。
+
+手動NEXT候補の3jobはartifact近傍の `source-notices/` と `source-notices.zip` に同じ取得indexを添付します。正式releaseには `ChopLab-v<version>-source-notices.zip` とchecksumを追加し、既存manifestが同revision・固定file集合・各hash・未解決表示を照合します。候補と正式releaseのsidecar生成は `--require-committed` で変更中のsourceを拒否します。索引は取得URLとhash、header/source JAR/対応source候補の区別を提供するもので、source archive本体の代わりではありません。Android再利用nativeのsource/Termux patch対応、NIO生成class/header/build対応、Mac toolsのsource/notice対応は `NOASSERTION` / `sourcePublicationVerified=false` のままです。index生成・source取得link・notice stagingを完全source、署名、実機や `PUBLIC_PASS` の合格に数えません。
+
 ## CIと運用のreadback
 
 段階1CではPR/main push/手動を使い、branch push重複を抑えます。移行中は `verify`、`Test and package EXE`、`History scan and dependency SBOM` の既存check名を維持。Linuxはcommon/JVM/Android test・lint・APK・小emulator、WindowsはOS test/package/start-stop smoke、policyはsource/history/artifactを担当します。skip時もrequired checkがpendingのまま残らない構成にします。artifactは7日を基本とし、SBOMの重い収集はrelease/full runへ集約可能です。
