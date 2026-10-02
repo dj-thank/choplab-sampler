@@ -260,11 +260,30 @@ class AutoChopHostTest {
                 } }, microphone = { null })
                 val host = DesktopEditorPorts(backend) { null }
                 val presenter = ContinuousEditorPresenter(backend.studio, scope, host)
+                val timingActions = mutableListOf<ContinuousEditorAction>()
                 val scene = ImageComposeScene(width = width, height = height, density = Density(1f, font), coroutineContext = coroutineContext) {
                     val state by presenter.state.collectAsState()
-                    ContinuousEditor(state, presenter::onAction, presenter::readout)
+                    ContinuousEditor(state, { action ->
+                        if (action == ContinuousEditorAction.OpenLiveChopTiming || action == ContinuousEditorAction.CloseLiveChopTiming ||
+                            action is ContinuousEditorAction.SetLiveChopCorrection) timingActions += action
+                        presenter.onAction(action)
+                    }, presenter::readout)
                 }
                 try {
+                    suspend fun awaitTimingDialog(open: Boolean) {
+                        // Actor completion and popup input ownership are separate from an enabled background tag.
+                        val reached = withTimeoutOrNull(10_000) {
+                            do { scene.render(System.nanoTime()).close(); delay(1) } while (
+                                presenter.state.value.liveChopTiming.open != open ||
+                                    scene.semanticsOwners.size != (if (open) 2 else 1) ||
+                                    scene.nodes().any { it.config.getOrNull(SemanticsProperties.TestTag) == "ce-live-timing-panel" } != open)
+                            true
+                        }
+                        val tags = scene.nodes().mapNotNull { it.config.getOrNull(SemanticsProperties.TestTag) }.filter { it.startsWith("ce-live-timing") }
+                        assertEquals(true, reached, "$locale ${width}x$height font=$font timing open=$open: " +
+                            "state=${presenter.state.value.liveChopTiming}, owners=${scene.semanticsOwners.size}, " +
+                            "status=${presenter.state.value.status}, driver=${backend.engine.status.value}, actions=$timingActions, tags=$tags")
+                    }
                     val rate = if (locale == Locale.JAPANESE) 44_100 else 96_000
                     val input = directory.resolve("native.wav")
                     val samples = FloatArray(rate * 12 * 2) { n -> (kotlin.math.sin((n / 2) * .037) * if (n % 2 == 0) .4 else -.2).toFloat() }
@@ -274,14 +293,41 @@ class AutoChopHostTest {
                     assertTrue(presenter.dispatch(ContinuousEditorAction.Navigate(ContinuousStage.CHOP)))
                     assertTrue(presenter.dispatch(ContinuousEditorAction.SetOriginalPitch(12f)))
                     val before = backend.studio.document.value
-                    scene.pointer("ce-live-timing")
+                    scene.pointer("ce-live-timing") {
+                        assertEquals(1, timingActions.count { it == ContinuousEditorAction.OpenLiveChopTiming }, "First open must be emitted by its one pointer input")
+                    }
+                    awaitTimingDialog(true)
                     scene.pointer("ce-live-timing-MANUAL")
                     scene.reach("ce-live-timing-slider")
                     assertTrue(scene.tag("ce-live-timing-slider").config[SemanticsActions.SetProgress].action!!(37f))
-                    scene.pointer("ce-live-timing-cancel")
+                    // Delay the real queued cancel at its edit lock. An enabled background control is not
+                    // evidence that the modal has closed, even when a fixed number of frames has elapsed.
+                    val editLock = ContinuousEditorPresenter::class.java.getDeclaredField("serialized").run {
+                        isAccessible = true; get(presenter) as kotlinx.coroutines.sync.Mutex
+                    }
+                    withTimeout(10_000) { editLock.lock() }
+                    var locked = true
+                    var closing: Deferred<Unit>? = null
+                    try {
+                        scene.pointer("ce-live-timing-cancel") {
+                            assertEquals(1, timingActions.count { it == ContinuousEditorAction.CloseLiveChopTiming }, "Cancel must be emitted by its one pointer input")
+                        }
+                        assertTrue(presenter.state.value.liveChopTiming.open)
+                        closing = async(start = CoroutineStart.UNDISPATCHED) { awaitTimingDialog(false) }
+                        scene.settle()
+                        assertFalse(closing.isCompleted, "A queued cancel must keep the next main-page input waiting while its popup still owns the pointer")
+                        editLock.unlock(); locked = false
+                        closing.await()
+                    } finally {
+                        if (locked) editLock.unlock()
+                        closing?.cancelAndJoin()
+                    }
                     assertEquals(before, backend.studio.document.value)
                     assertEquals(LiveChopTimingMode.ESTIMATED, presenter.state.value.liveChopTiming.correction.mode)
-                    scene.pointer("ce-live-timing")
+                    scene.pointer("ce-live-timing") {
+                        assertEquals(2, timingActions.count { it == ContinuousEditorAction.OpenLiveChopTiming }, "Reopen must be emitted by its one pointer input")
+                    }
+                    awaitTimingDialog(true)
                     scene.pointer("ce-live-timing-MANUAL")
                     scene.reach("ce-live-timing-slider")
                     assertTrue(scene.tag("ce-live-timing-slider").config[SemanticsActions.SetProgress].action!!(37f))
