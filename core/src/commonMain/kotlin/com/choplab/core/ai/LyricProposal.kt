@@ -11,7 +11,10 @@ enum class LyricProviderAvailability { UNVERIFIED, AVAILABLE }
 class LyricRequest(
     val model: String, val theme: String, val mood: String, val language: LyricLanguage,
     val style: LyricStyle, val structure: String, val rhyme: String, val keepLines: String,
+    val googleAttempt: GoogleLyricAttempt? = null,
 ) {
+    val maxOutputTokens: Int get() = googleAttempt?.maxOutputTokens ?: 8192
+    fun forAttempt(attempt: GoogleLyricAttempt) = LyricRequest(model, theme, mood, language, style, structure, rhyme, keepLines, attempt)
     init {
         require(model.matches(Regex("gemini-[a-z0-9][a-z0-9._-]{0,79}")))
         require(theme.isNotBlank() && theme.length <= 1_024)
@@ -23,6 +26,7 @@ class LyricRequest(
 
 /** Session input only. Never serializable, saved, or included in diagnostics. Closing drops and clears our own copy. */
 class SessionApiKey(value: String) {
+    internal val identity = Any()
     private val characters = value.toCharArray()
     private var closed = false
     init { require(value.length in 1..256 && value.all { it in 'A'..'Z' || it in 'a'..'z' || it in '0'..'9' || it == '-' || it == '_' }) }
@@ -76,9 +80,11 @@ data class LyricUsage(val inputTokens: Long?, val outputTokens: Long?, val total
 enum class LyricAiProblem {
     INVALID_INPUT, PROVIDER_UNVERIFIED, CONSENT_REQUIRED, AUTHENTICATION, UNKNOWN_MODEL, RATE_LIMITED, OFFLINE, TIMEOUT,
     CANCELLED, PROVIDER_REJECTED, INVALID_RESPONSE, STALE_DOCUMENT, APPLY_REJECTED, CLOSED,
+    SESSION_ADMISSION_REFUSED,
 }
 data class LyricAiFailure(val problem: LyricAiProblem, val retryAfterSeconds: Long? = null,
-    /** Cancellation/timeout after attempting HTTP can still incur provider charges. */ val costUnknown: Boolean = false) {
+    /** Cancellation/timeout after attempting HTTP can still incur provider charges. */ val costUnknown: Boolean = false,
+    val admissionProblem: GoogleAdmissionProblem? = null) {
     init { require(retryAfterSeconds == null || retryAfterSeconds in 0..31_536_000) }
 }
 sealed interface LyricProviderResult {
