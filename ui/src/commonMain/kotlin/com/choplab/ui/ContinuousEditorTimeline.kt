@@ -178,6 +178,10 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
         }
         CEActionButton(stringResource(Res.string.mixer_open), ContinuousEditorAction.Mixer(com.choplab.ui.mixer.MixerAction.Open()),
             state, ContinuousCapability.MIXER, onAction, Modifier.fillMaxWidth(), tag = "ce-mixer-open")
+        CEActionButton(stringResource(Res.string.stretch_title), ContinuousEditorAction.OpenBeatStretch(
+            com.choplab.core.model.StretchTarget(com.choplab.core.model.StretchKind.PAD, state.selectedPadId.toString())),
+            state, ContinuousCapability.BEAT_STRETCH, onAction, Modifier.fillMaxWidth(),
+            additionallyEnabled = pad != null && pad.kind != ContinuousPadKind.EMPTY, tag = "ce-stretch-pad")
         CEBankPadEditButtons(state, { onAction(ContinuousEditorAction.BankPadEdit(it)) }, state.bankPadBlocked, Modifier.fillMaxWidth())
         CEActionButton(stringResource(Res.string.pattern_editor_title), ContinuousEditorAction.OpenStepPatterns,
             state, ContinuousCapability.STEP_PATTERNS, onAction, Modifier.fillMaxWidth(), tag = "ce-step-patterns")
@@ -262,6 +266,9 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
             CEButton(stringResource(Res.string.ce_repeat), { repeatFrom = readout().songFrame }, enabled = state.permits(ContinuousCapability.DUPLICATE_CLIP),
                 reason = CEReason(state, ContinuousCapability.DUPLICATE_CLIP), tag = "ce-repeat")
             CEActionButton(stringResource(Res.string.ce_delete), ContinuousEditorAction.DeleteClip(clip?.id.orEmpty()), state, ContinuousCapability.DELETE_CLIP, onAction, additionallyEnabled = clip != null, tag = "ce-delete")
+            CEButton(stringResource(Res.string.stretch_title), { clip?.let { onAction(ContinuousEditorAction.OpenBeatStretch(
+                com.choplab.core.model.StretchTarget(com.choplab.core.model.StretchKind.CLIP, it.id))) } },
+                enabled = clip != null && state.permits(ContinuousCapability.BEAT_STRETCH), tag = "ce-stretch-clip")
         }
         }
         CETimelineTools(state, onAction)

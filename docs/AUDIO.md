@@ -70,7 +70,9 @@ clickは共有engineのmonitorだけに出し、通常のWAV書出しgraphへ混
 
 ## ミックス・声・分離
 
-- WSOLAはstretch、YIN/PSOLAは単音voiceのpitch補正候補。子音・無声・低信頼・低音・急変・倍半分誤検出を評価し、不成立なら原音を保つ。非破壊A/B、キー/スケール、retune/vibratoを明示する。
+- BEATのWSOLAはworkerで素材BPM÷曲BPMの長さへ変換する。両channelで共通の相関位置を選び、headroomをclipしない。最大2048frameの窓/半窓hop/256frame探索を使い、読取・出力は4096frame以下、DSP窓と返却窓/書込/検証bufferの180,224bytesを共有PCMへ先予約する。全体PCM/出力長に比例した配列を持たず、長尺もpaged leaseで処理する。RAM・asset/project上限・保存容量・共有disk scratchを満たせなければ全体をtyped拒否する。取消したworkerの実finallyまでslotを保ち、遅着・部分結果から文書を確定しない。
+- WSOLAの元範囲はnative `[start,end)` を48kHzへstart ceil/end floorで内側に変換し、結果はround(inputFrames×素材milliBPM÷曲milliBPM) frameとする。40–240BPMの全倍率を扱い、非1:1で入力/出力128frame未満は拒否する。1:1の適用は元bytes・native範囲をそのまま使う。原音A/Bも元を変更せず、確定した必須float WAVを共有engineのPAD/clip再生とexportが同じように読む。曲BPM変更は自動再生成しない。
+- WSOLAは1:1のbit一致、既存offline oracleとの一致、220Hz toneの音程、非対称/逆相/無音channelとheadroom、transient欠落、長尺・取消を固定fixtureで確認する。テンポ変更時のtransient形状や極端な倍率の聴感は別のHuman受入とし、合成tone合格で音楽全般の品質を保証しない。YIN/PSOLAは単音voiceのpitch補正候補。子音・無声・低信頼・低音・急変・倍半分誤検出を評価し、不成立なら原音を保つ。非破壊A/B、キー/スケール、retune/vibratoを明示する。
 - FXはgain/pan/mute/solo、EQ/filter/comp/delay/reverb send/masterを共有graphで処理。latency compensation、tail、loop折返し、solo/muteの意味を固定。post-fader/pre-master等stem出力点を表示し、非線形master後の和が一致するとは約束しない。
 - ミキサーは明示したBANK routeと通常trackに同じgain/pan/mute/solo・insert・sendを適用し、SOURCE/HAND/clickのmonitor経路を外に保つ。未routeのPAD試聴は既存のunrouted busを使う。insertは追加lookaheadなし、最終limiterの72frameだけを書出しで補償する。pattern折返しではFX履歴を保ち、seek/一時停止/先頭から再生/graph交換ではreset、全停止では有限fade後に履歴を消去する。master meterはmaster FX後・最終limiter前、track/return meterはstem出力点を示す。
 - 制作用stem ZIPは48kHz stereo float32を既定とし、graphに含まれるtrackと共通delay/reverb returnを同じ準備済graphで逐次生成する。整数stemはheadroom超過で全体拒否。WAVは24bit既定/16bit選択、最終量子化のseed付きTPDF、最後のclipまでの長さとgraph余韻の有無を明示する。Desktopは選択先のatomic publishと空き容量preflight、Androidの私有ZIP stagingは共有1GiB disk scratchを公開完了まで保持し、失敗/取消は一時資産を解放する。
