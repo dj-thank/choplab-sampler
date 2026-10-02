@@ -67,6 +67,8 @@ class NextSession private constructor(
     suspend fun stopSound() {
         presenter.cancelFourStemPreparation()
         presenter.stopVocalPractice()
+        presenter.vocalCoach.value?.dispatch(CoachAction.Stop)
+        speechPreview.stop(com.choplab.core.ai.VocalPreviewOwner.COACH)
         presenter.vocalPitch.value?.dispatch(PitchAction.Stop)
         speechPreview.stop(com.choplab.core.ai.VocalPreviewOwner.PITCH)
         speechPreview.stop()
@@ -104,6 +106,11 @@ class NextSession private constructor(
         context.getString(R.string.next_file_base) + "-" + SimpleDateFormat("yyyyMMdd-HHmm", Locale.ROOT).format(Date()) + ".$extension"
 
     private inner class Ports : ContinuousEditorPorts {
+        override val vocalCoach = object : VocalCoachHost {
+            override val analyzer = backend.coachAnalyzer()
+            override val renderer = backend.practiceRenderer()
+            override val preview = speechPreview
+        }
         override val vocalPitch = object : VocalPitchHost {
             override val preview = speechPreview
             override suspend fun render(project: com.choplab.core.model.Project, draft: com.choplab.core.vocal.VocalPitchDraft,

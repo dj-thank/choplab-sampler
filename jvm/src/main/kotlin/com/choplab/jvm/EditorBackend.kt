@@ -103,6 +103,7 @@ class EditorBackend private constructor(
 
     /** The existing PCM lease/cache budget is shared with the worker and all playing voices. */
     fun pitchRenderer(): VocalPitchRenderer = VocalPitchRenderer(assets, pcm, assets.directory.parent.resolve("vocal-pitch"))
+    fun coachAnalyzer(): com.choplab.core.vocal.VocalCoachAnalyzer = VocalCoachWorker(pcm)
 
     suspend fun analyseSource(asset: Asset, range: com.choplab.core.model.FrameRange): com.choplab.core.analysis.SourceMusicResult =
         analyseSourceMusic(pcm, asset, range)

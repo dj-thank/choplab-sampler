@@ -14,6 +14,8 @@ note repeatは押したframeを起点に、曲のtempo/swingと同じ有理数cl
 
 原曲のSOURCEとHANDは同じ不変PCMを共有し、再生位置・音量・CUT・操作所有は独立します。HANDを動かしてもSOURCEは再生を続け、HAND終了はSOURCEのseek・pause・resumeを発行しません。SOURCEのseek/playもHANDを移動させません。HANDは移動中だけ発音し、終了・取消・画面移動・出力切断で一度だけ解放します。SOURCE停止・交換・全停止はHANDも解放し、残る96frameのscalar fadeは旧PCMを保持しません。HANDはprimary32枠の1枠を予約し、満杯時はtyped拒否、CUTと専用gainは別に扱います。配置32＋primary32＋fade16＋SOURCE1の最大81同時readerと128MiBの常駐予算を維持します。原曲監視とHANDは書出しへ混ぜず、PADの加工・配置は制作のmix経路を使います。
 
+出力の喪失・ライフサイクル解放・明示再接続でengineを作り直すときは、最後に受付確認されたSOURCE・HAND・曲の監視音量を初期値として保持する。消音を含め、再接続の最初のblockから100%へ戻さない。拒否・取消された音量命令は保持値へ昇格せず、声・SOURCE・sequenceは停止したままにする。監視音量はruntimeだけの設定で、制作文書・Undo・通常書出しgraphへ保存しない。
+
 ## 固定するfixtureと試験
 
 段階2A着手前にrevision、seed、rate、level、channel、初期状態、命令、測定窓を固定します。合成/許諾素材を使い、結果を見て都合のよい条件だけを選び直しません。

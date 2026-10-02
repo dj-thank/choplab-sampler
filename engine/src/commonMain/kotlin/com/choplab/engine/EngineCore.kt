@@ -4,12 +4,22 @@ import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.math.max
 
+/** Listening preferences for a fresh monitor engine. Never enter the document or export graph. */
+data class MonitorGains(val original: Float = 1f, val song: Float = 1f, val hand: Float = 1f) {
+    init {
+        require(original.isFinite() && original in 0f..2f)
+        require(song.isFinite() && song in 0f..1f)
+        require(hand.isFinite() && hand in 0f..1f)
+    }
+}
+
 /**
  * Single render owner, one ControlRing producer, one EventRing consumer. Construct on a worker.
  * All state and filter storage is bounded and preallocated. No callback is invoked from render.
  * Commands and sequence notes take effect BEFORE their exact output frame is synthesized.
  */
-class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config: EngineConfig = EngineConfig()) {
+class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config: EngineConfig = EngineConfig(),
+                 monitorGains: MonitorGains = MonitorGains()) {
     private val pcmOwnership = PcmOwnership(config.residentByteLimit, initialProgram)
     private var programSlots = pcmOwnership.initialSlots
     val controls = ControlRing(config.controlCapacity, pcmOwnership, config.outputMode)
@@ -121,6 +131,13 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
 
     init {
         require(initialProgram.residentBytes <= config.residentByteLimit)
+        // Seed before publishing the first readout or synthesizing any audio. Recovery must not
+        // ramp from unity and leak a loud first block while the user still sees a muted monitor.
+        if (config.outputMode == EngineOutputMode.MONITOR) {
+            originalVoice.monitorGain.set(monitorGains.original, 0)
+            songGain.set(monitorGains.song, 0)
+            handVoice.monitorGain.set(monitorGains.hand, 0)
+        }
         arrangementMixer.restore(initialProgram.arrangement, 0)
         readout.publish(this, 0f, 0f)
     }

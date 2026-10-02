@@ -3,7 +3,7 @@ package com.choplab.core.ai
 import com.choplab.core.model.Asset
 import kotlinx.coroutines.flow.StateFlow
 
-enum class VocalPreviewOwner { GUIDE, PRACTICE, PITCH }
+enum class VocalPreviewOwner { GUIDE, PRACTICE, PITCH, COACH }
 
 enum class VocalPreviewPhase { IDLE, LOADING, PLAYING, RESTORING, FAILED, CLOSED }
 data class VocalPreviewState(val phase: VocalPreviewPhase = VocalPreviewPhase.IDLE, val ownsSource: Boolean = false,
