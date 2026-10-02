@@ -111,7 +111,7 @@ class SourceNoticesTest(unittest.TestCase):
     def test_changed_embedded_license_is_rejected(self):
         original = notices.regular_file
         altered = self.directory / "NOTICE.md"
-        altered.write_text((ROOT / "NOTICE.md").read_text().replace("All rights reserved.", "Removed."))
+        altered.write_bytes((ROOT / "NOTICE.md").read_bytes().replace(b"All rights reserved.", b"Removed."))
         with patch.object(notices, "regular_file", side_effect=lambda root, name: altered if name == "NOTICE.md" else original(root, name)):
             with self.assertRaisesRegex(ValueError, "license differs"):
                 self.stage()

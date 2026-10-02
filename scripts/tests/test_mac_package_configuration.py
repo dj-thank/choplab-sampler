@@ -147,7 +147,7 @@ class MacPackageConfigurationTest(unittest.TestCase):
             source_index = json.loads((application / 'SOURCE-INDEX.json').read_text())
             self.assertFalse(source_index['publicPass'])
             for row in source_index['files']:
-                key = 'Contents/app/' + row['path']
+                key = str(Path('Contents', 'app', row['path']))
                 self.assertEqual(row['sha256'], manifest['files'][key]['sha256'])
             stage_index = next(i for i, command in enumerate(commands)
                                if len(command) > 1 and Path(command[1]).name == 'prepare_source_notices.py')
