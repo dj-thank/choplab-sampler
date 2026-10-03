@@ -108,7 +108,7 @@ py -3 -m venv work/windows-acceptance-python
 
 `acceptance.json` は check ごとに scope、PASS/FAIL/NOT_RUN、revision、ZIP hash と所要時間を残し、全体の `COMPLETED` は選択した手順の終了だけを示します。最終全機能通し・署名済み正式配布・provider・実音・Human GO へ昇格させません。ログと合成素材を含む run directory は私有の readback 用に保持し、公開前に対象を選んで既存 scanner を通します。既存版の installer は別の `scripts/test-install-windows-app.ps1` で隔離して確認し、この Preview harness から既存アプリを置換しません。
 
-全制作の公開入口 `com.choplab.desktop.next.NextWholeCreationSelfTest` は、既存5入口と合わせた全6入口の一意なclassをhelperで確認してから実行します。欠落・重複は `self-test-entrypoints=FAIL`、未実行の制作試験は `NOT_RUN` で停止し、全制作を省略して成功にする分岐は設けません。最終Windowsの同一ZIPによる全制作・通常終了再開は未完であり、rootが公開sourceを含む同じZIPを作り直して確認します。
+全制作の公開入口 `com.choplab.desktop.next.NextWholeCreationSelfTest` は、既存5入口と合わせた全6入口の一意なclassをhelperで確認してから実行します。欠落・重複は `self-test-entrypoints=FAIL`、未実行の制作試験は `NOT_RUN` で停止し、全制作を省略して成功にする分岐は設けません。最終Windowsの全制作・通常終了再開は、公開sourceに束縛した同じZIPで確認します。source `60cabab2` の実行結果は[ROADMAP](ROADMAP.md)にartifact bytes/hashとsoftware受入の範囲を記録し、最新の必須CI/root統合は[PR220](https://github.com/dj-thank/choplab-sampler/pull/220)を参照します。installer・正式署名・物理音/Provider/Humanは個別判定です。
 
 全制作は、SOURCE解析の明示テンポ適用/アタックchop→三連STEP/note repeat/BANKループ録音→WSOLA→歌詞/2take/punch/comp/guide→練習/pitch/coach→4stem→mix/FX・24bit WAV/stems/LRC→archiveとautosaveを新backendで再開→共有PCM解放、の9工程を順序どおりに確認します。15回の明示Undo/Redo、原音と全asset hash、再開後の同じ文書・同じ24bit出力、共有128MiB以内・終了PCM/lease0を要求します。Desktop入口とAndroidの `NextCreationProductionTest` は合成入力/マイク/clocked sink・決定的TTS/分離modelを使い、実voice/model・GUI・音声endpoint・provider・Humanの証拠にはしません。
 
