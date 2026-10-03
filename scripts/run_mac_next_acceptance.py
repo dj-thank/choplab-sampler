@@ -80,6 +80,14 @@ def verify(app, java_home, manifest_path=None):
         receipt = json.loads(result.stdout.strip().splitlines()[-1])
         if receipt['status'] != 'LOCAL_PASS':
             raise RuntimeError('Packaged production self-test did not pass')
+        whole_result = run(java, '-Xmx512m', '-cp', libs / '*',
+                           'com.choplab.desktop.next.NextWholeCreationSelfTest', '--self-test', directory / 'whole-creation',
+                           environment=environment, timeout=180)
+        whole_receipt = json.loads(whole_result.stdout.strip().splitlines()[-1])
+        if (whole_receipt['status'] != 'LOCAL_PASS' or whole_receipt['scope'] != 'packaged-headless-whole-creation'
+                or whole_receipt['pcmAfterCloseBytes'] != 0):
+            raise RuntimeError('Packaged whole creation sequence did not pass or retained PCM')
+        print(whole_result.stdout.strip())
         codec_result = run(java, '-Dchoplab.mediaTools=' + str(libs / 'tools'), '-cp', libs / '*',
                            'com.choplab.desktop.next.NextCodecSelfTest', directory / 'codecs', libs / 'tools/ffmpeg',
                            environment=environment, timeout=120)
@@ -149,7 +157,7 @@ def verify(app, java_home, manifest_path=None):
                           'source': manifest['source'], 'packageFiles': len(manifest['files']),
                           'packageBytes': sum(item['bytes'] for item in manifest['files'].values()),
                           'exportFrames': receipt['exportFrames'], 'normalCloseReopenCycles': 2,
-                          'originalCodecFormats': codec_receipt['formats'],
+                          'wholeCreation': whole_receipt, 'originalCodecFormats': codec_receipt['formats'],
                           'restoredProjectAndAudioMatch': True, 'nativeAudio': False, 'humanAcceptance': False}))
 
 

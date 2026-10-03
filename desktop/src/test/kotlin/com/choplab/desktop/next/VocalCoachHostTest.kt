@@ -108,8 +108,9 @@ class VocalCoachHostTest {
                     assertEquals(VocalPreviewOwner.PRACTICE, host.vocalPractice.preview.state.value.owner)
                     assertEquals(before, backend.studio.document.value)
                     scene.pointer("practice-stop")
-                    until { !host.vocalPractice.preview.state.value.ownsSource }
-                    assertEquals(1234L, backend.audition.nativeFrame()); assertEquals(.23f, backend.engine.originalPlayback().gain)
+                    val afterPractice = untilCoherentOriginal(backend.engine) { !host.vocalPractice.preview.state.value.ownsSource }
+                    assertEquals(1234L, afterPractice.sourceFrame); assertEquals(.23f, afterPractice.gain)
+                    assertFalse(afterPractice.playing)
                     scene.pointer("practice-close")
                     until { presenter.vocalPractice.value == null }
                     scene.pointer("ce-lyrics-open"); scene.pointer("ce-coach-open")
@@ -117,9 +118,10 @@ class VocalCoachHostTest {
                     scene.pointer("coach-input-VOICE_ONLY"); scene.pointer("coach-analyze")
                     until { response.state.value.report != null }
                     scene.pointer("coach-listen")
-                    until { response.state.value.phase == CoachPhase.READY_RESPONSE }
+                    val afterGuide = untilCoherentOriginal(backend.engine) { response.state.value.phase == CoachPhase.READY_RESPONSE }
                     assertFalse(host.vocalCoach.preview.state.value.ownsSource)
-                    assertEquals(1234L, backend.audition.nativeFrame()); assertEquals(.23f, backend.engine.originalPlayback().gain)
+                    assertEquals(1234L, afterGuide.sourceFrame); assertEquals(.23f, afterGuide.gain)
+                    assertFalse(afterGuide.playing)
                     assertEquals(before, backend.studio.document.value)
                     scene.pointer("coach-respond")
                     until { presenter.vocalPunch.value != null }
@@ -356,6 +358,24 @@ class VocalCoachHostTest {
         override fun close() = Unit
     }
     private suspend fun until(ready: () -> Boolean) = withTimeout(10_000) { while (!ready()) delay(5) }
+    // A bounded readout collision is not a SOURCE position. Wait only for the first coherent
+    // sample after completion, then assert its exact frame/gain; a wrong Ready value must fail.
+    private suspend fun untilCoherentOriginal(engine: StreamingEnginePort, completed: () -> Boolean): OriginalPlayback {
+        var playback: OriginalPlayback? = null
+        var lastProbe = "NOT_READ"
+        try {
+            until {
+                if (!completed()) false else when (val probe = engine.originalPlaybackProbe()) {
+                    is OriginalPlaybackProbe.Ready -> { playback = probe.playback; true }
+                    OriginalPlaybackProbe.Contended -> { lastProbe = "CONTENDED"; false }
+                    OriginalPlaybackProbe.Unavailable -> { lastProbe = "UNAVAILABLE"; false }
+                }
+            }
+        } catch (timeout: TimeoutCancellationException) {
+            throw AssertionError("SOURCE completion=${completed()}, readout=$lastProbe", timeout)
+        }
+        return requireNotNull(playback)
+    }
     private fun ImageComposeScene.nodes(): List<SemanticsNode> = buildList {
         fun visit(node: SemanticsNode) { add(node); node.children.forEach(::visit) }
         semanticsOwners.forEach { visit(it.unmergedRootSemanticsNode) }
