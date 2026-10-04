@@ -3,6 +3,8 @@
 - Status: Accepted for the rebuild
 - Date: 2026-09-25
 
+The iOS retirement remains a historical decision. Resumed iPadOS development is governed by [ADR10](ADR-0010-ipad-native-support.md), accepted on 2026-10-05; earlier iOS artifacts remain historical evidence.
+
 ## Decision
 
 Concentrate the rebuild on Android 10+ and Windows. Retire the iOS target, CI, scripts and simulator distribution in stage1A; preserve their history at `archive/pre-rebuild-v0.18.0`. KMP remains useful for Android/JVM and does not require maintaining Native targets.

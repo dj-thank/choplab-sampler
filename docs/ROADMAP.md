@@ -1,6 +1,6 @@
 # 再構築 ROADMAP — 唯一の進捗・受入索引
 
-更新: 2026-10-03。対象はおとひろい / Earth SongのAndroid 10+・Windows、および全制作機能を使うMac（[ADR8](adr/ADR-0008-mac-function-parity.md)）。**段階0〜11の実装、必要な検証、PR統合、仕上げまで承認済み**です。レビュー案にあった「レビューのみ」「各PRで再承認」は [ADR7](adr/ADR-0007-concise-development-governance.md) で置き換えます。device/providerの実観測と人間の音質・操作感の受入は、実施結果が得られるまで未確認のままです。
+更新: 2026-10-05。対象はおとひろい / Earth SongのAndroid 10+・Windows、全制作機能を使うMac（[ADR8](adr/ADR-0008-mac-function-parity.md)）、および対応を再開するiPadOS（[ADR10](adr/ADR-0010-ipad-native-support.md)）。**段階0〜11の実装、必要な検証、PR統合、仕上げまで承認済み**です。レビュー案にあった「レビューのみ」「各PRで再承認」は [ADR7](adr/ADR-0007-concise-development-governance.md) で置き換えます。device/providerの実観測と人間の音質・操作感の受入は、実施結果が得られるまで未確認のままです。
 
 ## 最初に読む現状とSSOT（2026-10-01照合）
 
@@ -24,7 +24,13 @@
 
 ### 現在の修正対象と再開点
 
-公開source `60cabab2a34a0d167665383a976460b571a6c782` の全制作経路は、Android・Mac・Windowsの固定artifactでLOCAL_SOFTWARE_PASS。元の4工程・大PAD・案2・SOURCE/HAND分離を保ち、素材から演奏/配置、歌詞・練習/録り直し、曲全体のmix、24bit WAV/STEM/LRCと保存/再開までを確認した。Wholeは合成音声/録音・合成TTS/model・無音sinkで9工程、原音/14資産・17clip・2take、15 Undo/Redo、archive/autosave再開と共有PCM終了0を検査する。実OS TTS/実modelの独立検査をWholeの合成入力と混同しない。公開source以降の本PR差分は観測fixture1pathと本契約3文書に限定し、本番source・依存・R8・配布入力を保持する。**最新の必須CI結果・承認head・rootのmain統合状態は[PR220](https://github.com/dj-thank/choplab-sampler/pull/220)を参照**し、以下の固定sourceのsoftware受入だけで最終CI成功や段階0〜11全完了を宣言しない。
+2026-10-05の追加依頼により、iPad A16で日常的に制作できるようiPadOS対応を再開する（[ADR10](adr/ADR-0010-ipad-native-support.md)）。最初の申告OSは26.6。端末情報と手元で検証できる前提は私有の継続メモに保存した。開始時のsourceは `fd6990ff`、GitHub mainの本書とbranchのbytes一致を確認済み。rootが対象要件と統合を所有し、未完のNative基盤はGPT-6 Astra/Maxが隔離worktreeで担当する。以前のiOS試作は保存再開・beat sequence・WAV出力がなく、署名なしSimulator ZIPであり、現行制作や実機インストールの証拠にしない。
+
+最初の限定候補はengine/core/uiの `-PchoplabIosPreview=true`、ARM64 device/Simulator target、static `ChopLabShared` frameworkとiOS画像decoder。既定・明示falseのtarget/sourceSet/task/configuration graphは全projectで開始時と一致、trueは共有3moduleだけを追加することを独立照合した。1MiB/2048²/単一frame制限と資源解放の同一ソースをLinux/JVM Skiaへ投影した8件はfailure/error/skip0。既存desktop画像1件は元source setへ戻した結果も保持する。rootのpolicy410件は成功（既存のplatform条件skip2）、現tree public scanは1019候補で成功。配布文書のADR10リンクを読めるよう、既存source-notice試験の部分checkoutへその1文書を追加し、本番packaging/scanner/公開platform集合は保持した。[Apple基盤CI](../.github/workflows/ipad-native-foundation.yml) は実SDKで2frameworkのlinkと明示A16 Simulator上の限定試験、実XML・hash・outcomeの検証を行う。実行結果は候補と一致するPR head/CI証跡で照合し、Linux投影やCIの宣言だけではApple成功にしない。
+
+Apple host・実音声/codec・資産/archive/autosave・録音等の移植と署名/配布は後続の必須作業。現在の作業hostはLinux、ユーザーのMac/Xcode・署名Team・実機接続は未確認。次の受入はApple基盤CIの実観測と、同じ共通UI/Studio/engineへ実adapterを接続したローカル素材→PAD/曲→保存再開/WAVの経路。framework・SimulatorをiPadで使えるアプリへ昇格させない。導入可能なIPA・TestFlight招待・実機/Provider/Public/Humanの成功はまだない。rollbackは限定候補のrevertまたはopt-inを外すこと。
+
+公開source `60cabab2a34a0d167665383a976460b571a6c782` の全制作経路は、Android・Mac・Windowsの固定artifactでLOCAL_SOFTWARE_PASS。元の4工程・大PAD・案2・SOURCE/HAND分離を保ち、素材から演奏/配置、歌詞・練習/録り直し、曲全体のmix、24bit WAV/STEM/LRCと保存/再開までを確認した。Wholeは合成音声/録音・合成TTS/model・無音sinkで9工程、原音/14資産・17clip・2take、15 Undo/Redo、archive/autosave再開と共有PCM終了0を検査する。実OS TTS/実modelの独立検査をWholeの合成入力と混同しない。公開source以降のPR220差分は観測fixture1pathと本契約3文書に限定し、本番source・依存・R8・配布入力を保持する。**この既存3OS受入の必須CI結果・承認head・rootのmain統合状態は[PR220](https://github.com/dj-thank/choplab-sampler/pull/220)を参照**し、以下の固定sourceのsoftware受入だけでiPadOSや段階0〜11全完了を宣言しない。
 
 Androidは所有API36 arm64 software emulatorで、matching R8本体46,976,458 bytes（SHA-256 `6d3fd314b4408289543d562267199c95ebfadc1625b4df0fdc039aa5652d1e65`）・対応test1,213,912 bytes（`2383e9ec0f2af124a253f7ad143208e46b486d993913c8ab708514f7c4e02067`）のinstalled bytes一致を確認。runtime4・codec1・offline日英TTS2・固定4stem1・Whole1の9 methodはfailure/error/skip0。124 classfile-inputのR8参照とnamed keepは固定境界を保持し、物理端末・マイク・聴感・正式配布署名の受入へ広げない。
 

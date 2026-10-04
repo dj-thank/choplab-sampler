@@ -13,6 +13,8 @@
 
 Windows app-imageはprivate Java runtimeを含む一式であり、EXE単体ではありません。署名installer・更新は段階11。既存版とPreviewは設定/autosave/library/cache/lockを分け、署名変更を含む正式切替前に音声救出と復元を確認します。利用者の既存app/dataを削除して問題を回避しません。
 
+iPadOS対応の再開は [ADR10](adr/ADR-0010-ipad-native-support.md) に従う。現在のrelease manifestの公開platform集合はAndroid/Windowsのままで、Mac previewと同様にiPadの開発候補を正式releaseへ混ぜない。Kotlin/Native frameworkや署名なしSimulator `.app` は実機用IPAではない。Apple hostの実装後、対応Mac/Xcode・bundle/profile・実機用署名と更新/復元を検証してから導入する。Personal Teamの期限付き自己端末試験と、Apple Developer Program/App Store Connect/TestFlight配布を区別し、upload・beta review・招待・実機導入を各readbackまで未確認として扱う。
+
 ## 配布サイズの測定境界
 
 正式Android APKはarm64-v8aのみ、R8とresource shrinkingを有効にして50,000,000 bytes以下を検査します。debug/Previewはemulator ABIを含む別経路です。Previewの明示 `-PchoplabNewPipeR8Probe=true` は縮小時の互換確認用であり、正式署名・実機受入の代わりにはなりません。ORT JNI、YoutubeDLのJackson mapper、NewPipeのRhino/timeago/protobufの動的参照は保持規則の対象です。上流native bytesの固定値は引き続き検査し、codecや機能を外してサイズを通しません。

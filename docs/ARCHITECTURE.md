@@ -26,7 +26,7 @@
 | `app` | AndroidHostがcore/ui/jvmとOS driverを組み立てる |
 | `desktop` | DesktopHostがcore/ui/jvmとWindows driverを組み立てる |
 
-依存は `ui → core → engine` と `jvm → core`。OS参照をengineへ入れず、DI frameworkは導入せずhostで組み立てます。旧moduleは移植が合格するまで残します。KMPの対象はAndroid/JVMであり、Native互換を同時に証明しません。
+依存は `ui → core → engine` と `jvm → core`。OS参照をengineへ入れず、DI frameworkは導入せずhostで組み立てます。旧moduleは移植が合格するまで残します。既定のKMP対象はAndroid/JVMです。[ADR10](adr/ADR-0010-ipad-native-support.md)のiPadOS再開では、共有3moduleにNative targetを追加し、Apple hostがcore portsを実装します。JVMのFileAssetStore/ProjectJson/ArchiveCodec/StreamingEnginePortの移植と、Nativeの同期・lease・音声callbackの検証は別途必要です。
 
 ## 状態・時刻・仕事の所有
 
