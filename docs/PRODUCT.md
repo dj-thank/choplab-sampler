@@ -4,6 +4,8 @@
 
 2026-09-26の追加要件: Macでも同じ全制作機能を使い、取り込み速度と日常操作を検証する（[ADR8](adr/ADR-0008-mac-function-parity.md)）。Macの全機能受入や公開配布が完了したという意味ではない。
 
+2026-10-05の追加要件: iPad A16で制作を使えるよう、iPadOS対応を再開する（[ADR10](adr/ADR-0010-ipad-native-support.md)）。現行の共通編集・音声・4工程UIを土台に、Apple向けの取込・再生・録音・保存を接続する。ターゲット定義やframeworkの生成だけを、インストール可能なアプリや全機能の完成とは扱わない。
+
 ## 0.18.0で引き継ぐもの
 
 - 4工程「入れる / チョップ / ビート / 保存」と、Android/Windows共通Compose画面。
@@ -49,4 +51,4 @@ SpotifyはmetadataとAPI機能、YouTubeは別サービスの音声であり、�
 
 ライブチョップ、Undo、合成ドラム、復旧、入力/ZIPの上限、channel identity、取消/遅着の拒否、アクセス可能な操作を維持します。見た目や件数だけを引き継ぐ移植にはしません。
 
-iOSは [ADR6](adr/ADR-0006-android-windows-focus.md) により対象外です。DDJ-200/MIDI、歌唱AI、本人音声によるガイド、自動ASR timing、store配布、cloud同期は将来候補。scratch/mixerのadapter境界は残しますが、1.0要件に混ぜません。
+過去のiOS対応は [ADR6](adr/ADR-0006-android-windows-focus.md) で終了したが、iPadOSの対象再追加は [ADR10](adr/ADR-0010-ipad-native-support.md) に従う。旧iOS試作の16PADや署名なしSimulator配布を、現行の制作・保存機能の代わりにはしない。DDJ-200/MIDI、歌唱AI、本人音声によるガイド、自動ASR timing、store配布、cloud同期は将来候補。scratch/mixerのadapter境界は残しますが、1.0要件に混ぜません。

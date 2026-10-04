@@ -3,6 +3,8 @@
 - Status: Accepted requirement; platform acceptance remains in ROADMAP
 - Date: 2026-09-26
 
+2026-10-05のiPadOS再開は [ADR10](ADR-0010-ipad-native-support.md) で追加した要件であり、本決定のMac受入結果とは分ける。
+
 ## Decision
 
 ユーザーの指定により、Macをビルド専用hostに限定せず、Windowsと同じ制作機能を使う対象に追加する。ADR6のiOS廃止・0.18.0基準・後続別editorを混ぜない決定は維持する。Mac対応の要件化と、全機能の実機受入完了を区別する。

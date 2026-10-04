@@ -1,0 +1,250 @@
+name: ChopLab iPad native foundation
+
+# Apple compilation and selected simulator unit tests for the opt-in shared library.
+# This workflow does not build, sign, install, or publish an iPad app.
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/ipad-native-foundation.yml'
+      - '**/build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+      - 'gradle/**'
+      - 'gradlew'
+      - 'engine/src/commonMain/**'
+      - 'engine/src/commonTest/**'
+      - 'engine/src/iosMain/**'
+      - 'engine/src/iosTest/**'
+      - 'core/src/commonMain/**'
+      - 'core/src/commonTest/**'
+      - 'core/src/iosMain/**'
+      - 'core/src/iosTest/**'
+      - 'ui/src/commonMain/**'
+      - 'ui/src/commonTest/**'
+      - 'ui/src/iosMain/**'
+      - 'ui/src/iosTest/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ipad-native-foundation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONUTF8: '1'
+
+jobs:
+  apple-foundation:
+    name: Compile shared frameworks and test on an ARM64 iPad simulator
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Initialize foundation evidence
+        shell: bash
+        run: |
+          mkdir -p dist/ipad-native-foundation-evidence
+          git rev-parse HEAD > dist/ipad-native-foundation-evidence/source-revision.txt
+          cat > dist/ipad-native-foundation-evidence/README.txt <<'EOF'
+          ChopLab iPad native foundation evidence — NOT AN APP
+          This artifact contains build logs, selected simulator unit-test XML, source revision,
+          and successful framework SHA-256 manifests only. Framework binaries are not uploaded.
+          Artifact presence does not imply success: inspect outcomes.json and test results.
+          No app host, platform-adapter acceptance, signing, IPA, installation, physical-device
+          sound/input, or human acceptance is established by this workflow.
+          EOF
+
+      - name: Check repository public surface
+        run: python3 scripts/check_repo.py
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android SDK for Gradle project configuration
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          packages: platform-tools
+
+      - name: Install required Android configuration components
+        shell: bash
+        run: |
+          set +o pipefail
+          yes | sdkmanager --licenses >/dev/null
+          sdkmanager_status=${PIPESTATUS[1]}
+          set -o pipefail
+          if [ "$sdkmanager_status" -ne 0 ]; then
+            exit "$sdkmanager_status"
+          fi
+          sdkmanager "platforms;android-37.0" "build-tools;36.0.0"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
+
+      - name: Record Apple toolchain and select an available iPad A16 simulator
+        id: apple_host
+        shell: bash
+        env:
+          FOUNDATION_HEAD_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python3 - <<'PY'
+          import datetime, json, os, platform, subprocess
+          from pathlib import Path
+
+          def read(*args):
+              return subprocess.check_output(args, text=True, stderr=subprocess.STDOUT).strip()
+
+          if platform.system() != 'Darwin' or platform.machine() != 'arm64':
+              raise SystemExit('ARM64 macOS is required; simulator execution cannot be skipped.')
+          runtimes = json.loads(read('xcrun', 'simctl', 'list', '--json', 'runtimes'))['runtimes']
+          devices = json.loads(read('xcrun', 'simctl', 'list', '--json', 'devices', 'available'))['devices']
+          candidates = []
+          for runtime in runtimes:
+              if not runtime.get('isAvailable') or not runtime['identifier'].startswith('com.apple.CoreSimulator.SimRuntime.iOS-'):
+                  continue
+              for device in devices.get(runtime['identifier'], []):
+                  if device.get('isAvailable') and device['name'] == 'iPad (A16)':
+                      candidates.append((tuple(map(int, runtime['version'].split('.'))), runtime, device))
+          if not candidates:
+              raise SystemExit('No available iPad (A16) simulator and iOS runtime; native tests are not accepted as skipped.')
+          _, runtime, device = max(candidates, key=lambda item: item[0])
+          report = {
+              'scope': 'shared-framework-build-and-selected-simulator-unit-tests-only',
+              'observedAtUtc': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+              'sourceRevision': read('git', 'rev-parse', 'HEAD'),
+              'headRevision': os.environ['FOUNDATION_HEAD_REVISION'],
+              'macos': read('sw_vers'), 'architecture': platform.machine(),
+              'xcode': read('xcodebuild', '-version'),
+              'iphoneosSdk': read('xcrun', '--sdk', 'iphoneos', '--show-sdk-version'),
+              'iphonesimulatorSdk': read('xcrun', '--sdk', 'iphonesimulator', '--show-sdk-version'),
+              'java': read('java', '-version'), 'gradle': read('./gradlew', '--version'),
+              'simulator': {'name': device['name'], 'runtime': runtime['name'],
+                            'version': runtime['version'], 'build': runtime['buildversion']},
+              'physicalDeviceTested': False, 'appBuilt': False, 'appSigningPerformed': False,
+          }
+          Path('dist/ipad-native-foundation-evidence/toolchain.json').write_text(json.dumps(report, indent=2) + '\n')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('device=' + device['udid'] + '\n')
+          print(json.dumps(report, indent=2))
+          PY
+
+      - name: Build both Apple frameworks and run selected native simulator tests
+        id: apple_build
+        timeout-minutes: 35
+        shell: bash
+        env:
+          FOUNDATION_SIMULATOR: ${{ steps.apple_host.outputs.device }}
+        run: |
+          set -o pipefail
+          ./gradlew --no-daemon --no-build-cache --console=plain --max-workers=1 --stacktrace \
+            -PchoplabIosPreview=true \
+            :ui:linkDebugFrameworkIosArm64 :ui:linkDebugFrameworkIosSimulatorArm64 \
+            :engine:iosSimulatorArm64Test --device "$FOUNDATION_SIMULATOR" --tests 'com.choplab.engine.EngineContractTest' \
+            :core:iosSimulatorArm64Test --device "$FOUNDATION_SIMULATOR" --tests 'com.choplab.core.EditSessionTest' \
+            :ui:iosSimulatorArm64Test --device "$FOUNDATION_SIMULATOR" \
+              --tests 'com.choplab.ui.source.OnlineArtworkIosTest' --tests 'com.choplab.ui.ContinuousTapTempoTest' \
+            2>&1 | tee dist/ipad-native-foundation-evidence/gradle-apple.log
+
+      - name: Require executed native tests and hash the actual frameworks
+        id: apple_results
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, subprocess, xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          required = {
+              'engine': {'com.choplab.engine.EngineContractTest'},
+              'core': {'com.choplab.core.EditSessionTest'},
+              'ui': {'com.choplab.ui.source.OnlineArtworkIosTest', 'com.choplab.ui.ContinuousTapTempoTest'},
+          }
+          tests = {}
+          for module, classes in required.items():
+              paths = sorted(Path(module, 'build/test-results/iosSimulatorArm64Test').glob('TEST-*.xml'))
+              if not paths:
+                  raise SystemExit(f'{module}: native test XML missing; skipped tasks are not success.')
+              count, observed = 0, set()
+              for path in paths:
+                  suite = ET.parse(path).getroot()
+                  if any(int(suite.get(key, '0')) for key in ('failures', 'errors', 'skipped')):
+                      raise SystemExit(f'{module}: failing, erroneous or skipped native test in {path.name}')
+                  for case in suite.iter('testcase'):
+                      if any(case.find(tag) is not None for tag in ('failure', 'error', 'skipped')):
+                          raise SystemExit(f'{module}: unsuccessful native test case in {path.name}')
+                      count += 1
+                      name = case.get('classname', suite.get('name', ''))
+                      observed.update(expected for expected in classes if expected in name)
+              if not count or observed != classes:
+                  raise SystemExit(f'{module}: required native tests did not execute: {sorted(classes - observed)}')
+              tests[module] = {'executed': count, 'failures': 0, 'errors': 0, 'skipped': 0, 'classes': sorted(observed)}
+
+          frameworks = []
+          for target in ('iosArm64', 'iosSimulatorArm64'):
+              binary = Path('ui/build/bin', target, 'debugFramework/ChopLabShared.framework/ChopLabShared')
+              if not binary.is_file() or binary.is_symlink() or not binary.stat().st_size:
+                  raise SystemExit(f'{target}: built framework binary is absent or invalid')
+              architecture = subprocess.check_output(['xcrun', 'lipo', '-archs', str(binary)], text=True).strip()
+              if architecture != 'arm64':
+                  raise SystemExit(f'{target}: unexpected framework architecture: {architecture}')
+              digest = hashlib.sha256()
+              with binary.open('rb') as source:
+                  for chunk in iter(lambda: source.read(65536), b''):
+                      digest.update(chunk)
+              frameworks.append({'target': target, 'binary': binary.as_posix(), 'bytes': binary.stat().st_size,
+                                 'sha256': digest.hexdigest(), 'architecture': architecture})
+          report = {'scope': 'native-foundation-only-not-an-app',
+                    'sourceRevision': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
+                    'tests': tests, 'frameworks': frameworks,
+                    'physicalDeviceTested': False, 'appBuilt': False, 'appSigningPerformed': False}
+          Path('dist/ipad-native-foundation-evidence/native-results.json').write_text(json.dumps(report, indent=2) + '\n')
+          print(json.dumps(report, indent=2))
+          PY
+
+      - name: Collect and scan foundation evidence, including failures
+        id: evidence
+        if: ${{ always() && !cancelled() }}
+        shell: bash
+        env:
+          FOUNDATION_BUILD_OUTCOME: ${{ steps.apple_build.outcome }}
+          FOUNDATION_RESULTS_OUTCOME: ${{ steps.apple_results.outcome }}
+        run: |
+          python3 - <<'PY'
+          import json, os, shutil, subprocess, sys
+          from pathlib import Path
+
+          root = Path('dist/ipad-native-foundation-evidence')
+          root.mkdir(parents=True, exist_ok=True)
+          for module in ('engine', 'core', 'ui'):
+              for path in Path(module, 'build/test-results/iosSimulatorArm64Test').glob('TEST-*.xml'):
+                  destination = root / 'test-results' / module / path.name
+                  destination.parent.mkdir(parents=True, exist_ok=True)
+                  shutil.copyfile(path, destination)
+          outcomes = {'scope': 'native-foundation-only-not-an-app',
+                      'buildAndTests': os.environ['FOUNDATION_BUILD_OUTCOME'] or 'not_run',
+                      'verifiedResults': os.environ['FOUNDATION_RESULTS_OUTCOME'] or 'not_run'}
+          (root / 'outcomes.json').write_text(json.dumps(outcomes, indent=2) + '\n')
+          command = [sys.executable, 'scripts/check_public_surface.py']
+          for path in sorted(root.rglob('*')):
+              if path.is_file():
+                  command.extend(['--text-file', str(path)])
+          subprocess.run(command, check=True)
+          PY
+
+      - name: Upload foundation evidence only, not an installable app
+        if: ${{ always() && !cancelled() && steps.evidence.outcome == 'success' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: choplab-ipad-native-foundation-evidence
+          if-no-files-found: error
+          path: dist/ipad-native-foundation-evidence/**
+          retention-days: 7

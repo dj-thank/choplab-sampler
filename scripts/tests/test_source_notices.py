@@ -284,7 +284,7 @@ class SourceNoticesTest(unittest.TestCase):
         self.git.stop()
         source = self.directory / "source"
         source.mkdir()
-        for name in (*notices.INPUTS, "docs/ROADMAP.md", "docs/TESTING.md"):
+        for name in (*notices.INPUTS, "docs/ROADMAP.md", "docs/TESTING.md", "docs/adr/ADR-0010-ipad-native-support.md"):
             destination = source / name
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(ROOT / name, destination)

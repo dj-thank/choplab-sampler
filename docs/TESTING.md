@@ -130,6 +130,10 @@ Androidの今回の受入条件はlargeHeapを使わない既定heap192MiB・eng
 
 ADBは一つの明示serialだけを対象にし、全connected device taskを使いません。install前にowner/lease、対象APKと署名、残すデータを確認します。無断uninstallや端末初期化を行いません。合成fixtureと隔離profileを優先し、最終状態をreadbackして解放します。
 
+iPadOSは [ADR10](adr/ADR-0010-ipad-native-support.md) に従い、対象の所有iPad、対応Xcode/SDK、実機用bundle/profileと署名を確認してから導入する。Native compile、Simulator、実機導入、実音/録音/遅延、VoiceOver、人の制作通しを分ける。既存JVMのallocation計測やAndroid/Macの成功をiPadへ転用しない。ユーザーが端末を手元に持つことと、remoteから操作できることは別であり、必要な実機操作は本人の接続状況に合わせる。UDID・Team・個人素材や署名情報は私有領域で扱う。
+
+[Native基盤CI](../.github/workflows/ipad-native-foundation.yml) は実ARM64 Mac/Apple SDKでdevice用とSimulator用の共有frameworkをlinkし、選択したA16 Simulatorでengine/coreと画像・tap tempoの限定試験を行う。toolchain、実行済みXML、成功したframeworkのhash、失敗を含むoutcomeをsourceへ結び付ける。SimulatorのOSと所有端末の申告OSを区別し、missing/failure/error/skipを成功にしない。添付artifactは検証のtextだけで、アプリ本体や実機用IPAではない。
+
 既存の `config/choplab-review-avd.json` とemulator runnerは、対象AVD・source provenance・実test数・fatal/ANR・font/rotation復元を検査します。テストをcompileしただけでは実行済みになりません。emulator runnerがphysical serialを拒否する保護を保持してください。
 
 性能試験はwarm-up、rate/buffer、機種、OS、冷間/熱時、反復数、p99/最大/underrunを添えます。サイズは同じbuild種別・圧縮形式で測り、初回DL・展開・利用者素材/cacheを分けます。human確認は最大5項目に絞り、未回答は未確認のまま残します。

@@ -1,6 +1,6 @@
 # ChopLabへの参加
 
-[AGENTS](AGENTS.md) と [ROADMAP](docs/ROADMAP.md) を読み、対象の機能と現在の担当を確認してください。Android・Windows・Macの共通の振る舞いを小さな変更で改善します。
+[AGENTS](AGENTS.md) と [ROADMAP](docs/ROADMAP.md) を読み、対象の機能と現在の担当を確認してください。Android・Windows・Macの共通の振る舞いを小さな変更で改善します。iPadOSの再開範囲は [ADR10](docs/adr/ADR-0010-ipad-native-support.md) に従います。
 
 開始時・重要な設計判断・完了時にはROADMAP冒頭の「正本と参照順」「現在の修正対象と再開点」を照合します。ローカル会話・クラウド会話・引継ぎZIPのみに決定を残さず、変更した契約を該当文書へ反映します。未統合PR、main、配布物、実機受入は別の状態です。
 
@@ -17,6 +17,10 @@ WindowsではPowerShell 7を優先します。SDKは既存環境を利用し、`
 ```
 
 macOS/Linuxの開発チェックには同梱 `gradlew` と `scripts/doctor.sh` を使えます。Windows固有の音声・ダイアログ・パッケージ起動はWindowsで確認します。検証コマンドと層の違いは [TESTING](docs/TESTING.md) を参照してください。
+
+iPadOSのNativeビルドにはApple SDKに対応するMac/Xcodeを使います。LinuxのGradle設定確認と共有JVM試験はAppleビルドの代用ではありません。実機用アプリ入口・署名・取込/音声/保存adapterの実装前は、frameworkを生成できてもiPadへ導入できるアプリにはなりません。
+
+共有frameworkだけをビルドする場合は `./gradlew -PchoplabIosPreview=true :ui:linkDebugFrameworkIosArm64 :ui:linkDebugFrameworkIosSimulatorArm64` を使います。通常はpropertyを指定せず、従来の対象だけをビルドします。Apple環境と選択したSimulatorの検証は [Native基盤CI](.github/workflows/ipad-native-foundation.yml) を参照してください。
 
 ## 変更とPR
 

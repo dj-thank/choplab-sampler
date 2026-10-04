@@ -78,8 +78,12 @@ class DesktopSamplerControllerTest {
             assertEquals(coreStarts, engine.triggered.count { it.first.globalIndex == core })
             controller.selectPad(layer)
             val end = controller.state.value.pads[layer].endFrame
+            val layerStartsBeforeTrim = engine.triggered.count { it.first.globalIndex == layer && it.second }
             controller.setSelectedPadEndFrame(end - 100)
-            assertEquals(end - 100, engine.triggered.last().first.endFrame)
+            // The transport can append unrelated drum hits while the loop layer is being trimmed.
+            val layerStartsAfterTrim = engine.triggered.filter { it.first.globalIndex == layer && it.second }
+            assertEquals(layerStartsBeforeTrim + 1, layerStartsAfterTrim.size)
+            assertEquals(end - 100, layerStartsAfterTrim[layerStartsBeforeTrim].first.endFrame)
             assertEquals(coreStarts, engine.triggered.count { it.first.globalIndex == core })
             controller.stopAllSounds()
             controller.saveProject(project)
