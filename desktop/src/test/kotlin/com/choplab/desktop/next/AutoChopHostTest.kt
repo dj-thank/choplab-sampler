@@ -262,6 +262,23 @@ class AutoChopHostTest {
                 val presenter = ContinuousEditorPresenter(backend.studio, scope, host)
                 val timingActions = mutableListOf<ContinuousEditorAction>()
                 val timingObservations = mutableListOf<String>()
+                // Distinguish a missing press reading, an unsent action and a pass that ended before its edit.
+                // Keep a bounded trace for a failure; observe the real readout without retrying the gesture.
+                val liveObservations = ArrayDeque<String>()
+                val liveReadouts = mutableMapOf<String, Int>()
+                var liveStarted = 0L
+                var livePhase = "before Begin"
+                fun observeLive(event: String, clock: ContinuousEditorReadout? = null) {
+                    if (liveStarted == 0L) return
+                    val shown = presenter.state.value
+                    val document = backend.studio.document.value
+                    if (liveObservations.size == 48) liveObservations.removeFirst()
+                    liveObservations.addLast("${(System.nanoTime() - liveStarted) / 1_000_000}ms $livePhase $event: " +
+                        "live=${shown.liveChopping}, revision=${document.revision}, range=${document.project.source?.range}, " +
+                        "gesture=${if (clock == null) "not sampled" else clock.liveChopGesture}, timing=${shown.liveChopTiming}, status=${shown.status}, " +
+                        "original=${backend.engine.originalPlayback()}, originalProbe=${backend.engine.originalPlaybackProbe()}, " +
+                        "probe=${backend.engine.liveChopProbe()}, output=${backend.engine.snapshot()}, driver=${backend.engine.status.value}")
+                }
                 val scene = ImageComposeScene(width = width, height = height, density = Density(1f, font), coroutineContext = coroutineContext) {
                     val state by presenter.state.collectAsState()
                     ContinuousEditor(state, { action ->
@@ -271,8 +288,18 @@ class AutoChopHostTest {
                             timingObservations += "${System.nanoTime()}: $action ui=${state.liveChopTiming} " +
                                 "probe=${backend.engine.liveChopProbe()} work=${backend.studio.work.value} driver=${backend.engine.status.value}"
                         }
+                        if (action == ContinuousEditorAction.BeginLiveChop || action == ContinuousEditorAction.EndLiveChop ||
+                            action == ContinuousEditorAction.StopAll || action is ContinuousEditorAction.CapturePad ||
+                            action is ContinuousEditorAction.TapPad || action is ContinuousEditorAction.ReleasePad) observeLive("action=$action")
                         presenter.onAction(action)
-                    }, presenter::readout)
+                    }, {
+                        presenter.readout().also { clock ->
+                            if (liveStarted != 0L && liveReadouts.getOrDefault(livePhase, 0) < 4) {
+                                liveReadouts[livePhase] = liveReadouts.getOrDefault(livePhase, 0) + 1
+                                observeLive("readout", clock)
+                            }
+                        }
+                    })
                 }
                 try {
                     fun timingDiagnostics(): String = "$locale ${width}x$height font=$font " +
@@ -382,17 +409,26 @@ class AutoChopHostTest {
                     }
                     assertEquals(true, committed, "Timed out at $acknowledgement: ${timingDiagnostics()}")
                     assertEquals(before, backend.studio.document.value)
+                    liveStarted = System.nanoTime()
+                    observeLive("before Begin pointer")
                     scene.pointer("ce-live-chop"); until { presenter.state.value.liveChopping }; scene.settle()
+                    livePhase = "reach PAD"; observeLive("Begin observed")
                     scene.reach("ce-pad-2"); scene.fullHit("ce-pad-2", width, height)
+                    observeLive("PAD reached")
                     val pad = scene.tag("ce-pad-2").boundsInWindow.center
+                    livePhase = "press"; observeLive("before Press")
                     val start = System.nanoTime()
                     scene.sendPointerEvent(PointerEventType.Press, pad, type = PointerType.Mouse, buttons = PointerButtons(isPrimaryPressed = true), button = PointerButton.Primary)
+                    livePhase = "held"; observeLive("after Press")
                     scene.settle(); delay(75)
+                    livePhase = "release"; observeLive("before Release")
                     val release = System.nanoTime()
                     scene.sendPointerEvent(PointerEventType.Release, pad, type = PointerType.Mouse, buttons = PointerButtons(), button = PointerButton.Primary)
+                    livePhase = "after release"; observeLive("after Release")
                     scene.settle(); until { presenter.state.value.liveChopTiming.lastCut != null || !presenter.state.value.liveChopping }
+                    observeLive("receipt wait ended")
                     val receipt = assertNotNull(presenter.state.value.liveChopTiming.lastCut,
-                        "$locale ${width}x$height: ${presenter.state.value.liveChopTiming.problem}, ${presenter.state.value.status}")
+                        "$locale ${width}x$height font=$font: ${liveObservations.joinToString("\n")}")
                     assertTrue(receipt.eventNanos in start until release, "It uses the press, not the later release")
                     assertEquals(receipt.observedSourceFrame - kotlin.math.round(.037 * rate * 2).toLong(), receipt.requestedSourceFrame,
                         "$locale ${width}x$height: receipt=$receipt, timing=${presenter.state.value.liveChopTiming}")
