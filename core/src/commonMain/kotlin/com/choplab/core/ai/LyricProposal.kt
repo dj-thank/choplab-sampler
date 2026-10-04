@@ -124,7 +124,7 @@ object KanaMetrics {
             }
             if (ch in "ぁぃぅぇぉゃゅょゎ") {
                 if (vowels.isEmpty() || vowels.last() !in "aiueo") return null
-                vowels.setCharAt(vowels.lastIndex, vowel)
+                vowels[vowels.lastIndex] = vowel
             } else { count++; vowels.append(vowel) }
         }
         return if (count == 0) null else KanaAnalysis(count, vowels.toString())
