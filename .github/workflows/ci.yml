@@ -100,6 +100,8 @@ jobs:
             core/build/reports/tests/desktopTest/**
             jvm/build/test-results/test/*.xml
             jvm/build/reports/tests/test/**
+            ui/build/test-results/desktopTest/*.xml
+            ui/build/reports/tests/desktopTest/**
           retention-days: 7
 
       - name: Build release APK without publishing

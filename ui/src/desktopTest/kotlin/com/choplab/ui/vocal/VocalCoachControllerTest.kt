@@ -10,7 +10,8 @@ import kotlin.test.*
 
 class VocalCoachControllerTest {
     @Test fun takeHistoryReferenceAndExplicitListeningResponseNeverEditTheDocument() = runBlocking {
-        val f = Fixture()
+        // Deliver this instantaneous fake's PLAYING before finish restores the same IDLE value.
+        val f = Fixture(Dispatchers.Unconfined)
         try {
             val before = f.document.value
             assertEquals(2, f.controller.state.value.takes.size)
@@ -119,7 +120,8 @@ class VocalCoachControllerTest {
         }
     }
 
-    private class Fixture(private val analyze: suspend (Project, Long, VocalCoachRequest) -> CoachResult<VocalCoachReport> = ::report) {
+    private class Fixture(dispatcher: CoroutineDispatcher = Dispatchers.Default,
+                          private val analyze: suspend (Project, Long, VocalCoachRequest) -> CoachResult<VocalCoachReport> = ::report) {
         val source = Asset("a".repeat(64), "wav", 384_044, 48_000, 2, 48_000, "Voice")
         val guide = Asset("b".repeat(64), "wav", 384_044, 48_000, 2, 48_000, "Guide", AssetRole.RENDERED)
         val project = Project(assets = frozenListOf(source, guide), tracks = frozenListOf(Track("voice", "Voice", TrackKind.VOCAL),
@@ -129,7 +131,7 @@ class VocalCoachControllerTest {
                 Take("take", "voice", source.hash, FrameRange(0, source.frames), 0)))
         val document = MutableStateFlow(DocumentState(project, 0))
         val availability = MutableStateFlow(VocalAvailability.EDITABLE)
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val scope = CoroutineScope(SupervisorJob() + dispatcher)
         val preview = Preview()
         var request: VocalCoachRequest? = null
         var guideProject: Project? = null
