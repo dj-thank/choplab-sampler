@@ -1240,6 +1240,7 @@ class ContinuousEditorTest {
         Locale.setDefault(Locale.JAPAN)
         try {
             var frame = 1_000L
+            var coherent = true
             val pass = Any()
             val route = LiveChopRoute(Any(), Any(), 0, 48_000, 2, true, 1024, 256)
             fun press(at: Long) = ContinuousChopGesture(pass, 0, LiveChopOutput(route, at, at, at, true, 5_000_000))
@@ -1254,7 +1255,7 @@ class ContinuousEditorTest {
                         ContinuousEditorAction.EndLiveChop -> state.value = state.value.copy(liveChopping = false, originalPlaying = false)
                         else -> Unit
                     }
-                }, { ContinuousEditorReadout(originalFrame = frame, liveChopGesture = press(frame)) })
+                }, { ContinuousEditorReadout(originalFrame = frame, liveChopGesture = if (coherent) press(frame) else null) })
             }
             fun texts() = scene.nodes().flatMap { it.config.getOrNull(SemanticsProperties.Text).orEmpty() }.map { it.text }
             try {
@@ -1273,6 +1274,17 @@ class ContinuousEditorTest {
                 scene.settle()
                 assertEquals(listOf<ContinuousEditorAction>(ContinuousEditorAction.CapturePad(5, press(1_000))), actions,
                     "During a pass a PAD cuts; it neither plays nor selects by itself")
+
+                // A missing press-time reading cannot be replaced with a coherent release-time reading.
+                coherent = false
+                scene.sendPointerEvent(PointerEventType.Press, pad, type = PointerType.Mouse, buttons = PointerButtons(isPrimaryPressed = true), button = PointerButton.Primary)
+                scene.render(System.nanoTime()).close()
+                coherent = true
+                frame = 10_000
+                scene.sendPointerEvent(PointerEventType.Release, pad, type = PointerType.Mouse, buttons = PointerButtons(), button = PointerButton.Primary)
+                scene.settle()
+                assertEquals(listOf<ContinuousEditorAction>(ContinuousEditorAction.CapturePad(5, press(1_000))), actions,
+                    "Contention at press cuts nothing even when release can read a position")
 
                 // A touch that turns into a drag cuts nothing.
                 scene.drag(requireNotNull(scene.tag("ce-pad-2")).boundsInRoot.center, Offset(0f, 120f))

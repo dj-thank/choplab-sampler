@@ -336,7 +336,19 @@ class AutoChopHostTest {
                     override fun pendingFrames() = 240L
                 } }, microphone = { null })
                 val host = DesktopEditorPorts(backend) { null }
-                val presenter = ContinuousEditorPresenter(backend.studio, scope, host)
+                val observing = java.util.concurrent.atomic.AtomicBoolean()
+                val consumed = java.util.concurrent.ConcurrentLinkedQueue<String>()
+                fun recordConsumed(event: String) {
+                    if (!observing.get()) return
+                    if (consumed.size >= 48) consumed.poll()
+                    consumed.add("${System.nanoTime()}ns $event")
+                }
+                val observedHost = object : ContinuousEditorPorts by host {
+                    override fun originalPlaying() = host.originalPlaying().also { recordConsumed("completion=$it driver=${backend.engine.status.value.phase}") }
+                    override fun liveChopOutput() = host.liveChopOutput().also { recordConsumed("press=$it") }
+                    override fun liveChopProbe() = host.liveChopProbe().also { recordConsumed("timing=$it") }
+                }
+                val presenter = ContinuousEditorPresenter(backend.studio, scope, observedHost)
                 val timingActions = mutableListOf<ContinuousEditorAction>()
                 val timingObservations = mutableListOf<String>()
                 // Distinguish a missing press reading, an unsent action and a pass that ended before its edit.
@@ -487,6 +499,7 @@ class AutoChopHostTest {
                     assertEquals(true, committed, "Timed out at $acknowledgement: ${timingDiagnostics()}")
                     assertEquals(before, backend.studio.document.value)
                     liveStarted = System.nanoTime()
+                    observing.set(true)
                     observeLive("before Begin pointer")
                     scene.pointer("ce-live-chop"); until { presenter.state.value.liveChopping }; scene.settle()
                     livePhase = "reach PAD"; observeLive("Begin observed")
@@ -505,7 +518,8 @@ class AutoChopHostTest {
                     scene.settle(); until { presenter.state.value.liveChopTiming.lastCut != null || !presenter.state.value.liveChopping }
                     observeLive("receipt wait ended")
                     val receipt = assertNotNull(presenter.state.value.liveChopTiming.lastCut,
-                        "$locale ${width}x$height font=$font: ${liveObservations.joinToString("\n")}")
+                        "$locale ${width}x$height font=$font begin=${liveStarted}ns: ${liveObservations.joinToString("\n")}\n" +
+                            "Consumed host readings (no diagnostic reread): ${consumed.joinToString("\n")}")
                     assertTrue(receipt.eventNanos in start until release, "It uses the press, not the later release")
                     assertEquals(receipt.observedSourceFrame - kotlin.math.round(.037 * rate * 2).toLong(), receipt.requestedSourceFrame,
                         "$locale ${width}x$height: receipt=$receipt, timing=${presenter.state.value.liveChopTiming}")
