@@ -106,7 +106,9 @@ class SourceNoticesTest(unittest.TestCase):
         self.assertIn("原source bytesは無改変", (self.output / notices.README).read_text())
         self.assertIn("再build用の元 `.py`", (self.output / notices.README).read_text())
         with zipfile.ZipFile(self.archive) as archive:
-            self.assertEqual(30, len(archive.namelist()))
+            self.assertEqual(32, len(archive.namelist()))
+            self.assertIn("source-notices/config/mac-media-tool-files-20261006.txt", archive.namelist())
+            self.assertIn("source-notices/scripts/mac_tool_policy.py.txt", archive.namelist())
         notices.validate_archive(self.archive, REVISION)
 
     def test_displayed_recipes_pass_apk_scan_while_raw_scripts_and_secrets_still_fail(self):
