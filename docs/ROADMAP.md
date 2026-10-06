@@ -1,6 +1,6 @@
 # 再構築 ROADMAP — 唯一の進捗・受入索引
 
-更新: 2026-10-05。対象はおとひろい / Earth SongのAndroid 10+・Windows、全制作機能を使うMac（[ADR8](adr/ADR-0008-mac-function-parity.md)）、および対応を再開するiPadOS（[ADR10](adr/ADR-0010-ipad-native-support.md)）。**段階0〜11の実装、必要な検証、PR統合、仕上げまで承認済み**です。レビュー案にあった「レビューのみ」「各PRで再承認」は [ADR7](adr/ADR-0007-concise-development-governance.md) で置き換えます。device/providerの実観測と人間の音質・操作感の受入は、実施結果が得られるまで未確認のままです。
+更新: 2026-10-06。対象はおとひろい / Earth SongのAndroid 10+・Windows、全制作機能を使うMac（[ADR8](adr/ADR-0008-mac-function-parity.md)）、および対応を再開するiPadOS（[ADR10](adr/ADR-0010-ipad-native-support.md)）。**段階0〜11の実装、必要な検証、PR統合、仕上げまで承認済み**です。レビュー案にあった「レビューのみ」「各PRで再承認」は [ADR7](adr/ADR-0007-concise-development-governance.md) で置き換えます。device/providerの実観測と人間の音質・操作感の受入は、実施結果が得られるまで未確認のままです。
 
 ## 最初に読む現状とSSOT（2026-10-01照合）
 
@@ -23,6 +23,8 @@
 開始時・大きな判断時・完了時にこの順で関係する契約を確認する。mainの文書が共有の正本、未統合branch/PRは候補、インストール済みartifactは別revisionとして扱う。新しいユーザー訂正は該当契約と本書へ反映し、古いセッション要約やZIPを新しい正本にしない。会話全文・認証情報・個人パス・端末識別子は公開しない。参照画像はDESIGNからGitHubだけで読める。
 
 ### 現在の修正対象と再開点
+
+2026-10-06のブランチ整理では、SOURCE読取り競合PR229をmain `77ceb71b`へ統合した後、保留中の[Gradle更新PR191](https://github.com/dj-thank/choplab-sampler/pull/191)を同mainへ合成した。元のCI失敗はwrapper JARの固定hashとUTF-8強制の不整合。9.8.0のJARを[公式checksum](https://services.gradle.org/distributions/gradle-9.8.0-wrapper.jar.sha256) `238e777fcddd7e34f9708186085def2abd6e08e658505b38718d79d74c21abd5` へ照合し、POSIX/Windows launcherのUTF-8設定を保持する。distribution ZIPも公式hashと一致。Mac/JDK21で公開面1020候補・wrapperの改変拒否等8件、Desktop428件（failure/error0、既存platform skip2）が成功。UI/core/engine/JVM/JVM-coreの検証と同headの必須CIを継続し、揃ってからrootが統合する。これはtoolchain更新の候補で、制作DSP・保存schema・OS対応を変更しない。Rollbackは本PRのrevert。
 
 2026-10-05の追加依頼により、iPad A16で日常的に制作できるようiPadOS対応を再開する（[ADR10](adr/ADR-0010-ipad-native-support.md)）。最初の申告OSは26.6。端末情報と手元で検証できる前提は私有の継続メモに保存した。開始時のsourceは `fd6990ff`、GitHub mainの本書とbranchのbytes一致を確認済み。rootが対象要件と統合を所有し、未完のNative基盤はGPT-6 Astra/Maxが隔離worktreeで担当する。以前のiOS試作は保存再開・beat sequence・WAV出力がなく、署名なしSimulator ZIPであり、現行制作や実機インストールの証拠にしない。
 
