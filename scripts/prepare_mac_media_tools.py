@@ -14,6 +14,11 @@ import shutil
 import subprocess
 import urllib.request
 
+if __package__:
+    from .mac_tool_policy import media_file_sets, matching_policy
+else:
+    from mac_tool_policy import media_file_sets, matching_policy
+
 YTDLP_VERSION = '2026.08.19'
 YTDLP_SHA256 = '0f192b7ec147ab6288885d6351d9ab67367640029b4377576ef46dd79cf7b202'
 YTDLP_URL = f'https://github.com/yt-dlp/yt-dlp/releases/download/{YTDLP_VERSION}/yt-dlp_macos'
@@ -45,8 +50,9 @@ def locate(name):
 
 
 def prepare(out, audio_only=False):
+    root = Path(__file__).resolve().parents[1]
     policy = "config/mac-audio-tool-files.txt" if audio_only else "config/mac-media-tool-files.txt"
-    allowed = frozenset((Path(__file__).resolve().parents[1] / policy).read_text().splitlines())
+    policies = {policy: frozenset((root / policy).read_text().splitlines())} if audio_only else media_file_sets(root)
     commands = [("ffmpeg", "-version"), ("ffprobe", "-version")] + ([] if audio_only else [("node", "--version")])
     if platform.system() != 'Darwin':
         raise RuntimeError('Mac tools must be prepared on macOS')
@@ -60,7 +66,8 @@ def prepare(out, audio_only=False):
             if (data.get('platform') == 'macos-' + platform.machine()
                     and (audio_only or data.get('versions', {}).get('yt-dlp') == YTDLP_VERSION)
                     and set(files) == {p.name for p in out.iterdir()} - {'manifest.json'}
-                    and set(files) == allowed
+                    and matching_policy(files, policies) is not None
+                    and data.get('native_policy', matching_policy(files, policies)) == matching_policy(files, policies)
                     and all((out / name).is_file() and sha(out / name) == item['sha256']
                             for name, item in files.items())):
                 print('Existing Mac tool bundle verified')
@@ -135,14 +142,18 @@ def prepare(out, audio_only=False):
         target.chmod(0o755)
         versions['yt-dlp'] = run(target, '--version')
         copied['yt-dlp'] = {'sha256': YTDLP_SHA256, 'source': YTDLP_URL}
-    if set(copied) != allowed:
-        raise RuntimeError(f'Native dependency set changed; review {policy} and license/source obligations')
+    selected_policy = matching_policy(copied, policies)
+    if selected_policy is None:
+        changes = {name: {'missing': sorted(expected - set(copied)), 'unexpected': sorted(set(copied) - expected)}
+                   for name, expected in policies.items()}
+        raise RuntimeError(f'Native dependency set changed; review license/source obligations: {changes}')
     # Execute with no Homebrew PATH; loader references must be self-contained.
     environment = dict(os.environ, PATH='/usr/bin:/bin')
     for name, flag in commands + ([] if audio_only else [('yt-dlp', '--version')]):
         subprocess.run([str(out / name), flag], env=environment, check=True, stdout=subprocess.DEVNULL)
     (out / 'manifest.json').write_text(json.dumps({
         'platform': 'macos-' + platform.machine(), 'versions': versions,
+        'native_policy': selected_policy,
         'files': copied, 'distribution': 'local-acceptance-only',
         'license_review': 'NOTICE.md; corresponding third-party source and licenses required before public release',
     }, indent=2) + '\n')

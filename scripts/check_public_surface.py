@@ -184,9 +184,11 @@ PACKAGED_RUNTIME_MANIFESTS = {
 }
 PACKAGED_RUNTIME_MANIFEST_LIMIT = 64 * 1024
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
-MAC_PACKAGED_RUNTIME_TOOL_NAMES = frozenset(
-    (REPOSITORY_ROOT / "config/mac-media-tool-files.txt").read_text(encoding="utf-8").splitlines()
-)
+if __package__:
+    from .mac_tool_policy import media_file_sets
+else:
+    from mac_tool_policy import media_file_sets
+MAC_PACKAGED_RUNTIME_TOOL_NAMES = frozenset().union(*media_file_sets(REPOSITORY_ROOT).values())
 # The Mac app bundles this repository builds: production, Preview and the linked editor's
 # Preview (scripts/package_mac_app.py). Only these roots receive the Mac runtime layout policy.
 MAC_APP_ROOTS = frozenset({"choplab.app", "choplab preview.app", "choplab next.app"})

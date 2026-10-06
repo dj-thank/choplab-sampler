@@ -82,7 +82,8 @@ class SourceNoticesTest(unittest.TestCase):
     def test_recipe_display_preserves_exact_source_and_distinct_original_identity(self):
         index = self.stage(require_committed=True)
         recipes = [row for row in index["files"] if row.get("sourcePath", "").endswith(".py")]
-        self.assertEqual(9, len(recipes))
+        self.assertEqual(10, len(recipes))
+        self.assertIn("scripts/mac_tool_policy.py", {row["sourcePath"] for row in recipes})
         for row in recipes:
             with self.subTest(source=row["sourcePath"]):
                 original = (ROOT / row["sourcePath"]).read_bytes()

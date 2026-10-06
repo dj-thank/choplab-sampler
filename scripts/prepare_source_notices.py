@@ -28,6 +28,7 @@ INPUTS = (
     "config/newpipe-dependencies.json", "config/windows-ffmpeg-audio.json",
     "config/windows-onnxruntime.json", "config/windows-quickjs.json",
     "config/mac-media-tool-files.txt",
+    "config/mac-media-tool-files-20261006.txt", "scripts/mac_tool_policy.py",
     "scripts/build_android_audio_runtime.py", "scripts/prepare_android_python_runtime.py",
     "scripts/build_windows_audio_runtime.py", "scripts/prepare_next_native_candidate.py",
     "scripts/prepare_windows_runtime.py", "scripts/prepare_media_tools.py",
