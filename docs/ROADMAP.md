@@ -1,6 +1,6 @@
 # 再構築 ROADMAP — 唯一の進捗・受入索引
 
-更新: 2026-10-05。対象はおとひろい / Earth SongのAndroid 10+・Windows、全制作機能を使うMac（[ADR8](adr/ADR-0008-mac-function-parity.md)）、および対応を再開するiPadOS（[ADR10](adr/ADR-0010-ipad-native-support.md)）。**段階0〜11の実装、必要な検証、PR統合、仕上げまで承認済み**です。レビュー案にあった「レビューのみ」「各PRで再承認」は [ADR7](adr/ADR-0007-concise-development-governance.md) で置き換えます。device/providerの実観測と人間の音質・操作感の受入は、実施結果が得られるまで未確認のままです。
+更新: 2026-10-06。対象はおとひろい / Earth SongのAndroid 10+・Windows、全制作機能を使うMac（[ADR8](adr/ADR-0008-mac-function-parity.md)）、および対応を再開するiPadOS（[ADR10](adr/ADR-0010-ipad-native-support.md)）。**段階0〜11の実装、必要な検証、PR統合、仕上げまで承認済み**です。レビュー案にあった「レビューのみ」「各PRで再承認」は [ADR7](adr/ADR-0007-concise-development-governance.md) で置き換えます。device/providerの実観測と人間の音質・操作感の受入は、実施結果が得られるまで未確認のままです。
 
 ## 最初に読む現状とSSOT（2026-10-01照合）
 
@@ -23,6 +23,10 @@
 開始時・大きな判断時・完了時にこの順で関係する契約を確認する。mainの文書が共有の正本、未統合branch/PRは候補、インストール済みartifactは別revisionとして扱う。新しいユーザー訂正は該当契約と本書へ反映し、古いセッション要約やZIPを新しい正本にしない。会話全文・認証情報・個人パス・端末識別子は公開しない。参照画像はDESIGNからGitHubだけで読める。
 
 ### 現在の修正対象と再開点
+
+2026-10-06の依頼は、Macで「おとひろい」を実行・デバッグできる状態へ揃え、分岐した作業を一つずつ確認してmainへ整理すること。rootがMac開発起動、ブランチ照合、統合と端末検証を所有する。SOURCE読取り競合の[PR229](https://github.com/dj-thank/choplab-sampler/pull/229)は、同head `8041d5c3` の必須CI3件と本Macの関連43件（Desktop9/UI34、failure/error/skip0）を確認し、main `77ceb71b`へ統合した。driver/DSP・37ms補正・元bytes・保存形式は保持する。旧compact試作PR153の開閉・文字拡大対応とSpotify保全枝のtyped recovery/metadata窓は後続mainへ接続済みで、巻き戻して再マージしない。旧PR153は対応済みの履歴として閉じ、元のcommitは変更せずarchive tagと私有Git bundleへ保全する。
+
+Mac開発候補は `:desktop:runLinkedPreview` の録音helper依存と明示path、checkout内 `work/desktop-development` の制作/Library/model/tmp境界、ループバックのJVM debug待機を接続する。[起動・debug手順](../desktop/README.md#macでの起動と取り込み)を正本とする。本Mac/JDK21でhelperの自動compile、`127.0.0.1:5005`だけのlisten、jdb attach→Kotlin main行59のbreakpoint/ソース/stack→続行、実native窓の応答・通常終了を確認。既存インストール済みPreviewの3file hashは前後一致。候補bundleは273file/529,960,337 bytesで、11codec・制作9工程/15Undo・24bit/STEM/LRC・保存再開・PCM終了0、実drum model、native通常終了/再開2回が成功した。これは候補のLOCAL_SOFTWARE_PASSであり、CI/root統合・更新後mainの導入は後続。システム音の実録音は現在の表示sessionで `NO_DISPLAY` を返し、画面表示後の再確認を待つ。実聴感・物理マイク/遅延・provider・公証/公開/Humanはこの候補から認定しない。Rollbackは限定PRのrevertと前のappへの復帰で、既存制作・旧bundle・Windows/Macの未コミットsourceを保持する。
 
 2026-10-05の追加依頼により、iPad A16で日常的に制作できるようiPadOS対応を再開する（[ADR10](adr/ADR-0010-ipad-native-support.md)）。最初の申告OSは26.6。端末情報と手元で検証できる前提は私有の継続メモに保存した。開始時のsourceは `fd6990ff`、GitHub mainの本書とbranchのbytes一致を確認済み。rootが対象要件と統合を所有し、未完のNative基盤はGPT-6 Astra/Maxが隔離worktreeで担当する。以前のiOS試作は保存再開・beat sequence・WAV出力がなく、署名なしSimulator ZIPであり、現行制作や実機インストールの証拠にしない。
 
