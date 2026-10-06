@@ -10,7 +10,7 @@ import subprocess
 import sys
 import xml.etree.ElementTree as ET
 
-WRAPPER_SHA256 = "7a9ce74cff467ca1bf60a4fcd9f05185acceda4d0f382434d393e17864262c5d"
+WRAPPER_SHA256 = "238e777fcddd7e34f9708186085def2abd6e08e658505b38718d79d74c21abd5"
 PERSONAL_HOME = re.compile(r"(?i)(?:[A-Z]:[\\/]+Users[\\/]+|/home/)([A-Za-z0-9_.-]+)")
 EXAMPLE_USERS = {"user", "username", "your-user", "example", "runner", "public", "default", "test", "fixture"}
 
