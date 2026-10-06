@@ -29,11 +29,24 @@ application {
 
 tasks.register<JavaExec>("runLinkedPreview") {
     group = "application"
-    description = "Open the preserved four-stage editor against the isolated Preview backend"
+    description = "Run the four-stage editor from source with a checkout-local development profile"
     dependsOn("classes")
     classpath = sourceSets.main.get().runtimeClasspath
     mainClass.set("com.choplab.desktop.next.LinkedPreviewMainKt")
     systemProperty("choplab.preview", "true")
+    val developmentRoot = rootProject.file(providers.gradleProperty("choplabDevelopmentRoot")
+        .orElse("work/desktop-development").get())
+    environment("LOCALAPPDATA", developmentRoot.resolve("data").absolutePath)
+    systemProperty("java.io.tmpdir", developmentRoot.resolve("tmp").absolutePath)
+    debugOptions {
+        host.set("127.0.0.1")
+        port.set(providers.gradleProperty("choplabDebugPort").map(String::toInt).orElse(5005))
+        suspend.set(true)
+    }
+    doFirst {
+        check(developmentRoot.resolve("data").let { it.isDirectory || it.mkdirs() })
+        check(developmentRoot.resolve("tmp").let { it.isDirectory || it.mkdirs() })
+    }
 }
 
 val macHost = System.getProperty("os.name").startsWith("Mac", ignoreCase = true)
@@ -53,10 +66,10 @@ val compileMacSystemAudioHelper = tasks.register<Exec>("compileMacSystemAudioHel
     )
 }
 if (macHost) {
-    tasks.named<JavaExec>("run") {
+    listOf("run", "runLinkedPreview").forEach { taskName -> tasks.named<JavaExec>(taskName) {
         dependsOn(compileMacSystemAudioHelper)
         systemProperty("choplab.systemAudioHelper", macSystemAudioHelper.get().asFile.absolutePath)
-    }
+    } }
     tasks.named<Sync>("installDist") {
         dependsOn(compileMacSystemAudioHelper)
         from(macSystemAudioHelper) { into("lib") }

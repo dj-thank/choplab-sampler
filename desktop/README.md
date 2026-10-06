@@ -20,7 +20,11 @@ app-imageは `desktop/build/windows-app-image/ChopLab/ChopLab.exe`。`app` / `ru
 
 ## Macでの起動と取り込み
 
-JDK21とXcode Command Line Toolsを用意し、repository rootで `./gradlew :desktop:run` を実行します。`run` と `installDist` はMacでScreenCaptureKit helperをbuildします。圧縮音声・YouTube取込にはffmpeg、ffprobe、yt-dlp、nodeが必要です。同梱directory、PATH、Homebrewの順で解決します。Homebrewを使う場合は `brew install ffmpeg yt-dlp node`、既存版がある場合は互換性を確認して使います。
+JDK21とXcode Command Line Toolsを用意し、repository rootで `./scripts/run_mac_next.sh` を実行すると、最新の4工程NEXTをソースから起動します。従来画面は `./gradlew :desktop:run` です。`run`、`runLinkedPreview`、`installDist` はMacでScreenCaptureKit helperをbuildします。圧縮音声・YouTube取込にはffmpeg、ffprobe、yt-dlp、nodeが必要です。同梱directory、PATH、Homebrewの順で解決します。Homebrewを使う場合は `brew install ffmpeg yt-dlp node`、既存版がある場合は互換性を確認して使います。
+
+開発起動の制作・ライブラリ・モデルはcheckout内の `work/desktop-development/data/ChopLab Preview`、録音等の一時領域は同じ開発rootの `tmp` に保存します。インストール済みNEXTの制作と分離し、`gradlew clean` でも開発制作を消しません。通常終了で保存した制作は次の開発起動で復元します。Gradleから直接起動する場合も `:desktop:runLinkedPreview` が同じ境界を使います。別の隔離rootは `-PchoplabDevelopmentRoot=<directory>` で選べます。
+
+`./scripts/run_mac_next.sh --debug` は、アプリのmain実行前に `127.0.0.1:5005` でJVMデバッガの接続を待ちます。IDEのRemote JVM Attachで同じhost/portへ接続し、`LinkedPreviewMain.kt`、`NextBackend.kt`、共有Presenter/engineにbreakpointを置けます。JDKの `jdb -attach 127.0.0.1:5005` でも接続できます。別portは `./gradlew :desktop:runLinkedPreview --debug-jvm -PchoplabDebugPort=5006` です。音声threadを停止するbreakpointは音切れと時刻の停滞を起こすため、デバッガ停止中の遅延値を音声性能の測定に使いません。
 
 音源選択はネイティブのファイルパネル、ウィンドウへのドロップにも対応。Commandキーのopen/save/Undo/Redo/quitを使います。新規データはApplication Support、既存の旧データ領域がある場合は移動せず維持します。システム音はhelperを優先し、OSの画面収録・システムオーディオ録音の許可が必要です。マイク許可は別です。
 
@@ -46,7 +50,7 @@ python3 scripts/run_mac_acceptance.py \
 
 ## Macの4工程NEXT
 
-`./gradlew :desktop:packageMacLinkedPreview` で `desktop/build/mac-linked-preview-app-image/ChopLab NEXT.app` を作成します。Java、録音helper、取得/decodeツール、ドラム分離モデルを含み、単体で起動できます。初回ビルドはHomebrewのffmpeg/node、Python3.11以降とXcode CLIが必要です。同梱ツールとnative依存は `config/mac-media-tool-files.txt` で固定し、実行時はHomebrewやPATHを使いません。元の4工程・大きなPAD・右側の曲配置を使う新しい編集入口です。既存Previewと別のapp identityを持ち、制作はPreview領域の `next-v10` に分離します。ローカルad-hoc署名で、公証済みの一般配布とは別です。
+`./gradlew :desktop:packageMacLinkedPreview` で `desktop/build/mac-linked-preview-app-image/ChopLab NEXT.app` を作成します。Java、録音helper、取得/decodeツール、ドラム分離モデルを含み、単体で起動できます。初回ビルドはHomebrewのffmpeg/node、Python3.11以降とXcode CLIが必要です。同梱ツールとnative依存は `config/mac-media-tool-files.txt` / `config/mac-media-tool-files-20261006.txt` の確認済み完全集合で固定し、実行時はHomebrewやPATHを使いません。元の4工程・大きなPAD・右側の曲配置を使う新しい編集入口です。既存Previewと別のapp identityを持ち、制作はPreview領域の `next-v10` に分離します。ローカルad-hoc署名で、公証済みの一般配布とは別です。
 
 WAV・FLAC・MP3・M4A（AAC/ALAC）・AAC・Ogg・Opus・AIFF/AIF・MP4・WebMの取込、チョップ、PAD、合成ドラム、曲への配置、原曲用のマイク録音、曲に合わせた声の録音、スクラッチ、保存/再開、WAV書出しを接続しています。オンライン候補からの明示取込、Mac端末音録音、音源ライブラリ、ドラム分離もNEXTへ接続済みです。Spotify接続と長尺prefetchは移植中で、全制作機能の受入はROADMAPに沿って進めます。起動と保存復元の再現手順は [TESTING](../docs/TESTING.md)、移行とMac実測は [ROADMAP](../docs/ROADMAP.md) で管理します。
 

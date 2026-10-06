@@ -12,6 +12,8 @@ on:
       - 'scripts/prepare_mac_media_tools.py'
       - 'config/mac-audio-tool-files.txt'
       - 'config/mac-media-tool-files.txt'
+      - 'config/mac-media-tool-files-20261006.txt'
+      - 'scripts/mac_tool_policy.py'
       - 'scripts/run_mac_next_acceptance.py'
       - 'scripts/acceptance/MacPreviewLifecycle.java'
       - 'scripts/check_public_surface.py'

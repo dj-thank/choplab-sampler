@@ -110,7 +110,9 @@ ChopLabは独立した製品で、これらの権利者との提携・後援を�
 
 ## Local macOS Preview tools
 
-Mac PreviewはHomebrewのFFmpeg/FFprobe、Nodeとそれらのdylibを私有build領域へ複製し、loader参照を同梱配置へ変更します。元のインストールは変更しません。実version、元bytes/配置変更後のhashはtool manifest、許可するnative名は `config/mac-media-tool-files.txt` が正本です。yt-dlp standaloneは2026.08.19、upstream assetのSHA-256を固定します。
+Mac PreviewはHomebrewのFFmpeg/FFprobe、Nodeとそれらのdylibを私有build領域へ複製し、loader参照を同梱配置へ変更します。元のインストールは変更しません。実version、元bytes/配置変更後のhashはtool manifest、許可するnative集合は `config/mac-media-tool-files.txt` と `config/mac-media-tool-files-20261006.txt` が正本です。yt-dlp standaloneは2026.08.19、upstream assetのSHA-256を固定します。
+
+2026-10-06のMac CIでNode共有依存の2ファイルが更新されたため、従来の40ファイル集合に加え、`config/mac-media-tool-files-20261006.txt` の40ファイル集合を明示して扱います。差分は `libhdr_histogram.6.3.3 → 6.4.4` と `libsimdjson.33.0.0 → 34.0.0` のみ。両集合は準備時に完全一致で検査し、混在・追加・欠落を許可しません。選択した集合をtool manifestへ記録します。Homebrewの現行recipeは [HdrHistogram_c 0.12.0](https://github.com/HdrHistogram/HdrHistogram_c/tree/0.12.0)（CC0-1.0 OR BSD-2-Clause）、[simdjson 5.0.2](https://github.com/simdjson/simdjson/tree/v5.0.2)（Apache-2.0）を参照します。これらのsource取得先・宣言licenseと、実bundleの対応source/build/本文配達の完了を区別し、Mac toolsの `NOASSERTION` と公開前の提供条件を維持します。
 
 Mac NEXTもオンライン音源取得のため同じFFmpeg/FFprobe・Node・yt-dlpとdylibを同梱し、`config/mac-media-tool-files.txt` と同じlicense/source条件を適用します。NEXTにも既存Previewと同じcommit/SHA-256固定のドラム分離モデルを同梱し、上記モデルのライセンス条件を適用します。ローカルcodecだけの準備用部分集合は `config/mac-audio-tool-files.txt` に残します。
 
