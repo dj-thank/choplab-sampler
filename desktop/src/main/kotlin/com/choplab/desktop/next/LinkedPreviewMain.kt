@@ -19,6 +19,7 @@ import com.choplab.desktop.provider.SpotifyDesktopSession
 import com.choplab.desktop.provider.SpotifySessionPurpose
 import com.choplab.jvm.FileQuickStartStore
 import com.choplab.jvm.OriginalAudioImportPort
+import com.choplab.jvm.OriginalPlaybackProbe
 import com.choplab.jvm.OutputRecovery
 import com.choplab.jvm.VoiceTakes
 import com.choplab.jvm.closeAfterAutosave
@@ -240,7 +241,11 @@ internal class DesktopEditorPorts(
     private val japanese get() = Locale.getDefault().language == "ja"
     override val autoChop get() = backend.autoChop
     override val originalAvailable get() = backend.engine.status.value.phase == DriverPhase.ATTACHED
-    override fun originalPlaying() = backend.engine.originalPlayback().playing
+    override fun originalPlaying(): Boolean? = when (val probe = backend.engine.originalPlaybackProbe()) {
+        is OriginalPlaybackProbe.Ready -> probe.playback.playing
+        OriginalPlaybackProbe.Contended -> null
+        OriginalPlaybackProbe.Unavailable -> if (backend.engine.status.value.phase != DriverPhase.ATTACHED) false else null
+    }
     override fun playingPads() = backend.engine.playingPads()
     override fun cancelOriginalPreparation() = backend.audition.cancelPreparation()
     override suspend fun playOriginal(asset: Asset) = backend.audition.play(asset)

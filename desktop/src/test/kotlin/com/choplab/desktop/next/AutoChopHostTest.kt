@@ -29,6 +29,83 @@ import kotlin.test.*
 
 /** Actual editor, host worker, SOURCE engine region, PAD and persistence; the endpoint is synthetic. */
 class AutoChopHostTest {
+    @Test fun normalSourcePlaybackStopsInThePresenterWhenItsOutputIsReleased() = runBlocking<Unit> {
+        val directory = Files.createTempDirectory("source-output-release-")
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val backend = NextBackend.create(directory.resolve("profile"), sinkFactory = { CountingTestSink() }, microphone = { null })
+        val host = DesktopEditorPorts(backend) { null }
+        val presenter = ContinuousEditorPresenter(backend.studio, scope, host)
+        try {
+            val file = directory.resolve("source.wav")
+            Files.newOutputStream(file).use { WavCodec.writeFloat(it, FloatArray(48_000 * 8 * 2) { if (it % 2 == 0) .1f else -.2f }) }
+            assertTrue(backend.importAudio(file).accepted); idle(backend)
+            assertTrue(presenter.dispatch(ContinuousEditorAction.Navigate(ContinuousStage.CHOP)))
+            until { presenter.state.value.permits(ContinuousCapability.ORIGINAL_PLAYBACK) }
+            assertTrue(presenter.dispatch(ContinuousEditorAction.PlayOriginal))
+            until { presenter.state.value.originalPlaying && (backend.engine.originalPlaybackProbe() as? OriginalPlaybackProbe.Ready)?.playback?.playing == true }
+            assertFalse(presenter.state.value.liveChopping, "Normal SOURCE has no live-chop route-end path")
+            val before = backend.studio.document.value
+            assertTrue(backend.engine.releaseOutput())
+            until { backend.engine.status.value.phase == DriverPhase.EDITING_ONLY }
+            assertEquals(OriginalPlaybackProbe.Unavailable, backend.engine.originalPlaybackProbe())
+            val stopped = withTimeoutOrNull(5_000) {
+                while (presenter.state.value.originalPlaying) delay(5)
+                true
+            }
+            assertEquals(true, stopped, "Released SOURCE still shown playing: driver=${backend.engine.status.value}, " +
+                "probe=${backend.engine.originalPlaybackProbe()}, host=${host.originalPlaying()}, state=${presenter.state.value.originalPlaying}")
+            assertEquals(false, host.originalPlaying())
+            assertEquals(before, backend.studio.document.value)
+        } finally { presenter.close(); host.close(); backend.shutdown(); scope.cancel(); directory.toFile().deleteRecursively() }
+    }
+
+    @Test fun sourcePublicationContentionIsUnknownToAFreshHostReaderRatherThanStopped() = runBlocking<Unit> {
+        val directory = Files.createTempDirectory("live-chop-source-readout-")
+        val endpoint = CountingTestSink()
+        val hold = java.util.concurrent.atomic.AtomicBoolean()
+        val parked = java.util.concurrent.CountDownLatch(1)
+        val resume = java.util.concurrent.CountDownLatch(1)
+        val reader = java.util.concurrent.Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+        val backend = NextBackend.create(directory.resolve("profile"), sinkFactory = { object : AudioSink by endpoint {
+            override fun write(bytes: ByteArray, offset: Int, length: Int): Int = endpoint.write(bytes, offset, length).also {
+                if (hold.get()) {
+                    parked.countDown()
+                    check(resume.await(10, java.util.concurrent.TimeUnit.SECONDS)) { "The test must release the output worker" }
+                }
+            }
+        } }, microphone = { null })
+        val host = DesktopEditorPorts(backend) { null }
+        try {
+            val file = directory.resolve("source.wav")
+            Files.newOutputStream(file).use { WavCodec.writeFloat(it, FloatArray(48_000 * 8 * 2) { if (it % 2 == 0) .1f else -.2f }) }
+            assertTrue(backend.importAudio(file).accepted); idle(backend)
+            val asset = backend.studio.document.value.project.assets.single()
+            assertTrue(host.playOriginal(asset))
+            hold.set(true)
+            assertTrue(withContext(Dispatchers.IO) { parked.await(10, java.util.concurrent.TimeUnit.SECONDS) })
+            val playing = assertIs<OriginalPlaybackProbe.Ready>(backend.engine.originalPlaybackProbe()).playback
+            assertTrue(playing.playing)
+            assertTrue(playing.sourceFrame < asset.frames)
+            // The audio owner is parked: hold its existing seqlock mid-publication without racing its writer.
+            val view = StreamingEnginePort::class.java.getDeclaredField("engineView").run { isAccessible = true; get(backend.engine) }
+            val engine = view.javaClass.getDeclaredField("engine").run { isAccessible = true; get(view) as com.choplab.engine.EngineCore }
+            val version = com.choplab.engine.LiveReadout::class.java.getDeclaredField("version").apply { isAccessible = true }
+            val before = version.getLong(engine.readout)
+            assertEquals(0L, before and 1L)
+            version.setLong(engine.readout, before + 1)
+            try {
+                withContext(reader) {
+                    // A new control worker has an empty snapshot until a coherent copy succeeds.
+                    assertEquals(OriginalPlaybackProbe.Contended, backend.engine.originalPlaybackProbe())
+                    assertNull(host.originalPlaying(), "An unobserved SOURCE state must not end a live chop pass")
+                }
+            } finally { version.setLong(engine.readout, before) }
+            assertEquals(true, withContext(reader) { host.originalPlaying() })
+        } finally {
+            resume.countDown(); host.close(); backend.shutdown(); reader.close(); directory.toFile().deleteRecursively()
+        }
+    }
+
     @Test fun temporaryReadoutContentionKeepsTheManualCorrectionForTheSameOutputRoute() = runBlocking<Unit> {
         val directory = Files.createTempDirectory("live-chop-readout-")
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -259,7 +336,19 @@ class AutoChopHostTest {
                     override fun pendingFrames() = 240L
                 } }, microphone = { null })
                 val host = DesktopEditorPorts(backend) { null }
-                val presenter = ContinuousEditorPresenter(backend.studio, scope, host)
+                val observing = java.util.concurrent.atomic.AtomicBoolean()
+                val consumed = java.util.concurrent.ConcurrentLinkedQueue<String>()
+                fun recordConsumed(event: String) {
+                    if (!observing.get()) return
+                    if (consumed.size >= 48) consumed.poll()
+                    consumed.add("${System.nanoTime()}ns $event")
+                }
+                val observedHost = object : ContinuousEditorPorts by host {
+                    override fun originalPlaying() = host.originalPlaying().also { recordConsumed("completion=$it driver=${backend.engine.status.value.phase}") }
+                    override fun liveChopOutput() = host.liveChopOutput().also { recordConsumed("press=$it") }
+                    override fun liveChopProbe() = host.liveChopProbe().also { recordConsumed("timing=$it") }
+                }
+                val presenter = ContinuousEditorPresenter(backend.studio, scope, observedHost)
                 val timingActions = mutableListOf<ContinuousEditorAction>()
                 val timingObservations = mutableListOf<String>()
                 // Distinguish a missing press reading, an unsent action and a pass that ended before its edit.
@@ -410,6 +499,7 @@ class AutoChopHostTest {
                     assertEquals(true, committed, "Timed out at $acknowledgement: ${timingDiagnostics()}")
                     assertEquals(before, backend.studio.document.value)
                     liveStarted = System.nanoTime()
+                    observing.set(true)
                     observeLive("before Begin pointer")
                     scene.pointer("ce-live-chop"); until { presenter.state.value.liveChopping }; scene.settle()
                     livePhase = "reach PAD"; observeLive("Begin observed")
@@ -428,7 +518,8 @@ class AutoChopHostTest {
                     scene.settle(); until { presenter.state.value.liveChopTiming.lastCut != null || !presenter.state.value.liveChopping }
                     observeLive("receipt wait ended")
                     val receipt = assertNotNull(presenter.state.value.liveChopTiming.lastCut,
-                        "$locale ${width}x$height font=$font: ${liveObservations.joinToString("\n")}")
+                        "$locale ${width}x$height font=$font begin=${liveStarted}ns: ${liveObservations.joinToString("\n")}\n" +
+                            "Consumed host readings (no diagnostic reread): ${consumed.joinToString("\n")}")
                     assertTrue(receipt.eventNanos in start until release, "It uses the press, not the later release")
                     assertEquals(receipt.observedSourceFrame - kotlin.math.round(.037 * rate * 2).toLong(), receipt.requestedSourceFrame,
                         "$locale ${width}x$height: receipt=$receipt, timing=${presenter.state.value.liveChopTiming}")

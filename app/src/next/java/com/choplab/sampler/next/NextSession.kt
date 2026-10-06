@@ -184,7 +184,11 @@ class NextSession private constructor(
         }
         override val autoChop get() = backend.autoChop
         override val originalAvailable get() = backend.engine.status.value.phase == DriverPhase.ATTACHED
-        override fun originalPlaying() = backend.engine.originalPlayback().playing
+        override fun originalPlaying(): Boolean? = when (val probe = backend.engine.originalPlaybackProbe()) {
+            is OriginalPlaybackProbe.Ready -> probe.playback.playing
+            OriginalPlaybackProbe.Contended -> null
+            OriginalPlaybackProbe.Unavailable -> if (backend.engine.status.value.phase != DriverPhase.ATTACHED) false else null
+        }
         override fun playingPads() = backend.engine.playingPads()
         override fun cancelOriginalPreparation() = backend.audition.cancelPreparation()
         override suspend fun playOriginal(asset: Asset) = backend.audition.play(asset)
