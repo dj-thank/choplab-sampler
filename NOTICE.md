@@ -4,6 +4,8 @@ ChopLab / おとひろい / Earth Song のオリジナルコードは [MIT Licen
 第三者のライブラリ、実行環境、モデル、同梱ツールには各提供元の条件が適用されます。
 この索引だけで、配布物のライセンス本文や対応するソースの提供を代替しません。
 
+配布時は `scripts/prepare_source_notices.py` がこの本文、独立したlicense全文、固定manifestとrecipe、`SOURCE-INDEX.json` / `SOURCE-INDEX.md` を同梱します。Androidは `assets/source-notices/`、Macは `Contents/app/`、Windowsはapp-image直下から読めます。共通のApache-2.0・LGPL-2.1・JNA表示とGPLv3本文の取得物・entry・hashは `config/source-notice-texts.json` に記録し、NIO configurationの本文は下記の固定bytesを使います。取得indexの生成は全依存のnotice網羅・完全な対応source・公開提供の認定ではありません。未解決のAndroid再利用native、NIO、Mac toolsはindexにも明記します。
+
 ## Built-in sounds
 
 DUSTY JAZZ、BOOM BAP、VINYL SOUL、LO-FI TAPE、CLEAN STUDIO は、
@@ -19,7 +21,7 @@ DUSTY JAZZ、BOOM BAP、VINYL SOUL、LO-FI TAPE、CLEAN STUDIO は、
 | Family | Upstream and license information | Distribution handling |
 |---|---|---|
 | Kotlin、coroutines、serialization | [JetBrains Kotlin](https://github.com/JetBrains/kotlin)、[kotlinx.coroutines](https://github.com/Kotlin/kotlinx.coroutines)、[kotlinx.serialization](https://github.com/Kotlin/kotlinx.serialization) / Apache-2.0 | 各ライセンスと著作権表示を保持 |
-| AndroidX、Jetpack Compose | [AndroidX](https://android.googlesource.com/platform/frameworks/support/) / Apache-2.0 | 解決されたAAR/JARのnoticeを保持 |
+| AndroidX、Jetpack Compose | [AndroidX](https://android.googlesource.com/platform/frameworks/support/) / Apache-2.0 | 解決されたAAR/JARのnoticeを保持。AndroidX Test runner 1.7.0は対応instrumentation APKだけの明示依存 |
 | Compose Multiplatform、Skiko | [Compose](https://github.com/JetBrains/compose-multiplatform)、[Skiko](https://github.com/JetBrains/skiko) / Apache-2.0 | Skiaなど内包ネイティブ部品のnoticeも保持 |
 | Java Native Access | [JNA](https://github.com/java-native-access/jna) / Apache-2.0 または LGPL-2.1-or-later | 選択した配布条件と同梱native noticeを保持 |
 | ONNX Runtime | [ONNX Runtime](https://github.com/microsoft/onnxruntime) / MIT | ThirdPartyNoticesも含め、Android/Windowsそれぞれのartifactを確認 |
@@ -29,9 +31,26 @@ DUSTY JAZZ、BOOM BAP、VINYL SOUL、LO-FI TAPE、CLEAN STUDIO は、
 | yt-dlp | [yt-dlp](https://github.com/yt-dlp/yt-dlp) / 本体Unlicense、配布EXEの依存には個別条件あり | 固定したReleaseのLICENSEとbinaryの構成を保持 |
 | FFmpeg / FFprobe | [FFmpeg](https://ffmpeg.org/legal.html)、[Windows build](https://www.gyan.dev/ffmpeg/builds/) | build構成によりGPL等が適用される。実際の固定buildに対応するlicense/sourceを提供 |
 | Node.js | [Node.js](https://github.com/nodejs/node) / MITおよび同梱部品の条件 | 固定versionのLICENSEをtoolと一緒に保持 |
+| Windows 音声専用 FFmpeg 候補 | [FFmpeg 8.1.2](https://ffmpeg.org/releases/)、[Rubber Band 4.0.0](https://breakfastquay.com/rubberband/)、[MSYS2 CLANG64](https://packages.msys2.org/) | opt-in。GPL-3.0-or-later の FFmpeg tools と固定した音声 codec/TLS の DLL。`config/windows-ffmpeg-audio.json` が元 binary・対応 source archive・派生 files を固定し、`ffmpeg-notices/` と `FFmpeg-SOURCES.json` を保持する。対応 source は app ZIP と別に提供し、公開提供条件の確認は release gate |
+| Windows 音声候補の build tools | [LLVM-MinGW](https://github.com/mstorsjo/llvm-mingw/releases/tag/20260922)、[NASM](https://www.nasm.us/)、[Meson](https://mesonbuild.com/)、[Ninja](https://ninja-build.org/) | build 時だけ使用。LLVM/MinGW runtime notice は候補に保持。compiler/source の hash と手順は上記 manifest と `scripts/build_windows_audio_runtime.py` |
+| cryptography 50.0.2 | [PyCA](https://pypi.org/project/cryptography/50.0.2/) | Apache-2.0 OR BSD-3-Clause。loopback TLS 試験の一時証明書生成用。app へ同梱しない |
+| QuickJS-NG 0.17.0 (Windows) | [upstream source](https://github.com/quickjs-ng/quickjs/tree/6d46d07d04041b40f4f49eaa7fdebe44c314c699) / MIT | 公式x64 executable、source commit、実bytes/SHA-256とMIT本文を `config/windows-quickjs.json` に固定。全文を `licenses/quickjs-LICENSE.txt`（行末空白のみ正規化）と配布 `tools/QuickJS-LICENSE.txt`（上流固定bytes）に保持 |
 | Drum separation model | [StemSplitio/htdemucs-ft-drums-onnx](https://huggingface.co/StemSplitio/htdemucs-ft-drums-onnx) / model cardのMIT条件 | 固定commit・hash・model cardと元Demucsのattributionを保持 |
+| Four-part separation model | [StemSplitio/htdemucs-onnxの固定model card](https://huggingface.co/StemSplitio/htdemucs-onnx/blob/d54ed9eb60e258ea82131c6ee14578628816456a/README.md) / MIT、元[Demucs](https://github.com/facebookresearch/demucs/blob/main/LICENSE)のattribution | 単一HT-Demucs、commit `d54ed9eb60e258ea82131c6ee14578628816456a`、`htdemucs_fp16weights.onnx` 165,612,636 bytes、SHA-256 `d05c269d0178d2a72ad484b10b11dd370193fc923201c3b27a99f848745db70a`。明示download・全size/hash検証・既存cache保全。FT drums専用モデルとは別 |
 | Desktop Java runtime | [Eclipse Temurin](https://adoptium.net/)、[OpenJDK](https://openjdk.org/legal/) | GPL-2.0 with Classpath Exception等。runtime/legalの同梱表示を保持 |
 | Gradle Wrapper / build plugins | [Gradle](https://github.com/gradle/gradle)、[CycloneDX Gradle](https://github.com/CycloneDX/cyclonedx-gradle-plugin) | Wrapper・build用依存の各licenseを保持 |
+
+Androidの任意指定の音声runtime候補は、元のFFmpeg AAR 0.18.1を保持し、arm64のFFmpeg/FFprobeとその共有library ZIPの3 entryだけを置換します。FFmpegは同じ7.1.1の[公式source](https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.xz)からNDK r28c/API 29で再buildし、音声decoder/encoder、音声filter、container/parser/protocolとTLSを残します。不要な動画codec・描画・debug情報を除き、共有libraryの重複を避けます。libvorbis、Opus、LAME、GnuTLS等の外部libraryとPython側の共有依存は、hash固定した元AARのbytesを変更せず再利用します。Java、consumer rules、他ABIも元bytesのままです。
+
+この候補と組み合わせる Python linkage 派生は、同じ library AAR 0.18.1 の arm64 ZIP にある link 用 alias `usr/lib/liblzma.so` だけを除きます。Android system の同名 library を私有 cache が隠す問題への互換修正です。実行時 SONAME `liblzma.so.5`、元 XZ 5.8.1 ELF、Python `_lzma` を含む 1,006 entry は内容と mode を保持します。元 Python/FFmpeg の 252 ELF の DT_NEEDED を検査し、除去名への依存がないことを recipe が要求します。再梱包に伴う ZIP 圧縮形式と bytes の変更は `config/android-ffmpeg-audio.json` に固定し、元 AAR/source の identity、25 個の他 AAR entry、依存 metadata、各ライセンス・対応 source の提供条件を維持します。codec/TLS の削除や OS library の同梱はしません。
+
+元AAR・公式source・上流Termux recipeのcommit・対応する18組の公開header source・NDK・派生AAR/各native entryのbytes/SHA-256は `config/android-ffmpeg-audio.json`、再build手順は `scripts/build_android_audio_runtime.py` が正本です。生成receiptは依存closure、変更しないentry集合、configure内容を含みます。このFFmpeg buildは `--enable-gpl --enable-version3` を用い、GPLv3本文をnative ZIP内の `licenses/FFmpeg-COPYING.GPLv3` に保持します。外部libraryの個別license、元AARの対応sourceとTermux patch群、必要なbuild/install手順、配布物近傍のsource提供と利用者へのnotice配達は引き続き公開判定の対象です。hash一致やこの候補recipeだけで、それら全ての提供を完了したとは扱いません。
+
+`scripts/prepare_next_native_candidate.py` と手動のNEXT native candidate workflowは、上記Android/Windows recipeと固定値を再利用して候補appへ接続します。新しいnative依存やlicense例外を追加しません。候補名・CI artifactの保存期間・cross buildの成功によって、対応sourceとnoticeの提供条件は変わりません。対象source cacheと受入の再現手順は [RELEASE](docs/RELEASE.md#配布サイズの測定境界) に記載します。
+
+WindowsのONNX Runtime 1.30.0はMaven Centralの完全な上流JARを取得し、`scripts/prepare_windows_runtime.py` でWindows x64以外のnative entryだけを除いた派生JARを梱包します。全Java class、API、Windows DLL、POM、ThirdPartyNoticesは元のbytesを保持します。元JARのURL/公開SHA-1/size/SHA-256、source JAR、MIT本文の出所、派生JARのbytes/hashと全残存entryの集合hashは `config/windows-onnxruntime.json`、各entryのbytes/hashは同梱 `app/onnxruntime-windows.json` に記録します。再現可能なZIP_STORED形式を用い、外側の配布ZIPで圧縮します。MIT全文は `licenses/onnxruntime-LICENSE.txt` とWindows app内に同梱します。これはWindows用の梱包変換であり、モデル・演算子・精度・codecの削減ではありません。対応sourceを実際に配布物の近くから提供する条件は引き続きRELEASEに従います。
+
+Windowsのドラム専用モデルは初回の明示分離操作時に既存のcommit固定URLから取得し、165,612,636 bytesとSHA-256を検証して私有cacheへ保存します。これは4stemモデルとは別資産で、旧ドラム専用モデルの成功を4stem品質の証拠にしません。Macの既存モデル同梱構成は維持します。
 
 GPL部品を組み合わせた配布物には、その組合せに適用されるGPL条件と対応するsource/build手順が必要です。
 ChopLab単体のMIT表示だけで、組合せ全体をMIT-onlyと扱いません。

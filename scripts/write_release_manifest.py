@@ -10,6 +10,11 @@ import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+try:
+    from .prepare_source_notices import validate_archive as validate_source_notices
+except ImportError:  # direct CLI invocation
+    from prepare_source_notices import validate_archive as validate_source_notices
+
 SHA256_SUFFIX = ".sha256"
 EXPECTED_BINARY_PATTERNS = {
     "android": re.compile(r"^ChopLab-v[^/]+-android-release\.apk$"),
@@ -96,6 +101,7 @@ def validate_checksum_sidecars(
             f"Expected exact release SBOM {expected_sbom_name!r}, found: {sbom_names}"
         )
     required_names.add(expected_sbom_name)
+    required_names.add(f"{expected_prefix}source-notices.zip")
 
     sidecars = sorted(path for path in directory.iterdir() if path.is_file() and path.name.endswith(SHA256_SUFFIX))
     sidecars_by_target = {path.name[: -len(SHA256_SUFFIX)]: path for path in sidecars}
@@ -144,10 +150,11 @@ def write_manifest(
     assets = collect_assets(directory, output)
     validate_expected_binaries(assets, version)
     validate_checksum_sidecars(directory, assets, version)
-    expected = {f"ChopLab-v{version}-android-release.apk", f"ChopLab-v{version}-windows-app-image.zip", f"ChopLab-v{version}-sbom.cdx.json"}
+    expected = {f"ChopLab-v{version}-android-release.apk", f"ChopLab-v{version}-windows-app-image.zip", f"ChopLab-v{version}-sbom.cdx.json", f"ChopLab-v{version}-source-notices.zip"}
     unexpected = {asset.name for asset in assets} - expected
     if unexpected:
         raise ValueError(f"Unexpected release asset(s): {sorted(unexpected)}")
+    validate_source_notices(directory / f"ChopLab-v{version}-source-notices.zip", commit)
     payload: dict[str, object] = {
         "schema_version": 1,
         "product": "ChopLab",

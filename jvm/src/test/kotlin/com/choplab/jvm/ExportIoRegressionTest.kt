@@ -1,5 +1,6 @@
 package com.choplab.jvm
 
+import com.choplab.core.StemSampleFormat
 import com.choplab.engine.*
 import kotlinx.coroutines.runBlocking
 import java.io.ByteArrayInputStream
@@ -33,6 +34,11 @@ class ExportIoRegressionTest {
         })
         assertContentEquals(expected, output.toByteArray(), "The arrangement, stereo, dither and latency trim are unchanged")
         assertEquals(0, preparations, "Resident audio and silent gaps have no page I/O to dispatch")
+        val stem = ByteArrayOutputStream()
+        StreamingStemRenderer.render(program, listOf(0 to stem), frames, 0, StemSampleFormat.PCM24, seed = 47,
+            prepared = { _, render -> preparations++; render() })
+        assertContentEquals(expected, stem.toByteArray(), "A bypassed track's pre-master stem has the same seeded samples")
+        assertEquals(0, preparations, "Sequential stems must also avoid empty PCM worker dispatches")
     }
 
     @Test fun smallWavWritesAreBatchedWithoutChangingBytesAndTheBufferIsCharged() = runBlocking<Unit> {

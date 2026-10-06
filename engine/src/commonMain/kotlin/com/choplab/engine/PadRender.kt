@@ -1,8 +1,11 @@
 package com.choplab.engine
 
+import kotlin.math.PI
+import kotlin.math.cos
+
 /**
  * Offline: a PAD's range as its voice reads it, with its pitch, reverse and tone, at unity gain and without envelope,
- * pan or limiter. Interleaved stereo at the engine rate, for placing a transformed PAD on the song as plain audio.
+ * pan or limiter by default. Interleaved stereo at the engine rate, for placing a transformed PAD on the song as plain audio.
  */
 object PadRender {
     /** The most frames one render may produce: what the engine can hold resident. */
@@ -19,9 +22,16 @@ object PadRender {
         return count
     }
 
-    fun render(pad: Pad, prepared: (List<PcmWindow>, () -> Unit) -> Unit = { windows, render -> require(windows.isEmpty()); render() }): FloatArray {
+    fun render(pad: Pad, prepared: (List<PcmWindow>, () -> Unit) -> Unit = { windows, render -> require(windows.isEmpty()); render() }): FloatArray =
+        render(pad, bakePan = false, prepared = prepared)
+
+    /** Opt in to the PAD's own pan before the destination BANK fader. Gain, envelope and BANK mix remain outside. */
+    fun render(pad: Pad, bakePan: Boolean,
+               prepared: (List<PcmWindow>, () -> Unit) -> Unit = { windows, render -> require(windows.isEmpty()); render() }): FloatArray {
         val frames = frames(pad)
         val output = FloatArray(frames * 2)
+        val leftPan = if (bakePan && pad.pan > 0f) cos(pad.pan * PI / 2).toFloat() else 1f
+        val rightPan = if (bakePan && pad.pan < 0f) cos(-pad.pan * PI / 2).toFloat() else 1f
         val interpolator = PitchInterpolator()
         val cursor = PcmReadCursor()
         var position = start(pad)
@@ -39,8 +49,8 @@ object PadRender {
                     toneLeft += pad.toneAlpha * (left - toneLeft); left = toneLeft
                     toneRight += pad.toneAlpha * (right - toneRight); right = toneRight
                 }
-                output[frame * 2] = left.toFloat()
-                output[frame * 2 + 1] = right.toFloat()
+                output[frame * 2] = (left * leftPan).toFloat()
+                output[frame * 2 + 1] = (right * rightPan).toFloat()
                 position += pad.step
                 }
                 check(!cursor.missing) { "PCM missing during PAD render" }

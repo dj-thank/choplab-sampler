@@ -1,0 +1,228 @@
+name: ChopLab NEXT native candidate
+
+# Explicit candidate build. Existing verification, legacy releases and signing
+# remain separate; this workflow cannot publish a GitHub Release.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: next-native-candidate-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONUTF8: '1'
+  CHOPLAB_SPOTIFY_CLIENT_ID: ${{ vars.CHOPLAB_SPOTIFY_CLIENT_ID }}
+
+jobs:
+  android-next:
+    name: Rebuild and package Android NEXT candidate
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4.0.4
+        with:
+          packages: platform-tools
+
+      - name: Install native build tools and pinned NDK
+        shell: bash
+        run: |
+          brew install python@3.14 pkg-config
+          set +o pipefail
+          yes | sdkmanager --licenses >/dev/null
+          sdkmanager_status=${PIPESTATUS[1]}
+          set -o pipefail
+          [[ "$sdkmanager_status" -eq 0 ]] || exit "$sdkmanager_status"
+          ndk_revision=$(python3.14 -c 'import json; print(json.load(open("config/android-ffmpeg-audio.json"))["ndk"]["revision"])')
+          sdkmanager "platform-tools" "platforms;android-37.0" "build-tools;36.0.0" "ndk;$ndk_revision"
+          echo "CHOPLAB_NATIVE_NDK=$ANDROID_HOME/ndk/$ndk_revision" >> "$GITHUB_ENV"
+
+      - name: Test candidate policy and rebuild exact Android inputs
+        shell: bash
+        run: |
+          python3.14 -m unittest scripts.tests.test_next_native_candidate scripts.tests.test_distribution_size scripts.tests.test_next_native_workflow scripts.tests.test_android_audio_runtime scripts.tests.test_android_python_runtime scripts.tests.test_windows_audio_runtime
+          python3.14 scripts/prepare_next_native_candidate.py android \
+            --ndk "$CHOPLAB_NATIVE_NDK" --work work/next-native-android --jobs 4
+
+      - name: Read release metadata
+        id: release
+        run: python3.14 scripts/release_metadata.py --github-output "$GITHUB_OUTPUT"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+
+      - name: Build the full NEXT app and matching R8 test APK
+        shell: bash
+        run: |
+          ./gradlew --no-daemon --max-workers=1 --no-watch-fs --stacktrace \
+            :app:assemblePreview :app:assemblePreviewAndroidTest \
+            -PchoplabNextSizeProbe=true \
+            -PchoplabAndroidAudioRuntime=work/next-native-android/candidate/ffmpeg-audio-arm64.aar \
+            -PchoplabAndroidPythonRuntime=work/next-native-android/candidate/library-linkage-arm64.aar
+
+      - name: Verify 50 MB, NEXT identity and matching test before staging
+        shell: bash
+        env:
+          NEXT_VERSION: ${{ steps.release.outputs.version }}-preview
+          NEXT_BUILD_NUMBER: ${{ steps.release.outputs.build_number }}
+        run: |
+          mkdir -p dist/android-next-native-candidate
+          python3.14 scripts/verify_android_next_probe.py \
+            --apk app/build/outputs/apk/preview/app-preview-unsigned.apk \
+            --mapping app/build/outputs/mapping/preview/mapping.txt \
+            --version "$NEXT_VERSION" --version-code "$NEXT_BUILD_NUMBER" \
+            --test-apk app/build/outputs/apk/androidTest/preview/app-preview-androidTest.apk \
+            --test-mapping app/build/outputs/mapping/previewAndroidTest/mapping.txt \
+            --test-configuration app/build/outputs/mapping/previewAndroidTest/configuration.txt \
+            --output dist/android-next-native-candidate/static-verification.json
+          cp app/build/outputs/apk/preview/app-preview-unsigned.apk dist/android-next-native-candidate/
+          cp app/build/outputs/apk/androidTest/preview/app-preview-androidTest.apk dist/android-next-native-candidate/
+          cp work/next-native-android/candidate/native-inputs.json dist/android-next-native-candidate/
+          git rev-parse HEAD > dist/android-next-native-candidate/source-revision.txt
+          python3.14 scripts/prepare_source_notices.py --platform android --require-committed \
+            --out dist/android-next-native-candidate/source-notices \
+            --archive dist/android-next-native-candidate/source-notices.zip
+          python3.14 scripts/check_public_surface.py \
+            --archive dist/android-next-native-candidate/app-preview-unsigned.apk \
+            --archive dist/android-next-native-candidate/app-preview-androidTest.apk \
+            --archive dist/android-next-native-candidate/source-notices.zip \
+            --text-file dist/android-next-native-candidate/static-verification.json \
+            --text-file dist/android-next-native-candidate/native-inputs.json \
+            --text-file dist/android-next-native-candidate/source-revision.txt
+          (cd dist/android-next-native-candidate && shasum -a 256 ./*.apk source-notices.zip > SHA256SUMS)
+
+      - name: Upload explicitly unsigned Android NEXT candidate pair
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: choplab-android-next-native-candidate
+          if-no-files-found: error
+          path: dist/android-next-native-candidate/*
+          retention-days: 7
+
+  windows-native:
+    name: Rebuild pinned Windows tools on their admitted compiler host
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Prepare isolated host build tools
+        shell: bash
+        run: |
+          brew install python@3.14 pkg-config
+          python3.14 -m venv work/native-build-venv
+          work/native-build-venv/bin/python - <<'PY'
+          import json, subprocess, sys
+          tools = json.load(open('config/windows-ffmpeg-audio.json'))['buildTools']
+          subprocess.run([sys.executable, '-m', 'pip', 'install',
+                          *(f'{tool}=={tools[tool]}' for tool in ('meson', 'ninja'))], check=True)
+          PY
+          echo "$PWD/work/native-build-venv/bin" >> "$GITHUB_PATH"
+
+      - name: Rebuild and verify every admitted Windows runtime byte
+        run: |
+          python scripts/prepare_next_native_candidate.py windows --work work/next-native-windows --jobs 4
+          python scripts/prepare_source_notices.py --platform windows --require-committed --out work/next-native-windows/candidate/source-notices --archive work/next-native-windows/candidate/source-notices.zip
+          python scripts/check_public_surface.py --text-file work/next-native-windows/candidate/native-inputs.json --text-file work/next-native-windows/candidate/derived.json --archive work/next-native-windows/candidate/source-notices.zip
+
+      - name: Upload exact pinned transfer inputs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: choplab-windows-next-native-inputs
+          if-no-files-found: error
+          path: work/next-native-windows/candidate/*
+          retention-days: 7
+
+  windows-next:
+    name: Package and verify Windows NEXT candidate
+    needs: windows-native
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download inputs from this workflow run
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: choplab-windows-next-native-inputs
+          path: work/native-transfer
+
+      - name: Authenticate transferred bytes before unpacking
+        run: python scripts/prepare_next_native_candidate.py unpack-windows --archive work/native-transfer/ffmpeg-windows-audio.zip --output work/next-native-runtime
+
+      - name: Read release metadata
+        id: release
+        run: python scripts/release_metadata.py --github-output $env:GITHUB_OUTPUT
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+
+      - name: Package the full linked NEXT editor
+        run: .\gradlew.bat --no-daemon --stacktrace :desktop:packageWindowsLinkedPreview -PchoplabWindowsAudioRuntime=work/next-native-runtime
+
+      - name: Verify native codecs and isolated app lifecycle
+        shell: pwsh
+        env:
+          NEXT_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          python -m venv work/native-acceptance-venv
+          .\work\native-acceptance-venv\Scripts\python.exe -m pip install -r config/windows-audio-acceptance-requirements.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\work\native-acceptance-venv\Scripts\python.exe scripts/acceptance/windows_audio_tools.py --tools 'desktop/build/windows-linked-preview-app-image/ChopLab Preview/tools' --work work/native-codec-acceptance
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\scripts\verify-windows-artifact.ps1 -AppImage 'desktop/build/windows-linked-preview-app-image/ChopLab Preview' -ExecutableName 'ChopLab Preview.exe' -ExpectedVersion $env:NEXT_VERSION
+          .\scripts\smoke-windows-app.ps1 -AppImage 'desktop/build/windows-linked-preview-app-image/ChopLab Preview' -ExecutableName 'ChopLab Preview.exe' -SilentAudio
+
+      - name: Verify final 150 MB archive and public surface before staging
+        shell: pwsh
+        env:
+          NEXT_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          New-Item -ItemType Directory -Force -Path dist/windows-next-native-candidate | Out-Null
+          Compress-Archive -Path 'desktop/build/windows-linked-preview-app-image/ChopLab Preview' -DestinationPath dist/windows-next-native-candidate/ChopLab-windows-next.zip -CompressionLevel Optimal
+          python scripts/measure_distribution.py --archive dist/windows-next-native-candidate/ChopLab-windows-next.zip --kind windows-next-candidate --output dist/windows-next-native-candidate/size-verification.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $zip = Get-Item dist/windows-next-native-candidate/ChopLab-windows-next.zip
+          $archiveSha = (Get-FileHash -LiteralPath $zip.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          $acceptancePython = (Resolve-Path work/native-acceptance-venv/Scripts/python.exe).Path
+          & $acceptancePython scripts/run_windows_acceptance.py --archive $zip.FullName --sha256 $archiveSha --source-revision $env:GITHUB_SHA --version $env:NEXT_VERSION --output work/windows-next-acceptance --ejs-python $acceptancePython
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item work/windows-next-acceptance/acceptance.json dist/windows-next-native-candidate/packaged-acceptance.json
+          Copy-Item work/native-transfer/native-inputs.json dist/windows-next-native-candidate/
+          Copy-Item work/native-codec-acceptance/windows-audio-tools.json dist/windows-next-native-candidate/
+          Copy-Item work/native-codec-acceptance/codecs.json dist/windows-next-native-candidate/
+          git rev-parse HEAD | Set-Content -Encoding utf8 dist/windows-next-native-candidate/source-revision.txt
+          python scripts/prepare_source_notices.py --platform windows --require-committed --out dist/windows-next-native-candidate/source-notices --archive dist/windows-next-native-candidate/source-notices.zip
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python scripts/check_public_surface.py --archive dist/windows-next-native-candidate/ChopLab-windows-next.zip --archive dist/windows-next-native-candidate/source-notices.zip --text-file dist/windows-next-native-candidate/size-verification.json --text-file dist/windows-next-native-candidate/native-inputs.json --text-file dist/windows-next-native-candidate/source-revision.txt --text-file dist/windows-next-native-candidate/windows-audio-tools.json --text-file dist/windows-next-native-candidate/codecs.json --text-file dist/windows-next-native-candidate/packaged-acceptance.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $archiveSha + '  ' + $zip.Name | Set-Content -Encoding utf8 dist/windows-next-native-candidate/SHA256SUMS
+          (Get-FileHash dist/windows-next-native-candidate/source-notices.zip -Algorithm SHA256).Hash.ToLowerInvariant() + '  source-notices.zip' | Add-Content -Encoding utf8 dist/windows-next-native-candidate/SHA256SUMS
+
+      - name: Upload Windows NEXT native candidate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: choplab-windows-next-native-candidate
+          if-no-files-found: error
+          path: dist/windows-next-native-candidate/*
+          retention-days: 7

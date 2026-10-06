@@ -2,25 +2,28 @@ package com.choplab.desktop.next
 
 import com.choplab.desktop.audio.DesktopMicrophoneRecorder
 import com.choplab.jvm.MicInput
+import com.choplab.jvm.PcmMemoryBudget
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import java.util.concurrent.atomic.AtomicBoolean
+import javax.sound.sampled.AudioFormat
 import javax.sound.sampled.AudioSystem
 import javax.sound.sampled.DataLine
 import javax.sound.sampled.TargetDataLine
 
-/**
- * The microphone for voice takes through Java Sound: a 16-bit input line at 48 or 44.1 kHz, as the earlier desktop
- * recorder opened it, with both channels of a stereo line averaged to mono. The line is open and started.
- */
-internal class JavaSoundMicInput(private val line: TargetDataLine) : MicInput {
+/** 16-bit 48/44.1 kHz input, averaging native stereo to the existing mono voice recorder. */
+internal class JavaSoundMicInput private constructor(private val line: TargetDataLine,
+    private val reserved: PcmMemoryBudget.Reservation) : MicInput {
     private val inputChannels = line.format.channels
     private val frameBytes = 2 * inputChannels
-    private val bytes = ByteArray(4096 / frameBytes * frameBytes)
+    private var bytes: ByteArray? = ByteArray((CONVERSION_BYTES / frameBytes * frameBytes).toInt())
+    private val released = AtomicBoolean()
     override val sampleRate: Int = line.format.sampleRate.toInt()
-
-    init { require(line.format.sampleSizeInBits == 16 && !line.format.isBigEndian && inputChannels in 1..2) }
+    override val bufferFrames: Int = line.bufferSize / frameBytes
 
     override fun read(buffer: FloatArray): Int {
+        val bytes = this.bytes ?: return -1
         val frames = minOf(buffer.size, bytes.size / frameBytes)
-        // Blocks until the frames arrive; a stopped or closed line returns what it had, then nothing.
         val count = line.read(bytes, 0, frames * frameBytes) / frameBytes
         if (count <= 0) return -1
         for (frame in 0 until count) {
@@ -35,23 +38,44 @@ internal class JavaSoundMicInput(private val line: TargetDataLine) : MicInput {
     }
 
     override fun stop() { line.stop(); line.flush() }
-    override fun close() = line.close()
+    override fun close() {
+        if (!released.compareAndSet(false, true)) return
+        try { line.close(); bytes = null; reserved.close() }
+        catch (failure: Throwable) { released.set(false); throw failure }
+    }
 
     companion object {
-        /** The first input line that opens in one of the earlier recorder's formats; null when there is none. */
-        fun open(): MicInput? {
-            for (format in DesktopMicrophoneRecorder.microphoneFormats()) {
+        internal const val CONVERSION_BYTES = 4096L
+        // Reserve the explicit two-second ceiling before open; request half a second and return the unused bytes.
+        private const val MAX_BUFFER_SECONDS = 2
+        suspend fun open(memory: PcmMemoryBudget = PcmMemoryBudget.shared,
+                         formats: List<AudioFormat> = DesktopMicrophoneRecorder.microphoneFormats(),
+                         supported: (DataLine.Info) -> Boolean = AudioSystem::isLineSupported,
+                         create: (DataLine.Info) -> TargetDataLine = { AudioSystem.getLine(it) as TargetDataLine }): MicInput? {
+            for (format in formats) {
+                require(format.sampleSizeInBits == 16 && !format.isBigEndian && format.channels in 1..2 &&
+                    format.sampleRate.toInt() in 8_000..48_000 && format.frameSize == format.channels * 2)
                 val info = DataLine.Info(TargetDataLine::class.java, format)
-                if (!AudioSystem.isLineSupported(info)) continue
+                if (!supported(info)) continue
+                val ceiling = format.frameSize * format.sampleRate.toInt() * MAX_BUFFER_SECONDS
+                val reserved = memory.reserve(CONVERSION_BYTES + ceiling)
                 var line: TargetDataLine? = null
+                var transferred = false
                 try {
-                    line = AudioSystem.getLine(info) as TargetDataLine
-                    // Half a second of buffer, as Java Sound gives by default: rides out a busy moment or a slow disk
-                    // write on the recording thread. A stop still ends a waiting read at once.
+                    currentCoroutineContext().ensureActive()
+                    line = create(info)
                     line.open(format, format.frameSize * (format.sampleRate.toInt() / 2))
+                    require(line.format.matches(format))
+                    require(line.bufferSize in format.frameSize..ceiling && line.bufferSize % format.frameSize == 0)
+                    currentCoroutineContext().ensureActive()
                     line.start()
-                    return JavaSoundMicInput(line)
-                } catch (_: Exception) { try { line?.close() } catch (_: Exception) { } }
+                    val input = JavaSoundMicInput(line, reserved)
+                    reserved.shrinkTo(CONVERSION_BYTES + line.bufferSize)
+                    transferred = true
+                    return input
+                } catch (cancel: kotlinx.coroutines.CancellationException) { throw cancel }
+                catch (_: Exception) { }
+                finally { if (!transferred) { line?.close(); reserved.close() } }
             }
             return null
         }

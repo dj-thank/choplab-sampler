@@ -12,6 +12,9 @@ import androidx.compose.ui.unit.Density
 import com.choplab.core.*
 import com.choplab.core.edit.Intent
 import com.choplab.core.model.FrameRange
+import com.choplab.core.model.Note
+import com.choplab.core.model.Track
+import com.choplab.core.model.TrackKind
 import com.choplab.jvm.WavCodec
 import com.choplab.ui.*
 import com.choplab.ui.pattern.PatternPhase
@@ -25,7 +28,7 @@ import kotlin.test.*
 
 /** Normal BEAT pointers -> presenter-owned factory -> real host render -> atomic edit -> WAV/archive. No devices/providers. */
 class StepPatternHostIntegrationTest {
-    @Test fun normalBeatEntryEditsRepeatsPlacesAndRestoresAtDesktopAndPhoneInBothLanguages() = runBlocking<Unit> {
+    @Test fun normalBeatEntryEditsTripletsRepeatsPlacesAndRestoresAtDesktopAndPhoneInBothLanguages() = runBlocking<Unit> {
         val previous = Locale.getDefault()
         try {
             for (locale in listOf(Locale.JAPANESE, Locale.ENGLISH)) for ((width, height, font) in listOf(
@@ -54,6 +57,8 @@ class StepPatternHostIntegrationTest {
                     until { backend.studio.work.value.jobId == null }
                     val hash = requireNotNull(backend.studio.document.value.project.source).assetHash
                     for (id in 0..1) assertTrue(backend.studio.dispatch(Action.Edit(Intent.AssignRange(hash, FrameRange(0, 4_800), id))).accepted)
+                    for (bank in backend.studio.document.value.project.banks) assertTrue(backend.studio.dispatch(Action.Edit(
+                        Intent.SetBank(bank.copy(name = "Kit ${bank.name}", color = 0x224466 + bank.id, role = "role ${bank.id + 1}")))).accepted)
                     assertTrue(backend.studio.dispatch(Action.SelectPad(0)).accepted)
                     until { presenter.state.value.permits(ContinuousCapability.STEP_PATTERNS) }
                     scene.settle()
@@ -70,8 +75,10 @@ class StepPatternHostIntegrationTest {
                     scene.pointer("ce-step-patterns")
                     val editor = requireNotNull(presenter.stepPatterns.value)
                     scene.setText("pattern-name", "A")
+                    scene.pointer("pattern-grid-320")
                     scene.pointer("pattern-step-0")
-                    scene.pointer("pattern-step-4")
+                    scene.pointer("pattern-step-1")
+                    scene.pointer("pattern-quantize-320")
                     scene.pointer("pattern-save")
                     until { editor.state.value.phase == PatternPhase.EDITING && !editor.state.value.dirty }
                     assertEquals(original.revision + 1, backend.studio.document.value.revision)
@@ -80,6 +87,7 @@ class StepPatternHostIntegrationTest {
                     scene.pointer("pattern-new")
                     scene.setText("pattern-name", "B")
                     scene.pointer("pattern-bars-2")
+                    scene.pointer("pattern-grid-160")
                     scene.pointer("pattern-pad")
                     scene.pointer("pattern-pad-1")
                     scene.awaitOwners(2)
@@ -101,8 +109,21 @@ class StepPatternHostIntegrationTest {
                     assertEquals(beforePlacement.revision + 1, placed.revision)
                     assertEquals(8, placed.project.clips.size)
                     assertEquals(listOf(1, 2), placed.project.patterns.map { it.bars })
+                    assertEquals(listOf(Note(0, 0), Note(320, 0)), placed.project.patterns[0].notes)
+                    assertEquals(listOf(Note(160, 1), Note(1_440, 1)), placed.project.patterns[1].notes)
+                    assertEquals(listOf(3_840L, 4_160, 7_680, 8_000, 11_680, 12_960, 19_360, 20_640), placed.project.clips.map { it.startTick })
                     assertEquals(original.project.source, placed.project.source)
-                    assertEquals(original.project.banks, placed.project.banks)
+                    val ownerBefore = beforePlacement.project.banks[0]
+                    assertNull(ownerBefore.trackId, "This flow starts with an unrouted BANK")
+                    val routeId = assertNotNull(placed.project.banks[0].trackId, "STEP establishes its PADs' BANK route")
+                    val route = placed.project.tracks.single { it.id == routeId }
+                    assertEquals(Track(route.id, route.name, TrackKind.BANK), route, "A new BANK route is neutral")
+                    assertEquals(beforePlacement.project.tracks + route, placed.project.tracks,
+                        "New routing preserves existing tracks and adds exactly one independent route")
+                    assertEquals(original.project.banks.map { bank ->
+                        if (bank.id == ownerBefore.id) bank.copy(trackId = routeId) else bank
+                    }, placed.project.banks, "Every BANK keeps its name/color/role; other BANK routes stay unchanged")
+                    assertTrue(placed.project.clips.all { it.trackId == routeId }, "All eight STEP clips use their PADs' BANK route")
                     assertEquals(1, backend.studio.selection.value.padId)
                     for (tag in listOf("ce-step-patterns-stop", "ce-step-patterns-close")) scene.fullHit(tag, width, height)
                     val evidence = java.io.File("build/reports/ui-evidence/step-pattern-host").apply { mkdirs() }

@@ -6,8 +6,11 @@ internal data class DesktopMediaTools(
     val ytDlp: File,
     val ffmpeg: File,
     val ffprobe: File,
-    val node: File,
-)
+    val javascript: File,
+    val javascriptKind: String = "node",
+) {
+    val javascriptArgument: String get() = "$javascriptKind:${javascript.absolutePath}"
+}
 
 internal fun mediaToolFileName(tool: String, windows: Boolean): String =
     if (windows) "$tool.exe" else tool
@@ -45,11 +48,16 @@ internal fun defaultMediaSearchDirectories(
 }
 
 private fun toolsInOneDirectory(directory: File, windows: Boolean): DesktopMediaTools? {
-    val tools = listOf("yt-dlp", "ffmpeg", "ffprobe", "node").map { tool ->
+    val tools = listOf("yt-dlp", "ffmpeg", "ffprobe").map { tool ->
         File(directory, mediaToolFileName(tool, windows))
     }
     if (tools.any { !it.isFile || !it.canExecute() }) return null
-    return DesktopMediaTools(tools[0], tools[1], tools[2], tools[3])
+    // Prepared Windows bundles use the small, upstream-supported EJS runtime.
+    // Existing external Node installations and the Mac bundle keep their path.
+    val quickjs = File(directory, "qjs.exe").takeIf { windows && it.isFile && it.canExecute() }
+    val node = File(directory, mediaToolFileName("node", windows)).takeIf { it.isFile && it.canExecute() }
+    val javascript = quickjs ?: node ?: return null
+    return DesktopMediaTools(tools[0], tools[1], tools[2], javascript, if (quickjs != null) "quickjs" else "node")
 }
 
 private fun firstExecutable(directories: List<File>, tool: String, windows: Boolean): File? =

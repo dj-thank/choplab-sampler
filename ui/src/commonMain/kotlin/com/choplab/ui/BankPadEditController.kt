@@ -152,7 +152,7 @@ internal class BankPadEditController(
                 if (color == null) invalid += BankPadEditField.COLOR
                 if (invalid.isNotEmpty()) Candidate(null, invalid.toSet())
                 else {
-                    val bank = Bank(draft.id, draft.name, requireNotNull(color), draft.role)
+                    val bank = captured.document.project.banks[draft.id].copy(name = draft.name, color = requireNotNull(color), role = draft.role)
                     Candidate(Intent.SetBank(bank), emptySet(), bank != captured.document.project.banks[draft.id])
                 }
             }

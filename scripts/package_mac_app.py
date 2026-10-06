@@ -119,8 +119,7 @@ def build(java_home, tools, signed=False, linked=False):
         application = app / 'Contents/app'
         shutil.copytree(tools, application / 'tools')
         shutil.copytree(ROOT / 'work/separator-models', application / 'models')
-        for name in ('LICENSE', 'NOTICE.md'):
-            shutil.copy2(ROOT / name, application / name)
+        run('python3', ROOT / 'scripts/prepare_source_notices.py', '--platform', 'mac', '--out', application)
         # jlink uses ../ links for repeated licenses. Materialize only in-bundle legal
         # documents so the archive retains the same strict no-parent-traversal policy.
         runtime = app / 'Contents/runtime'
@@ -139,6 +138,9 @@ def build(java_home, tools, signed=False, linked=False):
         plist['CFBundleDisplayName'] = display_name
         plist['CFBundleShortVersionString'] = version
         plist['CFBundleVersion'] = build_number
+        # Finder/LaunchServices supplies this before JVM startup. Direct launch is protected
+        # by the desktop entry point's native setenv before it loads any ORT classes.
+        plist['LSEnvironment'] = dict(plist.get('LSEnvironment', {}), ORT_DISABLE_TELEMETRY='1')
         minimum_os = minimum_system_version(app)
         plist['LSMinimumSystemVersion'] = minimum_os
         with plist_path.open('wb') as stream:

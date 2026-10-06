@@ -15,6 +15,11 @@ kotlin {
     jvm("desktop") {
         compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) }
     }
+    // Match engine/ui only when the native preview is explicitly requested.
+    if (providers.gradleProperty("choplabIosPreview").map(String::toBooleanStrict).orElse(false).get()) {
+        iosArm64()
+        iosSimulatorArm64()
+    }
     sourceSets {
         commonMain.dependencies {
             api(project(":engine"))

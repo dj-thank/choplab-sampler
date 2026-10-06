@@ -16,7 +16,7 @@ app-imageは `desktop/build/windows-app-image/ChopLab/ChopLab.exe`。`app` / `ru
 
 現行launcherは最初の引数に `.wav` / `.choplab` を受け取ります。表示中の4×4PADは `1234 / QWER / ASDF / ZXCV` で演奏でき、keyupは元のPADを解放します。録音・loading・source再生中や修飾shortcutとの競合では所有を守ります。native menuからopen/save/export、Undo/Redo、transportへ到達します。
 
-ローカルchooserの基準はWAVです。オンライン取込で使う外部取得/decode経路とは別であり、新しいpackaged decoderのfixtureが通る前に全形式対応と表示しません。現行loopbackはdriverの「Stereo Mix」等に依存し、対応しない時は理由を表示してmicへ勝手に切り替えません。WASAPI endpoint診断は形式を読むprobeで、出力/input/loopbackの全面採用は段階11です。
+ローカルchooserの基準はWAVです。オンライン取込で使う外部取得/decode経路とは別であり、新しいpackaged decoderのfixtureが通る前に全形式対応と表示しません。NEXTのWindows既定はWASAPI shared event出力です。「音声出力」メニューでJava Soundへの切替・再接続を明示できます。入力は録音操作まで開かず、マイクはmono、通常endpoint mixのシステム音はstereoで保持します。録音中や旧route未解放は切替を拒否し、自動fallbackは行いません。endpoint probe・合成host試験と、対象Windows実機の長時間・実音・Human受入は別です。
 
 ## Macでの起動と取り込み
 

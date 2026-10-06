@@ -94,7 +94,17 @@ class StreamFileServices(
                     inScratch { file -> WavExportPort(compiler) { file }.export(project, target, request).also { publish(file, request.location) } }
                 }
         }
-        return HostFileServices(importer, projects, exporter)
+        val stems = object : StemExportPort {
+            override suspend fun export(project: Project, target: PlaybackTarget, request: StemExportRequest,
+                progress: (StemExportProgress) -> Unit): StemExportReceipt = withContext(Dispatchers.IO) {
+                inScratch { file ->
+                    FileStemExportPort(compiler) { file }.exportStaged(project, target, request, progress) {
+                        publish(it, request.location)
+                    }
+                }
+            }
+        }
+        return HostFileServices(importer, projects, exporter, stems)
     }
 
     private suspend fun <T> inScratch(block: suspend (Path) -> T): T {

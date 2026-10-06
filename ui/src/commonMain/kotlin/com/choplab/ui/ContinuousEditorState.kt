@@ -1,6 +1,8 @@
 package com.choplab.ui
 
 import androidx.compose.runtime.Immutable
+import com.choplab.core.chop.*
+import com.choplab.ui.chop.LiveChopTimingState
 
 /** Presentation contract for the user-selected 2026-09-24 linked workspace, not a document model.
  * Timeline/song frames are 48 kHz. Original/PAD/clip source frames retain their explicit source rate.
@@ -12,14 +14,18 @@ enum class ContinuousStage { CAPTURE, CHOP, BEAT, SAVE }
 enum class ContinuousPane { PADS, TIMELINE }
 enum class ContinuousPadMode { ONE_SHOT, GATE, LOOP }
 enum class ContinuousPadKind { EMPTY, SAMPLE, DRUM, VOICE }
+enum class ContinuousNoteRepeat(val ticks: Int) {
+    OFF(0), QUARTER(960), EIGHTH(480), SIXTEENTH(240), THIRTY_SECOND(120), EIGHTH_TRIPLET(320), SIXTEENTH_TRIPLET(160)
+}
 /**
- * Where the song timeline puts what is placed or moved: on the nearest beat, half beat or quarter beat at the song's
+ * Where the song timeline puts what is placed or moved: on the nearest straight or triplet grid at the song's
  * tempo ([ticks] at 960 a beat), where the clip then keeps its beat when the tempo changes; or just where it is let go.
  */
-enum class ContinuousGrid(val ticks: Int) { BEAT(960), HALF(480), QUARTER(240), FREE(0) }
+enum class ContinuousGrid(val ticks: Int) { BEAT(960), HALF(480), QUARTER(240), EIGHTH_TRIPLET(320), SIXTEENTH_TRIPLET(160), FREE(0) }
 enum class ContinuousCapability {
-    LYRICS_EDIT, LYRICS_FILES, LYRIC_PROPOSAL, STEP_PATTERNS, VOCAL_GUIDE,
-    RELOAD_AUDIO, IMPORT_AUDIO, IMPORT_LIBRARY, IMPORT_ONLINE, SPOTIFY_METADATA, SEPARATE_SOURCE, OPEN_PROJECT, SAVE_PROJECT, EXPORT_WAV, HISTORY,
+    BEAT_STRETCH,
+    LYRICS_EDIT, LYRICS_FILES, LYRIC_PROPOSAL, STEP_PATTERNS, NOTE_REPEAT, LOOP_OVERDUB, VOCAL_GUIDE, VOCAL_TAKES, VOCAL_PUNCH, VOCAL_PRACTICE, VOCAL_PITCH, VOCAL_COACH, FOUR_STEMS, SOURCE_ANALYSIS,
+    RELOAD_AUDIO, IMPORT_AUDIO, IMPORT_LIBRARY, IMPORT_ONLINE, SPOTIFY_METADATA, SEPARATE_SOURCE, OPEN_PROJECT, SAVE_PROJECT, EXPORT_WAV, EXPORT_STEMS, MIXER, HISTORY,
     ORIGINAL_PLAYBACK, ORIGINAL_SEEK, ORIGINAL_MONITOR_GAIN, ORIGINAL_PITCH,
     SOURCE_RANGE, ASSIGN_SOURCE_RANGE, AUTO_CHOP, LIVE_CHOP,
     PAD_AUDITION, PAD_LOOP, PAD_PITCH, PAD_TONE, PAD_GAIN,
@@ -38,7 +44,7 @@ enum class ContinuousStatus {
      * A voice take went to a BANK D PAD and onto the song; with BANK D full, onto the song only; to the PAD only when
      * the song refused it; it stopped at its length limit, or because the microphone went away.
      */
-    VOICE_SAVED, VOICE_SAVED_SONG_ONLY, VOICE_SAVED_PAD_ONLY, VOICE_LIMIT, VOICE_INTERRUPTED,
+    VOICE_SAVED, VOICE_SAVED_SONG_ONLY, VOICE_SAVED_PAD_ONLY, VOICE_SAVED_TAKE_ONLY, VOICE_LIMIT, VOICE_INTERRUPTED,
     /** Nothing but silence was recorded; it ended before the song was heard; it could not be stored; no room is left. */
     VOICE_EMPTY, VOICE_TOO_SHORT, VOICE_NOT_SAVED, VOICE_NO_ROOM, PLACE_NO_ROOM, PLACE_FAILED,
     /** A song edit refused, as the song could no longer play: too many clips at once, too many or too long. */
@@ -59,7 +65,7 @@ enum class ContinuousStatus {
      * What the PADs played went onto the song as one Undo; only part of it, as the song could not take the rest or a
      * PAD's sound could not be prepared; nothing was played; or all of it was already there, so the song is as it was.
      */
-    HITS_PLACED, HITS_PARTLY, HITS_EMPTY, HITS_UNCHANGED,
+    HITS_PLACED, HITS_PARTLY, HITS_EMPTY, HITS_UNCHANGED, LOOP_NOT_SAVED, LOOP_INTERRUPTED,
 }
 
 @Immutable data class ContinuousSource(
@@ -71,6 +77,7 @@ enum class ContinuousStatus {
     val rangeStartFrame: Long = 0,
     val rangeEndFrame: Long = frames,
     val pitchSemitones: Float = 0f,
+    val markers: List<Long> = emptyList(),
 ) {
     init { require(frames > 0 && sampleRate > 0 && rangeStartFrame >= 0 && rangeEndFrame > rangeStartFrame && rangeEndFrame <= frames) }
 }
@@ -156,6 +163,10 @@ enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
 @Immutable data class ContinuousEditorState(
     val lyrics: ContinuousLyricsState = ContinuousLyricsState(),
     val bankPadEditor: BankPadEditorState = BankPadEditorState(),
+    val mixer: com.choplab.ui.mixer.MixerEditorState = com.choplab.ui.mixer.MixerEditorState(),
+    val exportBits: Int = 24,
+    val exportTail: Boolean = true,
+    val stemProgress: com.choplab.core.StemExportProgress? = null,
     val recordingGuide: RecordingGuideState = RecordingGuideState(),
     val bankPadBlocked: BankPadEditProblem? = null,
     val stage: ContinuousStage = ContinuousStage.CAPTURE,
@@ -166,6 +177,7 @@ enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
     val vocalPreview: Boolean = false,
     /** A live chop pass is running: tapping a PAD of the CHOP stage cuts the original at that moment. */
     val liveChopping: Boolean = false,
+    val liveChopTiming: LiveChopTimingState = LiveChopTimingState(),
     /** A voice take is being recorded while the song plays. */
     val recordingVoice: Boolean = false,
     val startingVoiceRecording: Boolean = false,
@@ -201,6 +213,9 @@ enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
     val swingPermille: Int = 500,
     /** View state only: what placing and moving clips snap to. */
     val grid: ContinuousGrid = ContinuousGrid.BEAT,
+    /** Session performance preference; captured phrases remain ordinary reversible audio placements. */
+    val noteRepeat: ContinuousNoteRepeat = ContinuousNoteRepeat.OFF,
+    val loopOverdubBars: Int = 0,
     val canUndo: Boolean = false,
     val canRedo: Boolean = false,
     val capabilities: Set<ContinuousCapability> = emptySet(),
@@ -259,7 +274,8 @@ enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
 class ContinuousHitGesture(val padId: Int, val songFrame: Long)
 
 @Immutable data class ContinuousHit(val padId: Int, val timelineFrame: Long,
-    val performed: Boolean = false, val releaseAfterFrames: Int? = null, val limitFrames: Int = 0, val stopAfterFrames: Int? = null)
+    val performed: Boolean = false, val releaseAfterFrames: Int? = null, val limitFrames: Int = 0, val stopAfterFrames: Int? = null,
+    val repeatTicks: Int = 0)
 
 @Immutable data class ContinuousEditorReadout(
     val originalFrame: Long = 0,
@@ -271,19 +287,39 @@ class ContinuousHitGesture(val padId: Int, val songFrame: Long)
     /** Independent original HAND position in native source frames; -1 while inactive. */
     val handSourceFrame: Double = -1.0,
     val countInBeatsRemaining: Int = 0,
+    val liveChopGesture: ContinuousChopGesture? = null,
     val pcm: ContinuousPcmReadout = ContinuousPcmReadout(),
 )
+
+/** One physical press, captured before awaiting release; it cannot cross a pass or document revision. */
+data class ContinuousChopGesture(val pass: Any, val revision: Long, val output: LiveChopOutput)
 
 /** Typed requests. Hosts/Studio confirm every edit; UI drag previews are never document commits. */
 sealed interface ContinuousEditorAction {
     data class RecordingGuide(val action: RecordingGuideAction) : ContinuousEditorAction
     data class Lyrics(val action: LyricAction) : ContinuousEditorAction
+    data object OpenVocalPunch : ContinuousEditorAction
+    data object CloseVocalPunch : ContinuousEditorAction
+    data object OpenVocalTakes : ContinuousEditorAction
+    data object CloseVocalTakes : ContinuousEditorAction
+    data object OpenFourStems : ContinuousEditorAction
+    data object CloseFourStems : ContinuousEditorAction
     data object OpenVocalGuide : ContinuousEditorAction
     data object CloseVocalGuide : ContinuousEditorAction
     data object OpenLyricProposal : ContinuousEditorAction
     data object CloseLyricProposal : ContinuousEditorAction
+    data object OpenVocalPractice : ContinuousEditorAction
+    data object CloseVocalPractice : ContinuousEditorAction
     data object OpenStepPatterns : ContinuousEditorAction
     data object CloseStepPatterns : ContinuousEditorAction
+    data object OpenVocalPitch : ContinuousEditorAction
+    data class OpenBeatStretch(val target: com.choplab.core.model.StretchTarget) : ContinuousEditorAction
+    data object CloseBeatStretch : ContinuousEditorAction
+    data object CloseVocalPitch : ContinuousEditorAction
+    data object OpenVocalCoach : ContinuousEditorAction
+    data object CloseVocalCoach : ContinuousEditorAction
+    data object OpenSourceAnalysis : ContinuousEditorAction
+    data object CloseSourceAnalysis : ContinuousEditorAction
     data class BankPadEdit(val action: BankPadEditAction) : ContinuousEditorAction
     data class Navigate(val stage: ContinuousStage) : ContinuousEditorAction
     data object ImportAudio : ContinuousEditorAction
@@ -298,6 +334,10 @@ sealed interface ContinuousEditorAction {
     data object DiscardSourceRecording : ContinuousEditorAction
     data object OpenProject : ContinuousEditorAction
     data object SaveProject : ContinuousEditorAction
+    data class Mixer(val action: com.choplab.ui.mixer.MixerAction) : ContinuousEditorAction
+    data class ExportBits(val bits: Int) : ContinuousEditorAction { init { require(bits == 16 || bits == 24) } }
+    data class ExportTail(val include: Boolean) : ContinuousEditorAction
+    data object ExportStems : ContinuousEditorAction
     data object ExportWav : ContinuousEditorAction
     data object Undo : ContinuousEditorAction
     data object Redo : ContinuousEditorAction
@@ -310,11 +350,16 @@ sealed interface ContinuousEditorAction {
     data class SetOriginalMonitorGain(val gain: Float) : ContinuousEditorAction
     data class SetOriginalPitch(val semitones: Float) : ContinuousEditorAction
     data class SetSourceRange(val startFrame: Long, val endFrame: Long) : ContinuousEditorAction
+    data object OpenLiveChopTiming : ContinuousEditorAction
+    data object CloseLiveChopTiming : ContinuousEditorAction
+    data class SetLiveChopCorrection(val route: LiveChopRoute, val correction: LiveChopCorrection) : ContinuousEditorAction
     data object BeginLiveChop : ContinuousEditorAction
     data object EndLiveChop : ContinuousEditorAction
     /** [originalFrame] is the original's position sampled when the PAD was pressed, in the source's own frames. */
-    data class CapturePad(val padId: Int, val originalFrame: Long) : ContinuousEditorAction
+    data class CapturePad(val padId: Int, val gesture: ContinuousChopGesture) : ContinuousEditorAction
     data object AutoChop : ContinuousEditorAction
+    data object CloseAutoChop : ContinuousEditorAction
+    data class AssignSourceSlice(val slice: Int, val padId: Int, val assetHash: String, val startFrame: Long, val endFrame: Long) : ContinuousEditorAction
     data class AssignSourceRange(val padId: Int) : ContinuousEditorAction
     data class SelectBank(val bankId: Int) : ContinuousEditorAction
     data class SelectPad(val padId: Int) : ContinuousEditorAction
@@ -360,6 +405,7 @@ sealed interface ContinuousEditorAction {
     data class SetTrackMuted(val trackId: String, val muted: Boolean) : ContinuousEditorAction
     /** What placing and moving clips snap to; the document keeps no grid. */
     data class SetGrid(val grid: ContinuousGrid) : ContinuousEditorAction
+    data class SetNoteRepeat(val rate: ContinuousNoteRepeat) : ContinuousEditorAction
     data class SetPixelsPerSecond(val value: Float) : ContinuousEditorAction
     data object FitTimeline : ContinuousEditorAction
     data class ResizePanes(val fraction: Float) : ContinuousEditorAction
@@ -386,6 +432,8 @@ sealed interface ContinuousEditorAction {
      * Plays the song on from where it stands (from the top once it has ended) and records what the PADs play into it;
      * [StopHits], pausing or stopping the song, or its end puts what was played onto the song as one Undo.
      */
+    data class RecordLoopOverdub(val bars: Int) : ContinuousEditorAction
+    data object CancelLoopOverdub : ContinuousEditorAction
     data object RecordHits : ContinuousEditorAction
     data object StopHits : ContinuousEditorAction
     /**

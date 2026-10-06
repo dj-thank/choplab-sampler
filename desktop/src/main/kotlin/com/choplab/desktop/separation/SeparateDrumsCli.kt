@@ -1,6 +1,7 @@
 package com.choplab.desktop.separation
 
 import com.choplab.desktop.source.DesktopAudioDecoder
+import com.choplab.desktop.prepareDesktopOnnxRuntime
 import com.choplab.sampler.separation.DrumSeparationService
 import java.io.File
 import java.util.concurrent.CountDownLatch
@@ -11,6 +12,7 @@ import java.util.concurrent.atomic.AtomicReference
  * `./gradlew :desktop:separateDrums -PseparateInput=song.wav -PseparateOutput=drums.wav`.
  */
 fun main(args: Array<String>) {
+    prepareDesktopOnnxRuntime()
     val parsed = mutableMapOf<String, String>()
     var index = 0
     while (index < args.size - 1) {
@@ -23,17 +25,15 @@ fun main(args: Array<String>) {
     println("models: ${models.absolutePath}")
     val latch = CountDownLatch(1)
     val failure = AtomicReference<String?>(null)
-    DrumSeparationService(models, DesktopAudioDecoder::decode).use { service ->
-        if (!service.isModelAvailable()) {
-            System.err.println("Model missing: ${service.modelFile().absolutePath}")
-            System.err.println("Run: python scripts/prepare_separator_model.py --out work/separator-models")
-            return
-        }
+    val store = com.choplab.sampler.separation.SeparatorModelStore(models)
+    DrumSeparationService(models, DesktopAudioDecoder::decode,
+        modelProvider = { progress, cancelled -> store.ensure(progress, cancelled) }).use { service ->
         val started = System.nanoTime()
         val accepted = service.separate(
             DrumSeparationService.Request(
                 sourceFile = input,
                 outputFile = output,
+                onModelProgress = { println("model download (first use, 166 MB): ${(it * 100).toInt()}%") },
                 onProgress = { println("progress: ${(it * 100).toInt()}%") },
                 onDone = {
                     println("wrote ${it.absolutePath} in ${(System.nanoTime() - started) / 1_000_000_000}s")

@@ -58,4 +58,14 @@
     <string name="ai_lyrics_stale">制作が変更されました。現在の内容から提案し直してください。</string>
     <string name="ai_lyrics_apply_rejected">提案を適用できませんでした。現在の歌詞を保っています。</string>
     <string name="ai_lyrics_closed">この提案窓は閉じています。</string>
+    <string name="ai_lyrics_attempt_maximum">今回1回: %1$s・%2$s・最大 %3$s %4$s。実際の請求額はまだ不明です。</string>
+    <string name="ai_lyrics_paid">有料区分</string>
+    <string name="ai_lyrics_unpaid">未課金区分</string>
+    <string name="ai_lyrics_admission_refused">このsessionでは次の送信を許可できません。</string>
+    <string name="ai_lyrics_price_unverified">適用model・account区分・価格が未確認です。送信しません。</string>
+    <string name="ai_lyrics_bound_unverified">thinkingを含む入力・出力の課金上限が未確認です。送信しません。</string>
+    <string name="ai_lyrics_budget_refused">確認済みの金額・通貨内に費用上限が収まりません。送信しません。</string>
+    <string name="ai_lyrics_review_expired">このsessionの確認条件は期限切れです。送信しません。</string>
+    <string name="ai_lyrics_attempt_used">今回1回の送信枠は使用済みです。取消や再試行では復活しません。</string>
+    <string name="ai_lyrics_review_changed">session・鍵・modelが変わりました。この入力に対応する条件確認が必要です。</string>
 </resources>

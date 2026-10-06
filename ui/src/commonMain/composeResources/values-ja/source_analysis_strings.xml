@@ -1,0 +1,26 @@
+<resources>
+    <string name="source_analysis_title">BPM・キーの候補</string>
+    <string name="source_analysis_entry">SOURCE の BPM・キーを調べる</string>
+    <string name="source_analysis_range">元音の選択範囲：%1$s〜%2$s 秒（最大 %3$d 秒）。</string>
+    <string name="source_analysis_local">解析は端末内で行います。再生キーを変える前の元音を調べ、音や曲の設定は変更しません。</string>
+    <string name="source_analysis_start">この範囲を解析</string>
+    <string name="source_analysis_running">規則的なアタックと音程のある音を調べています…</string>
+    <string name="source_analysis_cancel">解析を取り消す</string>
+    <string name="source_analysis_short">拍や音程のある音を含む、4 秒以上の範囲を選んでください。</string>
+    <string name="source_analysis_tempo">BPM の候補</string>
+    <string name="source_analysis_tempo_hint">半分・倍の速さにも取れるリズムがあります。耳で確認し、候補を選んで適用します。タップと手入力も使えます。</string>
+    <string name="source_analysis_no_tempo">この範囲では規則的な拍を十分に見つけられませんでした。</string>
+    <string name="source_analysis_apply">選んだ BPM を曲に適用</string>
+    <string name="source_analysis_key">キーの候補</string>
+    <string name="source_analysis_key_hint">この範囲の音程からの候補です。曲全体のキーを確定するものではありません。ドラム・話し声・転調では候補が出ないことがあります。</string>
+    <string name="source_analysis_no_key">キーを提案できるほど明確な音程が見つかりませんでした。</string>
+    <string name="source_analysis_key_value">%1$s %2$s</string>
+    <string name="source_analysis_major">メジャー</string>
+    <string name="source_analysis_minor">マイナー</string>
+    <string name="source_analysis_applied">BPM を適用しました。1 回の「戻す」で元のテンポに戻ります。</string>
+    <string name="source_analysis_stale">制作が変わりました。閉じて開き直し、現在の SOURCE を解析してください。</string>
+    <string name="source_analysis_busy">進行中の処理が終わるまでお待ちください。</string>
+    <string name="source_analysis_recording">録音を終えてから解析・適用してください。</string>
+    <string name="source_analysis_failed">この範囲を解析できませんでした。制作は変わっていません。再試行できます。</string>
+    <string name="source_analysis_apply_failed">BPM を適用できませんでした。現在の制作を確認して再試行してください。</string>
+</resources>

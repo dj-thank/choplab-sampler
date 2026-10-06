@@ -1,20 +1,28 @@
 package com.choplab.sampler.next
 
 import android.Manifest
+import android.app.ActivityManager
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.net.Uri
 import com.choplab.core.*
+import com.choplab.core.ai.GoogleLyricSession
+import com.choplab.jvm.VocalPunchCapture
 import com.choplab.core.model.Asset
 import com.choplab.core.model.Pad
 import com.choplab.jvm.*
 import com.choplab.jvm.ai.*
+import com.choplab.jvm.separation.*
+import com.choplab.ui.separation.FourStemFactory
 import com.choplab.sampler.R
 import com.choplab.ui.*
+import com.choplab.ui.vocal.*
 import com.choplab.ui.ai.LyricProposalPort
+import com.choplab.ui.ai.SessionLyricProposalPort
 import com.choplab.ui.ai.VocalGuidePort
+import com.choplab.ui.onboarding.QuickStartController
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -45,7 +53,15 @@ class NextSession private constructor(
     private val hasMicrophone = context.packageManager.hasSystemFeature(PackageManager.FEATURE_MICROPHONE)
     private val voice = VoiceTakes(backend.assets, File(context.cacheDir, "next-voice").toPath()) { AndroidMicInput.open(context) }
     private val speechPreview = SourceVocalPreview(backend, scope)
+    private val pitchRenderer = backend.pitchRenderer()
+    private val stretchRenderer = backend.stretchRenderer()
+
+    /** Explicit owner-session review only; normal creation never enables cloud sending. */
+    val googleLyrics = GoogleLyricSession(System::currentTimeMillis)
     val presenter = ContinuousEditorPresenter(backend.studio, scope, Ports())
+    private val guideStore = FileQuickStartStore(backend.assets.directory.parent.resolve("ui"))
+    val quickStart = QuickStartController(scope, autoShow = backend.studio.document.value.revision == 0L,
+        guideStore::completed, guideStore::complete)
     @Volatile var closedWithoutAutosave = false
         private set
 
@@ -55,6 +71,13 @@ class NextSession private constructor(
     fun releaseOutput() { backend.engine.releaseOutput() }
     /** Stops the song and the original. Unlike the Stop button it leaves an edit, import, save or export running. */
     suspend fun stopSound() {
+        presenter.cancelFourStemPreparation()
+        presenter.stopVocalPractice()
+        presenter.vocalCoach.value?.dispatch(CoachAction.Stop)
+        speechPreview.stop(com.choplab.core.ai.VocalPreviewOwner.COACH)
+        presenter.vocalPitch.value?.dispatch(PitchAction.Stop)
+        presenter.beatStretch.value?.dispatch(com.choplab.ui.stretch.StretchAction.Cancel)
+        speechPreview.stop(com.choplab.core.ai.VocalPreviewOwner.PITCH)
         speechPreview.stop()
         backend.studio.dispatch(Action.Silence)
         backend.audition.pause()
@@ -72,11 +95,16 @@ class NextSession private constructor(
             { confirmWithoutAutosave().also { if (it) closedWithoutAutosave = true } }, finish)
 
     suspend fun shutdown() {
+        googleLyrics.close()
+        quickStart.close()
         withContext(Dispatchers.Main.immediate + NonCancellable) { pickers.close(); microphone.close() }
         // Closing the presenter keeps a take still recording; anything left after that is dropped.
         try { withContext(NonCancellable) { presenter.close() } }
         finally {
-            withContext(NonCancellable) { try { voice.close() } finally { backend.shutdown(flush = !closedWithoutAutosave) } }
+            withContext(NonCancellable) {
+                try { try { speechPreview.close() } finally { voice.close() } }
+                finally { backend.shutdown(flush = !closedWithoutAutosave) }
+            }
             scope.cancel()
         }
     }
@@ -86,21 +114,64 @@ class NextSession private constructor(
         context.getString(R.string.next_file_base) + "-" + SimpleDateFormat("yyyyMMdd-HHmm", Locale.ROOT).format(Date()) + ".$extension"
 
     private inner class Ports : ContinuousEditorPorts {
+        override val vocalCoach = object : VocalCoachHost {
+            override val analyzer = backend.coachAnalyzer()
+            override val renderer = backend.practiceRenderer()
+            override val preview = speechPreview
+        }
+        override val beatStretch = object : com.choplab.ui.stretch.BeatStretchHost {
+            override val preview = speechPreview
+            override suspend fun render(project: com.choplab.core.model.Project, draft: com.choplab.core.edit.StretchDraft, progress: (Int, Int) -> Unit) =
+                stretchRenderer.render(project, draft, if (Locale.getDefault().language == "ja") "テンポ伸縮" else "Tempo stretch", progress)
+            override suspend fun original(project: com.choplab.core.model.Project, draft: com.choplab.core.edit.StretchDraft) =
+                stretchRenderer.original(project, draft, if (Locale.getDefault().language == "ja") "元の素材" else "Original sound")
+        }
+        override val vocalPitch = object : VocalPitchHost {
+            override val preview = speechPreview
+            override suspend fun render(project: com.choplab.core.model.Project, draft: com.choplab.core.vocal.VocalPitchDraft,
+                progress: (com.choplab.engine.PitchCorrectionPhase, Int, Int) -> Unit): PreparedVocalPitch {
+                val result = pitchRenderer.render(project, draft, if (Locale.getDefault().language == "ja") "声のピッチ補正" else "Voice pitch correction", progress)
+                return PreparedVocalPitch((result as? VocalPitchRenderResult.Rendered)?.asset, result.report)
+            }
+            override suspend fun original(project: com.choplab.core.model.Project, draft: com.choplab.core.vocal.VocalPitchDraft) =
+                pitchRenderer.original(project, draft, if (Locale.getDefault().language == "ja") "原音の試聴" else "Original audition")
+        }
+        override val vocalPunch = VocalPunchCapture(backend.studio, backend.engine, voice, microphone::request)
+        override val vocalTakes = object : com.choplab.ui.vocal.VocalTakePort {
+            override val preview = speechPreview
+            override suspend fun render(project: com.choplab.core.model.Project, draft: com.choplab.core.vocal.VocalCompDraft, name: String) =
+                backend.renderVocalComp(project, draft, name)
+        }
+        override val fourStems = FourStemFactory {
+            backend.createFourStemWorker(OnnxFourStemFactory(FourStemModelStore(File(context.filesDir, "next-four-stem-model").toPath()))) {
+                try {
+                    val info = ActivityManager.MemoryInfo()
+                    context.getSystemService(ActivityManager::class.java).getMemoryInfo(info)
+                    SeparationMemory(info.totalMem, info.availMem, info.lowMemory, com.choplab.core.separation.SeparationMemoryReceipt(
+                        com.choplab.core.separation.SeparationMemorySource.ANDROID_ACTIVITY_MANAGER, info.totalMem, info.availMem, info.lowMemory, System.currentTimeMillis()))
+                } catch (_: Exception) { SeparationMemory(0, 0, false) }
+            }
+        }
         override val vocalGuide: VocalGuidePort = object : VocalGuidePort {
             override val preview = speechPreview
             override fun createSynthesis(): com.choplab.core.ai.VocalSynthesisPort = VocalTtsService(
                 AndroidTtsProvider(context), TtsCache(File(context.cacheDir, "next-tts-cache").toPath()), backend.assets)
         }
         override val onlineSource = AndroidOnlineSourceHost(context, documents)
-        override val lyricProposal: LyricProposalPort = object : LyricProposalPort {
-            override fun createProvider() = GeminiLyricProvider()
+        override val vocalPractice = object : VocalPracticePort {
+            override val renderer = backend.practiceRenderer()
+            override val preview = speechPreview
         }
+        override val lyricProposal: LyricProposalPort = SessionLyricProposalPort(googleLyrics) { GeminiLyricProvider() }
         override val lyricFiles: LyricFiles = object : LyricFiles {
             override suspend fun importLrc(): String? {
                 val uri = pickers.pick(PickerKind.IMPORT_LRC) ?: return null
                 return withContext(Dispatchers.IO) { requireNotNull(context.contentResolver.openInputStream(uri)).use(LrcTextIO::read) }
             }
             override suspend fun exportLrc(text: String): Boolean {
+                // CreateDocument may create/replace a document before returning its Uri.
+                // Reject malformed/oversized text before opening the system picker.
+                withContext(Dispatchers.IO) { LrcTextIO.validate(text) }
                 val uri = pickers.pick(PickerKind.EXPORT_LRC, suggestedName("lrc")) ?: return false
                 withContext(Dispatchers.IO) {
                     LrcTextIO.write(text) {
@@ -111,8 +182,13 @@ class NextSession private constructor(
                 return true
             }
         }
+        override val autoChop get() = backend.autoChop
         override val originalAvailable get() = backend.engine.status.value.phase == DriverPhase.ATTACHED
-        override fun originalPlaying() = backend.engine.originalPlayback().playing
+        override fun originalPlaying(): Boolean? = when (val probe = backend.engine.originalPlaybackProbe()) {
+            is OriginalPlaybackProbe.Ready -> probe.playback.playing
+            OriginalPlaybackProbe.Contended -> null
+            OriginalPlaybackProbe.Unavailable -> if (backend.engine.status.value.phase != DriverPhase.ATTACHED) false else null
+        }
         override fun playingPads() = backend.engine.playingPads()
         override fun cancelOriginalPreparation() = backend.audition.cancelPreparation()
         override suspend fun playOriginal(asset: Asset) = backend.audition.play(asset)
@@ -131,10 +207,20 @@ class NextSession private constructor(
         override suspend fun scratchOriginalEnd() = backend.audition.scratchEnd()
         override val padRenderAvailable = true
         override val stepPatternsAvailable = true
+        override val noteRepeatAvailable = true
+        override val sourceAnalysisAvailable = true
+        override suspend fun analyseSource(asset: Asset, range: com.choplab.core.model.FrameRange) = backend.analyseSource(asset, range)
+        override val loopOverdubAvailable = true
+        override suspend fun createLoopOverdub(startFrame: Long, frames: Int, grid: IntArray, routes: List<com.choplab.engine.LoopOverdubRoute>) = backend.createLoopOverdub(startFrame, frames, grid, routes)
         override suspend fun renderPad(pad: Pad, source: Asset) = backend.renderPad(pad, source)
         override suspend fun renderPerformance(pad: Pad, source: Asset, releaseAt: Int?, limitFrames: Int, stopAt: Int?) =
             backend.renderPerformance(pad, source, releaseAt, limitFrames, stopAt)
+        override suspend fun renderNoteRepeat(pad: Pad, source: Asset, tempo: com.choplab.engine.Tempo, ticks: Int,
+                                             releaseAt: Int, limitFrames: Int, stopAt: Int?) =
+            backend.renderNoteRepeat(pad, source, tempo, ticks, releaseAt, limitFrames, stopAt)
         override suspend fun setSongMonitorGain(gain: Float) = backend.audition.songGain(gain)
+        override fun liveChopOutput() = backend.engine.liveChopOutput()
+        override fun liveChopProbe() = backend.engine.liveChopProbe()
         override fun readout() = ContinuousEditorReadout(backend.audition.nativeFrame(), backend.engine.playback().sequenceRenderFrames,
             handSourceFrame = backend.audition.nativeHandFrame(), countInBeatsRemaining = backend.engine.snapshot().countInBeatsRemaining,
             pcm = pcmReadout())
@@ -190,6 +276,12 @@ class NextSession private constructor(
         }
         override suspend fun chooseOpen(): Location? = pickers.pick(PickerKind.PROJECT)?.let(documents::opened)
         override suspend fun chooseSave(): Location? = pickers.pick(PickerKind.SAVE_PROJECT, suggestedName("choplab"))?.let(documents::created)
+        override val stemsAvailable get() = backend.stemsAvailable
+        override fun readMixer(target: com.choplab.engine.MixerSnapshot) = backend.engine.status.value.phase == DriverPhase.ATTACHED && backend.engine.copyMixerReadout(target)
+        override suspend fun chooseStems(frames: Long): com.choplab.core.StemExportRequest? {
+            val uri = pickers.pick(PickerKind.EXPORT_STEMS, suggestedName("zip")) ?: return null
+            return com.choplab.core.StemExportRequest(documents.created(uri), Math.toIntExact(frames))
+        }
         override suspend fun chooseExport(frames: Long): ExportRequest? {
             val uri = pickers.pick(PickerKind.EXPORT_WAV, suggestedName("wav")) ?: return null
             return ExportRequest(documents.created(uri), Math.toIntExact(frames), bits = 24)

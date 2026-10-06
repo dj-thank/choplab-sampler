@@ -9,6 +9,39 @@ import kotlin.test.*
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class StudioTest {
+    @Test fun stemExportSharesBusyCancellationAndFencesLateProgressWithoutEditingTheDocument() = runTest {
+        val firstExit = CompletableDeferred<Unit>(); val secondExit = CompletableDeferred<Unit>()
+        var calls = 0
+        val exporter = object : StemExportPort {
+            override suspend fun export(project: Project, target: PlaybackTarget, request: StemExportRequest,
+                progress: (StemExportProgress) -> Unit): StemExportReceipt {
+                val call = ++calls
+                progress(StemExportProgress(StemExportPhase.RENDERING, 0, call, null, 0, request.frames.toLong()))
+                if (call == 1) withContext(NonCancellable) {
+                    firstExit.await()
+                    progress(StemExportProgress(StemExportPhase.COMPLETE, 1, 1, null, request.frames.toLong(), request.frames.toLong()))
+                } else secondExit.await()
+                return StemExportReceipt(frozenListOf(StemFile("bus", "stem.wav")), request.frames.toLong(), request.format)
+            }
+        }
+        val studio = Studio(this, services(Engine(), object : ImportPort { override suspend fun import(location: Location) = asset }).copy(stems = exporter),
+            preparationDispatcher = StandardTestDispatcher(testScheduler))
+        val original = studio.document.value
+        val request = Action.ExportStems(StemExportRequest(Location("stems"), 48000))
+        assertTrue(studio.dispatch(request).accepted); runCurrent()
+        assertEquals(1, studio.work.value.stemProgress?.totalStems)
+        assertFalse(studio.dispatch(request).accepted); assertEquals(1, calls)
+        assertTrue(studio.dispatch(Action.CancelWork).accepted); assertNull(studio.work.value.stemProgress)
+        assertTrue(studio.dispatch(request).accepted); runCurrent()
+        assertEquals(2, studio.work.value.stemProgress?.totalStems)
+        firstExit.complete(Unit); runCurrent()
+        assertEquals(2, studio.work.value.stemProgress?.totalStems, "An old worker cannot replace the current job's progress")
+        secondExit.complete(Unit); advanceUntilIdle()
+        assertNull(studio.work.value.jobId); assertNull(studio.work.value.stemProgress)
+        assertEquals(original, studio.document.value)
+        studio.dispatch(Action.Close)
+    }
+
     @Test fun structuredLyricsAndWordProvenanceUndoWithoutReplacingAudioThenNextPadEditPrepares() = runTest {
         val engine = Engine()
         val initial = Project(assets = frozenListOf(asset), pads = (0..127).map {

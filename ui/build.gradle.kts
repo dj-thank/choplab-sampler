@@ -18,6 +18,15 @@ kotlin {
     jvm("desktop") {
         compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) }
     }
+    // A shared-library foundation only: an Apple host and production platform ports are still required.
+    if (providers.gradleProperty("choplabIosPreview").map(String::toBooleanStrict).orElse(false).get()) {
+        listOf(iosArm64(), iosSimulatorArm64()).forEach { target ->
+            target.binaries.framework {
+                baseName = "ChopLabShared"
+                isStatic = true
+            }
+        }
+    }
     sourceSets {
         commonMain.dependencies {
             api(project(":core"))

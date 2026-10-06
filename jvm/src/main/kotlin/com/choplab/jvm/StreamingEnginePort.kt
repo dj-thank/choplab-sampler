@@ -1,6 +1,9 @@
 package com.choplab.jvm
 
 import com.choplab.core.*
+import com.choplab.core.chop.LiveChopOutput
+import com.choplab.core.chop.LiveChopProbe
+import com.choplab.core.chop.LiveChopRoute
 import com.choplab.core.model.Project
 import com.choplab.engine.*
 import kotlinx.coroutines.*
@@ -34,6 +37,11 @@ interface AudioSink : AutoCloseable {
     fun underruns(): Int = -1
     /** Frames written but not yet played. */
     fun pendingFrames(): Long = -1
+    /** Monotonic session epoch. Change it when a reported presentation clock resets or is lost/recovered.
+     * Throw while timing is invalid (closed or replaced route). No persistent device identifiers. */
+    fun timingEpoch(): Long = 0
+    fun timingSampleRate(): Int = EngineFormat.SAMPLE_RATE
+    fun timingChannels(): Int = 2
 }
 
 enum class DriverPhase { STARTING, ATTACHED, EDITING_ONLY, CLOSED }
@@ -54,6 +62,14 @@ data class DriverPlayback(val fraction: Float = 0f, val elapsedSeconds: Int = 0,
 /** What the audio owner last reported: how often it looped, what waits for it, and whether a device is still opening. */
 data class DriverDiagnostics(val loops: Long, val queued: Int, val inFlight: Int, val openingDevice: Boolean, val engineFrame: Long)
 data class OriginalPlayback(val loaded: Boolean, val playing: Boolean, val sourceFrame: Long, val gain: Float)
+/** A failed bounded read is not evidence that SOURCE stopped. All values are read on the caller's thread. */
+sealed interface OriginalPlaybackProbe {
+    data class Ready(val playback: OriginalPlayback) : OriginalPlaybackProbe
+    /** The same attached engine is publishing; try again on the next control tick. */
+    data object Contended : OriginalPlaybackProbe
+    /** No stable attached engine/output session; lifecycle and fault observers decide how to restore ownership. */
+    data object Unavailable : OriginalPlaybackProbe
+}
 /** HAND position is independent of SOURCE; -1 means no hand currently owns the region. */
 data class HandPlayback(val sourceFrame: Double, val gain: Float)
 data class PcmPlayback(val status: PcmReadStatus, val underrunFrames: Long, val droppedRequests: Long)
@@ -141,6 +157,17 @@ open class StreamingEnginePort(
     @Volatile private var renderedBlocks = 0L
     /** The device in use, for the diagnostics reader to ask about; the owner alone writes to and closes it. */
     @Volatile private var attachedSink: AudioSink? = null
+    @Volatile private var routeGeneration = 0L
+    /** Changes on every output adoption/detach, including same-format normal lifecycle replacement. */
+    fun outputRouteGeneration(): Long = routeGeneration
+    @Volatile private var outputSession: Any = Any()
+    /** Control-side cache identity only; retaining it never retains a replaced engine or its PCM workspace. */
+    internal fun sourceOutputSession(): Any? {
+        val session = outputSession
+        val device = attachedSink ?: return null
+        return if (!closed && statusValue.value.phase == DriverPhase.ATTACHED &&
+            session === outputSession && device === attachedSink) session else null
+    }
     @Volatile private var writtenFrame = -1L
     @Volatile private var completedCueBeforeReset = -1L
     private val snapshots = ThreadLocal.withInitial { EngineSnapshot() }
@@ -191,7 +218,7 @@ open class StreamingEnginePort(
         // Built by the caller, before the audio owner starts: the first engine prepares its interpolation tables, which
         // takes seconds on a slow or interpreted runtime. An edit sent meanwhile would wait for an engine that did not
         // exist yet and be refused, so the driver exists only once its engine does.
-        outputMemory = runBlocking { PcmMemoryBudget.shared.reserve(blockFrames * 16L) }
+        outputMemory = runBlocking { PcmMemoryBudget.shared.reserve(blockFrames * 16L + MixerDsp.PCM_BYTES) }
         val first = try { EngineCore() } catch (failure: Throwable) { outputMemory.close(); throw failure }
         engineView = EngineView(first, 0)
         owner = Thread({ runOwner(first) }, "ChopLab-NEXT-audio").apply { isDaemon = true; priority = Thread.MAX_PRIORITY; start() }
@@ -313,6 +340,68 @@ open class StreamingEnginePort(
         return null
     }
 
+    /** Caller-owned storage; levels and immutable bus IDs come from one coherent rendered block. */
+    fun copyMixerReadout(target: MixerSnapshot): Boolean {
+        val view = engineView ?: return false
+        if (!view.engine.mixerReadout.copyInto(target) || view !== engineView) return false
+        target.frame += view.offset
+        return true
+    }
+
+    fun liveChopOutput(): LiveChopOutput? = (liveChopProbe() as? LiveChopProbe.Ready)?.output
+
+    /** One press-time reading; no device calls, allocation, or locks are added to render. */
+    fun liveChopProbe(): LiveChopProbe {
+        val snapshot = snapshots.get()
+        var observedRoute: LiveChopRoute? = null
+        repeat(3) {
+            val route = liveChopRoute() ?: return LiveChopProbe.Unavailable
+            if (observedRoute != null && observedRoute != route) return LiveChopProbe.Unavailable
+            observedRoute = route
+            val current = engineView ?: return LiveChopProbe.Unavailable
+            val device = attachedSink ?: return LiveChopProbe.Unavailable
+            if (current.identity !== route.engineClock || outputSession !== route.outputSession) return@repeat
+            val written = writtenFrame
+            if (written < 0 || !current.engine.readout.copyInto(snapshot)) return@repeat
+            try {
+                val now = System.nanoTime()
+                val pending = device.pendingFrames()
+                val frame = current.offset + snapshot.frame
+                val remaining = frame - written + pending + MasterLimiter.LOOKAHEAD_FRAMES
+                if (current === engineView && device === attachedSink && written == writtenFrame && route == liveChopRoute()) {
+                    return LiveChopProbe.Ready(LiveChopOutput(route, now, frame, snapshot.originalSourceFrame,
+                        snapshot.originalPlaying, if (pending >= 0 && remaining in 0L..48_000L)
+                            remaining * 1_000_000_000L / EngineFormat.SAMPLE_RATE else null))
+                }
+            } catch (_: Exception) { return LiveChopProbe.Unavailable }
+        }
+        // A moving readout is not evidence that the device, its format or clock changed.
+        // Keep no position or delay from an incoherent attempt; verify only the route once more.
+        return observedRoute?.takeIf { it == liveChopRoute() }?.let { LiveChopProbe.Contended(it) } ?: LiveChopProbe.Unavailable
+    }
+
+    private fun liveChopRoute(): LiveChopRoute? {
+        val current = engineView ?: return null
+        val device = attachedSink ?: return null
+        val session = outputSession
+        if (statusValue.value.phase != DriverPhase.ATTACHED) return null
+        return try {
+            val epoch = device.timingEpoch()
+            val rate = device.timingSampleRate()
+            val channels = device.timingChannels()
+            val encoding = device.encoding
+            val buffer = device.bufferFrames().takeIf { it > 0 }
+            if (rate != EngineFormat.SAMPLE_RATE || channels != 2) return null
+            if (current !== engineView || device !== attachedSink || session !== outputSession ||
+                epoch != device.timingEpoch() || buffer != device.bufferFrames().takeIf { it > 0 } ||
+                rate != device.timingSampleRate() || channels != device.timingChannels() || encoding != device.encoding ||
+                statusValue.value.phase != DriverPhase.ATTACHED) null
+            else LiveChopRoute(session, current.identity, epoch, rate, channels, encoding == SinkEncoding.FLOAT32, buffer, blockFrames)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     fun diagnostics() = DriverDiagnostics(ownerLoops, queued.get(), ownerInFlight, ownerOpening, snapshot().frame)
 
     /** Output health for a diagnostics readout; allocates, and asks the device, on the caller's thread only. */
@@ -349,6 +438,19 @@ open class StreamingEnginePort(
         val snapshot = snapshots.get()
         engineView?.engine?.readout?.copyInto(snapshot)
         return OriginalPlayback(snapshot.originalLoaded, snapshot.originalPlaying, snapshot.originalSourceFrame, snapshot.originalMonitorGain)
+    }
+    /** Coherent SOURCE completion evidence only; no fallback to a fresh, stale or partially copied snapshot. */
+    fun originalPlaybackProbe(): OriginalPlaybackProbe {
+        val current = engineView ?: return OriginalPlaybackProbe.Unavailable
+        val session = outputSession
+        if (statusValue.value.phase != DriverPhase.ATTACHED) return OriginalPlaybackProbe.Unavailable
+        val snapshot = snapshots.get()
+        val copied = current.engine.readout.copyInto(snapshot)
+        if (current !== engineView || session !== outputSession || statusValue.value.phase != DriverPhase.ATTACHED)
+            return OriginalPlaybackProbe.Unavailable
+        if (!copied) return OriginalPlaybackProbe.Contended
+        return OriginalPlaybackProbe.Ready(OriginalPlayback(snapshot.originalLoaded, snapshot.originalPlaying,
+            snapshot.originalSourceFrame, snapshot.originalMonitorGain))
     }
     fun pcmPlayback(): PcmPlayback {
         val snapshot = snapshots.get()
@@ -398,6 +500,8 @@ open class StreamingEnginePort(
                     sink = opened
                     // Block times describe this device only.
                     renderedBlocks = 0
+                    routeGeneration++
+                    outputSession = Any()
                     attachedSink = opened
                     writtenFrame = requireNotNull(engineView).offset + activeEngine.frame
                     statusValue.value = DriverStatus(DriverPhase.ATTACHED, opened.encoding, faults = faults)
@@ -414,6 +518,11 @@ open class StreamingEnginePort(
         var monitorGain = 1f
         var monitorTarget = 1f
         var monitorRamp = 0
+        // The owner retains acknowledged targets, not intermediate ramp values. Refused,
+        // cancelled or still-queued commands cannot become preferences after a reset.
+        var originalMonitorTarget = 1f
+        var songMonitorTarget = 1f
+        var handMonitorTarget = 1f
 
         fun complete(request: Pending, accepted: Boolean, dropped: Boolean = false) {
             request.dropped = dropped; request.releasePcm(); request.answer.complete(accepted)
@@ -422,6 +531,7 @@ open class StreamingEnginePort(
             writtenFrame = -1
             if (activeEngine.recordingStartedFrame >= 0) completedCueBeforeReset =
                 requireNotNull(engineView).offset + activeEngine.recordingStartedFrame
+            routeGeneration++
             attachedSink = null
             try { sink?.close() } catch (_: Exception) { }
             sink = null
@@ -429,7 +539,8 @@ open class StreamingEnginePort(
             // Program only, with no voices; the document remains in Studio and edits stay usable.
             val offset = requireNotNull(engineView).offset + activeEngine.frame
             activeEngine.close()
-            activeEngine = EngineCore(confirmedProgram)
+            activeEngine = EngineCore(confirmedProgram, monitorGains =
+                MonitorGains(originalMonitorTarget, songMonitorTarget, handMonitorTarget))
             engineView = EngineView(activeEngine, offset)
             acknowledgedReadout = null
             previousLosses = 0
@@ -495,6 +606,9 @@ open class StreamingEnginePort(
                         }
                         is EngineCommand.StartSequence -> { sequenceStart = appliedFrame; stoppedElapsedFrames = 0 }
                         is EngineCommand.Stop, is EngineCommand.Panic -> stoppedElapsedFrames = (appliedFrame - sequenceStart).coerceAtLeast(0)
+                        is EngineCommand.SetOriginalMonitorGain -> originalMonitorTarget = command.gain
+                        is EngineCommand.SetSongMonitorGain -> songMonitorTarget = command.gain
+                        is EngineCommand.SetHandMonitorGain -> handMonitorTarget = command.gain
                         else -> Unit
                     }
                     if (accepted) {
@@ -534,7 +648,14 @@ open class StreamingEnginePort(
                     while (offset < byteCount && !closed) {
                         val written = output.write(bytes, offset, byteCount - offset)
                         require(written in 0..(byteCount - offset) && written % (2 * output.encoding.bytesPerSample) == 0)
-                        if (written > 0) { offset += written; lastProgress = System.nanoTime() }
+                        if (written > 0) {
+                            offset += written
+                            // The device already counts a partial write in pendingFrames. Count it here too,
+                            // otherwise a press between partial writes subtracts those frames twice.
+                            writtenFrame = requireNotNull(engineView).offset + activeEngine.frame -
+                                (byteCount - offset) / (2 * output.encoding.bytesPerSample)
+                            lastProgress = System.nanoTime()
+                        }
                         else {
                             if (System.nanoTime() - lastProgress > 500_000_000L) throw IllegalStateException("Audio sink stalled")
                             LockSupport.parkNanos(1_000_000)
@@ -547,6 +668,7 @@ open class StreamingEnginePort(
             statusValue.value = DriverStatus(DriverPhase.EDITING_ONLY, fault = DriverFault.WRITE_FAILED, faults = ++faults)
         } finally {
             closed = true
+            routeGeneration++
             attachedSink = null
             try { sink?.close() } catch (_: Exception) { }
             // A device still opening is closed as soon as it exists.
@@ -600,6 +722,8 @@ private fun EngineCommand.relativeTo(offset: Long, wireOrder: Long): EngineComma
     val orderId = wireOrder
     return when (this) {
         is EngineCommand.Trigger -> EngineCommand.Trigger(frame, orderId, padId, velocity)
+        is EngineCommand.StartLoopOverdub -> EngineCommand.StartLoopOverdub(frame, orderId, take)
+        is EngineCommand.StartNoteRepeat -> EngineCommand.StartNoteRepeat(frame, orderId, padId, ticks, durationFrames)
         is EngineCommand.Release -> EngineCommand.Release(frame, orderId, padId)
         is EngineCommand.Stop -> EngineCommand.Stop(frame, orderId)
         is EngineCommand.StopAll -> EngineCommand.StopAll(frame, orderId)

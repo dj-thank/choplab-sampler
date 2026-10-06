@@ -14,8 +14,9 @@ class LyricProposalControllerTest {
         val release = java.util.concurrent.CountDownLatch(1)
         val fixture = Fixture(clock = { entered.countDown(); check(release.await(5, java.util.concurrent.TimeUnit.SECONDS)); 0L })
         val key = SessionApiKey("fake-key")
+        fixture.review(key)
         try {
-            val generating = async(Dispatchers.Default) { fixture.controller.generate(request(), key, 0, 4, true) }
+            val generating = async(Dispatchers.Default) { fixture.controller.generate(request(), key, 0, 4, true, fixture.controller.admissionVersion) }
             withContext(Dispatchers.IO) { assertTrue(entered.await(5, java.util.concurrent.TimeUnit.SECONDS)) }
             fixture.controller.close()
             release.countDown()
@@ -32,7 +33,8 @@ class LyricProposalControllerTest {
         try {
             val before = fixture.document.value
             val key = SessionApiKey("fake-key")
-            assertTrue(fixture.controller.generate(request(), key, 960, 2, true))
+            fixture.review(key)
+            assertTrue(fixture.controller.generate(request(), key, 960, 2, true, fixture.controller.admissionVersion))
             await { fixture.controller.state.value.phase == LyricProposalPhase.PREVIEW }
             assertEquals(before, fixture.document.value); assertEquals(0, fixture.edits)
             assertEquals(before.project.lyrics, fixture.controller.state.value.before)
@@ -51,7 +53,8 @@ class LyricProposalControllerTest {
             val fixture = Fixture(availability = availability)
             try {
                 val key = SessionApiKey("fake-key")
-                assertFalse(fixture.controller.generate(request(), key, 0, 4, availability == LyricProviderAvailability.UNVERIFIED))
+                fixture.review(key)
+                assertFalse(fixture.controller.generate(request(), key, 0, 4, availability == LyricProviderAvailability.UNVERIFIED, fixture.controller.admissionVersion))
                 assertEquals(if (availability == LyricProviderAvailability.UNVERIFIED) LyricAiProblem.PROVIDER_UNVERIFIED else LyricAiProblem.CONSENT_REQUIRED,
                     fixture.controller.state.value.failure?.problem)
                 assertEquals(0, fixture.provider.calls.get())
@@ -110,8 +113,9 @@ class LyricProposalControllerTest {
             val provider = FakeProvider { withContext(NonCancellable) { reply.await() } }
             val fixture = Fixture(provider)
             val key = SessionApiKey("fake-key")
+            fixture.review(key)
             try {
-                fixture.controller.generate(request(), key, 0, 4, true)
+                fixture.controller.generate(request(), key, 0, 4, true, fixture.controller.admissionVersion)
                 await { provider.calls.get() == 1 }
                 if (close) fixture.controller.close() else fixture.controller.cancel()
                 assertFailsWith<IllegalStateException> { key.useValue { it } }
@@ -124,24 +128,75 @@ class LyricProposalControllerTest {
         }
     }
 
-    @Test fun rateLimitCountsDownButOnlyAnotherConsentedPressCanRetry() = runBlocking<Unit> {
+    @Test fun rateLimitCooldownDoesNotRenewTheAllowanceAndOnlyNewReviewCanRetry() = runBlocking<Unit> {
         var clock = 0L
         val provider = FakeProvider { attempt -> if (attempt == 1) LyricProviderResult.Failure(
             LyricAiFailure(LyricAiProblem.RATE_LIMITED, 2, costUnknown = true)) else success() }
         val fixture = Fixture(provider, clock = { clock })
+        val key = SessionApiKey("fake-key")
         try {
-            fixture.generate(); await { fixture.controller.state.value.retryRemainingSeconds == 2L }
-            assertFalse(fixture.generate()); assertEquals(1, provider.calls.get())
+            fixture.review(key)
+            val binding = requireNotNull(fixture.session.pendingReview())
+            assertTrue(fixture.controller.generate(request(), key, 0, 4, true, fixture.controller.admissionVersion))
+            await { fixture.controller.state.value.retryRemainingSeconds == 2L }
+            assertFalse(fixture.controller.generate(request(), key, 0, 4, true, fixture.controller.admissionVersion))
             fixture.controller.cancel()
-            assertFalse(fixture.generate(), "Cancel cannot bypass the server cooldown")
+            assertFalse(fixture.controller.generate(request(), key, 0, 4, true, fixture.controller.admissionVersion), "Cancel cannot bypass cooldown")
             clock = 2_000
             await { fixture.controller.state.value.retryRemainingSeconds == 0L }
-            assertEquals(1, provider.calls.get(), "There is no scheduled retry")
-            assertFalse(fixture.controller.generate(request(), SessionApiKey("fake-key"), 0, 4, false))
+            assertFalse(fixture.controller.generate(request(), key, 0, 4, true, fixture.controller.admissionVersion), "Elapsed cooldown cannot renew a used allowance")
+            assertEquals(GoogleAdmissionProblem.ATTEMPT_USED, fixture.controller.state.value.failure?.admissionProblem)
+            assertEquals(GoogleAdmissionProblem.ATTEMPT_USED, fixture.session.install(binding, reviewed()))
             assertEquals(1, provider.calls.get())
-            assertTrue(fixture.generate()); await { fixture.controller.state.value.phase == LyricProposalPhase.PREVIEW }
+            val another = SessionApiKey("another-fake-key")
+            fixture.review(another) // A different explicit owner review, not an automatic retry.
+            assertTrue(fixture.controller.generate(request(), another, 0, 4, true, fixture.controller.admissionVersion))
+            await { fixture.controller.state.value.phase == LyricProposalPhase.PREVIEW }
             assertEquals(2, provider.calls.get()); assertEquals(0, fixture.edits)
-        } finally { fixture.close() }
+        } finally { key.close(); fixture.close() }
+    }
+
+    @Test fun changedInputsFenceAnActiveOrCompletedReplyWithoutEditing() = runBlocking<Unit> {
+        for (afterReply in listOf(false, true)) {
+            val reply = CompletableDeferred<LyricProviderResult>()
+            val provider = FakeProvider { withContext(NonCancellable) { reply.await() } }
+            val fixture = Fixture(provider)
+            val key = SessionApiKey("fake-key")
+            try {
+                fixture.review(key)
+                assertTrue(fixture.controller.generate(request(), key, 0, 4, true, fixture.controller.admissionVersion))
+                await { provider.calls.get() == 1 }
+                assertFalse(fixture.controller.generate(request(), key, 0, 4, true, fixture.controller.admissionVersion))
+                assertEquals("fake-key", key.useValue { it }, "A duplicate press cannot close the active request's key")
+                if (afterReply) { reply.complete(success()); await { fixture.controller.state.value.phase == LyricProposalPhase.PREVIEW } }
+                fixture.controller.bindInputs("gemini-other", key)
+                await { fixture.controller.state.value.failure?.admissionProblem == GoogleAdmissionProblem.INPUT_CHANGED }
+                reply.complete(success())
+                delay(30)
+                assertNull(fixture.controller.state.value.proposal)
+                assertFalse(fixture.controller.applyPreview())
+                assertEquals(1, provider.calls.get()); assertEquals(0, fixture.edits)
+                assertEquals("元の歌", fixture.document.value.project.lyrics.single().text)
+            } finally { reply.complete(success()); key.close(); fixture.close() }
+        }
+    }
+
+    @Test fun availabilityFlagAloneCannotBypassTheSessionAdmission() = runBlocking<Unit> {
+        val provider = FakeProvider()
+        val port = object : LyricProposalPort {
+            override val availability = LyricProviderAvailability.AVAILABLE
+            override fun createProvider() = provider
+        }
+        val document = MutableStateFlow(DocumentState(Project(), 0))
+        val controller = LyricProposalController(document, port.createProvider(), LyricProposalApply { _, _ -> error("No proposal") }, this, port.openAdmission())
+        val key = SessionApiKey("fake-key")
+        try {
+            controller.bindInputs(request().model, key)
+            assertFalse(controller.generate(request(), key, 0, 4, true, controller.admissionVersion))
+            assertEquals(LyricAiProblem.PROVIDER_UNVERIFIED, controller.state.value.failure?.problem)
+            assertEquals(0, provider.calls.get()); assertEquals(0L, document.value.revision)
+            assertFailsWith<IllegalStateException> { key.useValue { it } }
+        } finally { controller.close(); key.close() }
     }
 
     private class FakeProvider(val respond: suspend (Int) -> LyricProviderResult = { success() }) : LlmProvider {
@@ -150,21 +205,35 @@ class LyricProposalControllerTest {
         override suspend fun lyrics(request: LyricRequest, key: SessionApiKey) = respond(calls.incrementAndGet())
         override fun close() { closed = true }
     }
-    private class Fixture(val provider: FakeProvider = FakeProvider(), availability: LyricProviderAvailability = LyricProviderAvailability.AVAILABLE,
+    private class Fixture(val provider: FakeProvider = FakeProvider(), private val availability: LyricProviderAvailability = LyricProviderAvailability.AVAILABLE,
         clock: () -> Long = { System.nanoTime() / 1_000_000 }, beforeApply: suspend () -> Unit = {}) {
         val document = MutableStateFlow(DocumentState(Project(lyrics = frozenListOf(LyricLine("old", "元の歌", 0, 960))), 7))
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         var edits = 0
+        val session = GoogleLyricSession { 100L }
+        val admission = session.openDialog()
         val controller = LyricProposalController(document, provider, LyricProposalApply { placement, expected ->
             beforeApply()
             if (document.value.revision != expected) false else {
                 edits++; document.value = document.value.copy(project = document.value.project.copy(lyrics = placement.lines, lyricStructure = placement.structure), revision = expected + 1); true
             }
-        }, scope, availability, clock)
-        suspend fun generate() = controller.generate(request(), SessionApiKey("fake-key"), 0, 4, true)
+        }, scope, admission, clock)
+        fun review(key: SessionApiKey) {
+            controller.bindInputs(request().model, key)
+            if (availability == LyricProviderAvailability.AVAILABLE)
+                assertNull(session.install(requireNotNull(session.pendingReview()), reviewed()))
+        }
+        suspend fun generate(): Boolean {
+            val key = SessionApiKey("fake-key")
+            review(key)
+            return controller.generate(request(), key, 0, 4, true, controller.admissionVersion)
+        }
         fun close() { controller.close(); scope.cancel() }
     }
     private companion object {
+        fun reviewed() = ReviewedGoogleUse("gemini-test", GoogleAccountTier.PAID, GoogleUseEligibility.REVIEWED_FOR_THIS_SESSION,
+            GoogleTokenPrice("gemini-test", GoogleAccountTier.PAID, "USD", 1_000, 100, 200, 10_000, 0, 1_000),
+            GoogleTokenBounds(4096, 128, 64), GoogleMoney("USD", 2_000), 0, 1_000)
         fun request() = LyricRequest("gemini-test", "テーマ", "", LyricLanguage.JAPANESE, LyricStyle.SONG, "", "", "")
         fun success() = LyricProviderResult.Success(LyricProposal("題", LyricLanguage.JAPANESE,
             frozenListOf(ProposalSection("A", LyricSectionKind.VERSE, 4, frozenListOf(ProposalLine.create("新しい歌", "あたらしいうた", LyricLanguage.JAPANESE))))),

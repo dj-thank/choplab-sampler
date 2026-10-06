@@ -21,7 +21,10 @@ private fun reject(problem: PatternProblem): Nothing = throw PatternEditExceptio
 object PatternEdits {
     const val STEP_TICKS = ProjectLimits.PPQ / 4
     const val BAR_TICKS = ProjectLimits.PPQ * 4
-    val QUANTIZE_TICKS = listOf(ProjectLimits.PPQ, ProjectLimits.PPQ / 2, STEP_TICKS)
+    const val EIGHTH_TRIPLET_TICKS = ProjectLimits.PPQ / 3
+    const val SIXTEENTH_TRIPLET_TICKS = ProjectLimits.PPQ / 6
+    val INPUT_GRID_TICKS = listOf(STEP_TICKS, EIGHTH_TRIPLET_TICKS, SIXTEENTH_TRIPLET_TICKS)
+    val QUANTIZE_TICKS = listOf(ProjectLimits.PPQ, ProjectLimits.PPQ / 2) + INPUT_GRID_TICKS
 
     fun create(project: Project, name: String, copy: Pattern? = null): Pattern {
         if (project.patterns.size >= ProjectLimits.MAX_PATTERNS) reject(PatternProblem.PATTERN_LIMIT)
@@ -34,10 +37,11 @@ object PatternEdits {
         if (!trim && pattern.notes.any { it.tick >= length }) reject(PatternProblem.TRIM_REQUIRED)
         return pattern.copy(bars = bars, notes = pattern.notes.filter { it.tick < length }.frozen())
     }
-    fun toggle(project: Project, pattern: Pattern, padId: Int, step: Int, velocity: Float): Pattern {
-        if (padId !in 0..127 || step !in 0 until pattern.bars * 16 || !velocity.isFinite() || velocity !in 0f..1f) reject(PatternProblem.INVALID_INPUT)
+    fun toggle(project: Project, pattern: Pattern, padId: Int, step: Int, velocity: Float, gridTicks: Int = STEP_TICKS): Pattern {
+        if (padId !in 0..127 || gridTicks !in INPUT_GRID_TICKS ||
+            step !in 0 until pattern.lengthTicks / gridTicks || !velocity.isFinite() || velocity !in 0f..1f) reject(PatternProblem.INVALID_INPUT)
         if (project.pads[padId].assetHash == null) reject(PatternProblem.EMPTY_PAD)
-        val tick = step * STEP_TICKS
+        val tick = step * gridTicks
         val existing = pattern.notes.any { it.padId == padId && it.tick == tick }
         val notes = pattern.notes.filterNot { it.padId == padId && it.tick == tick } + if (existing) emptyList() else listOf(Note(tick, padId, velocity))
         return pattern.copy(notes = notes.sortedWith(compareBy(Note::tick, Note::padId)).frozen())
@@ -119,6 +123,9 @@ object PatternPlacement {
         return plan
     }
 
+    /** Both pieces are legal labels; preserve the BANK name inside the 80-character track bound. */
+    fun routeName(bank: Bank, trackName: String): String = "${trackName.take(31)} ${bank.name}"
+
     fun intent(project: Project, plan: PatternPlacementPlan, rendered: Map<PatternVoiceRender, Asset>, freshId: (String) -> String,
                trackName: String): Intent.SetArrangement {
         val sounds = plan.renders.map { request ->
@@ -128,15 +135,13 @@ object PatternPlacement {
                 reject(PatternProblem.RENDER_FAILED)
             asset
         }.distinctBy { it.hash }
-        val track = project.tracks.firstOrNull { it.kind == TrackKind.BANK }
-            ?: Track(freshId("track"), trackName, TrackKind.BANK)
-        val tracks = if (project.tracks.any { it.id == track.id }) project.tracks else (project.tracks + track).frozen()
+        val routes = com.choplab.core.BankPlacementRoutes(project, freshId) { bank -> routeName(bank, trackName) }
         val clips = (project.clips + plan.voices.map { voice ->
             val asset = rendered.getValue(voice.render)
-            Clip(freshId("clip"), track.id, asset.hash, FrameRange(0, asset.frames), startTick = voice.startTick,
+            Clip(freshId("clip"), routes.trackForPad(voice.render.padId).id, asset.hash, FrameRange(0, asset.frames), startTick = voice.startTick,
                 gain = voice.velocity, pan = 0f)
         }).frozen()
-        val intent = Intent.SetArrangement(tracks, clips, project.takes, sounds.frozen())
+        val intent = Intent.SetArrangement(routes.tracks.frozen(), clips, project.takes, sounds.frozen(), banks = routes.banks.frozen())
         val after = try { Reducer.reduce(project, intent).project } catch (_: IllegalArgumentException) { reject(PatternProblem.NO_ROOM) }
         if (ProgramCompiler.residentFrames(after) > ProgramCompiler.RESIDENT_FRAME_LIMIT) reject(PatternProblem.NO_ROOM)
         if (!ProgramCompiler.songFits(after)) reject(PatternProblem.SONG_FULL)

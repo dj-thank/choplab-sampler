@@ -41,6 +41,8 @@ import org.jetbrains.compose.resources.stringResource
         text = {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(stringResource(Res.string.ce_lyrics_timing_hint, state.milliBpm / 1000f))
+                CEButton(stringResource(Res.string.pitch_title), { onAction(ContinuousEditorAction.OpenVocalPitch) }, Modifier.fillMaxWidth(),
+                    enabled = state.permits(ContinuousCapability.VOCAL_PITCH), tag = "ce-pitch-open")
                 CELyricFollow(lyrics.lines, state, readout, refreshKey)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     CEButton(stringResource(Res.string.ce_lyrics_play), { onAction(ContinuousEditorAction.PlaySong) }, Modifier.weight(1f),
@@ -54,6 +56,14 @@ import org.jetbrains.compose.resources.stringResource
                     enabled = state.permits(ContinuousCapability.LYRIC_PROPOSAL), tag = "ce-lyrics-ai-open")
                 CEButton(stringResource(Res.string.vocal_guide_title), { onAction(ContinuousEditorAction.OpenVocalGuide) }, Modifier.fillMaxWidth(),
                     enabled = state.permits(ContinuousCapability.VOCAL_GUIDE), tag = "ce-vocal-guide-open")
+                CEButton(stringResource(Res.string.punch_title), { onAction(ContinuousEditorAction.OpenVocalPunch) }, Modifier.fillMaxWidth(),
+                    enabled = state.permits(ContinuousCapability.VOCAL_PUNCH), tag = "ce-vocal-punch-open")
+                CEButton(stringResource(Res.string.vocal_take_title), { onAction(ContinuousEditorAction.OpenVocalTakes) }, Modifier.fillMaxWidth(),
+                    enabled = state.permits(ContinuousCapability.VOCAL_TAKES), tag = "ce-vocal-takes-open")
+                CEButton(stringResource(Res.string.practice_title), { onAction(ContinuousEditorAction.OpenVocalPractice) }, Modifier.fillMaxWidth(),
+                    enabled = state.permits(ContinuousCapability.VOCAL_PRACTICE), tag = "ce-practice-open")
+                CEButton(stringResource(Res.string.coach_title), { onAction(ContinuousEditorAction.OpenVocalCoach) }, Modifier.fillMaxWidth(),
+                    enabled = state.permits(ContinuousCapability.VOCAL_COACH), tag = "ce-coach-open")
                 if (lyrics.lines.isEmpty()) Text(stringResource(Res.string.ce_lyrics_empty))
                 else LazyColumn(Modifier.fillMaxWidth().height(160.dp).testTag("ce-lyrics-list")) {
                     items(lyrics.lines, key = { it.id }) { line ->

@@ -22,8 +22,9 @@ internal class PcmReadCursor {
     var cache: PagedPcm? = null
     var page = -1
     var samples: FloatArray? = null
+    var spanOffset = 0
     fun reset() { missing = false; clear() }
-    fun clear() { cache = null; page = -1; samples = null }
+    fun clear() { cache = null; page = -1; samples = null; spanOffset = 0 }
 }
 
 /** Owns defensive resident samples or a bounded immutable-page cache. Published samples never mutate. */
@@ -61,6 +62,13 @@ class PcmAsset private constructor(private var pcm: FloatArray?, val pages: Page
         return at(frame, channel)
     }
     internal fun at(frame: Int, channel: Int, cursor: PcmReadCursor? = null): Float = pcm?.get(frame * 2 + channel) ?: pages!!.sample(frame, channel, cursor)
+    /** Borrow one contiguous immutable FIR window until the reader clears its existing cursor.
+     * No copy, pin, retained page, or allocation beyond that cursor's already-budgeted read page. */
+    internal fun span(firstFrame: Int, count: Int, cursor: PcmReadCursor): FloatArray? {
+        val resident = pcm
+        if (resident != null) { cursor.spanOffset = firstFrame * 2; return resident }
+        return pages!!.span(firstFrame, count, cursor)
+    }
 
     companion object {
         fun paged(pages: PagedPcm): PcmAsset = PcmAsset(null, pages)
@@ -101,6 +109,10 @@ class Pad(
     val sustainLevel: Float = 1f,
     /** 1 leaves the sound untouched; lower values darken it with a one-pole low-pass, down to 80 Hz at 0. */
     val tone: Float = 1f,
+    val mixBus: Int = MixerProgram.UNROUTED_BUS,
+    /** Track fader follows the raw PAD/bake, so its pan is never baked or combined twice. */
+    val mixGain: Float = 1f,
+    val mixPan: Float = 0f,
 ) {
     init {
         require(id in 0 until EngineFormat.PAD_COUNT)
@@ -111,9 +123,13 @@ class Pad(
         require(attackFrames in 0..48_000 && releaseFrames in 1..48_000 && loopCrossfadeFrames in 0..24_000)
         require(decayFrames in 0..48_000 && sustainLevel.isFinite() && sustainLevel in 0f..1f)
         require(tone.isFinite() && tone in 0f..1f)
+        require(mixBus in 0 until MixerProgram.MAX_BUSES)
+        require(mixGain.isFinite() && mixGain in 0f..8f && mixPan.isFinite() && mixPan in -1f..1f)
     }
     /** The earlier app's curve: corner 80 Hz x 225^tone, so 1 would be 18 kHz; the top step bypasses exactly. */
     internal val toneAlpha: Double = if (tone >= TONE_BYPASS) 1.0 else 1.0 - exp(-2.0 * PI * 80.0 * 225.0.pow(tone.toDouble()) / EngineFormat.SAMPLE_RATE)
+    internal val mixLeftGain = mixGain * if (mixPan > 0f) cos(mixPan * PI / 2).toFloat() else 1f
+    internal val mixRightGain = mixGain * if (mixPan < 0f) cos(-mixPan * PI / 2).toFloat() else 1f
     internal val step = 2.0.pow(pitchSemitones / 12.0) * if (reverse) -1.0 else 1.0
     internal val leftGain = gain * if (pan > 0f) cos(pan * PI / 2).toFloat() else 1f
     internal val rightGain = gain * if (pan < 0f) cos(-pan * PI / 2).toFloat() else 1f
@@ -157,6 +173,7 @@ class EngineProgram(
     val revision: Long = 0,
     val arrangement: Arrangement? = null,
     private val preparedPcm: PcmLeaseGroup? = null,
+    val mixer: MixerProgram = MixerProgram.BYPASS,
 ) {
     private val slots: Array<Pad?> = arrayOfNulls(EngineFormat.PAD_COUNT)
     private val assets: Array<PcmAsset>

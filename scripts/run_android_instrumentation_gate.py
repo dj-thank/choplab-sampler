@@ -37,7 +37,10 @@ def run_gate(repo_root: Path) -> int:
     """An all-green XML result can never hide a failed Gradle invocation."""
     try:
         completed = subprocess.run(
-            ["./gradlew", "--stacktrace", ":app:connectedDebugAndroidTest"],
+            ["./gradlew", "--stacktrace", ":app:connectedDebugAndroidTest",
+             # The native candidate gate requires an owned arm64 target, explicit opt-in and
+             # reviewed runtime hashes. Its separate class/argument invocation remains mandatory.
+             "-Pandroid.testInstrumentationRunnerArguments.notClass=com.choplab.sampler.audio.AndroidNativeCodecTest"],
             cwd=repo_root,
             check=False,
         )

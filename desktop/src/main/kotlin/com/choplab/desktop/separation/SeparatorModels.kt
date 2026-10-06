@@ -2,11 +2,13 @@ package com.choplab.desktop.separation
 
 import com.choplab.sampler.separation.DrumSeparationService
 import com.choplab.sampler.separation.SeparatorSpec
+import com.choplab.sampler.separation.SeparatorModelStore
+import com.choplab.desktop.DesktopProfile
 import java.io.File
 
 /**
- * Windows lookup for the bundled drum model used by the shared [DrumSeparationService]:
- * explicit configuration, then the app image `models` folder, then the development folder.
+ * Read an explicit/bundled model when present (including Mac's offline bundle). Otherwise
+ * Windows downloads the pinned model on the separation worker into the shared private cache.
  */
 internal fun defaultSeparatorModelsDir(): File {
     // Explicit configuration always wins, so tests and operators can pin the lookup.
@@ -22,6 +24,7 @@ internal fun defaultSeparatorModelsDir(): File {
         File("work/separator-models"),
         File("../work/separator-models"),
     ).firstOrNull { it.resolve(SeparatorSpec.MODEL_FILE).isFile }
-        ?: codeSourceModels
-        ?: File("work/separator-models")
+        ?: DesktopProfile.modelDirectory()
 }
+
+internal fun defaultSeparatorModelStore() = SeparatorModelStore(defaultSeparatorModelsDir())

@@ -1,5 +1,10 @@
 import groovy.json.JsonSlurper
 import java.security.MessageDigest
+import org.gradle.api.artifacts.transform.InputArtifact
+import org.gradle.api.artifacts.transform.TransformAction
+import org.gradle.api.artifacts.transform.TransformOutputs
+import org.gradle.api.artifacts.transform.TransformParameters
+import org.gradle.api.attributes.Attribute
 
 plugins {
     alias(libs.plugins.android.application)
@@ -41,6 +46,109 @@ val verifyNewPipeDesugaring = tasks.register("verifyNewPipeDesugaring") {
 }
 tasks.named("preBuild") { dependsOn(verifyNewPipeDesugaring) }
 
+abstract class PrepareSourceNotices : Exec() {
+    @get:OutputDirectory
+    abstract val destinationDirectory: DirectoryProperty
+}
+val prepareSourceNotices = tasks.register<PrepareSourceNotices>("prepareSourceNotices") {
+    group = "distribution"
+    workingDir(rootProject.projectDir)
+    destinationDirectory.set(layout.buildDirectory.dir("generated/source-notice-assets"))
+    // Git revision/dirty state must be refreshed even when input text is unchanged.
+    outputs.upToDateWhen { false }
+    // Refresh only this task-owned generated notice output, including legacy recipe names.
+    doFirst { project.delete(destinationDirectory.get().asFile) }
+    val python = if (System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) "python" else "python3"
+    commandLine(python, "scripts/prepare_source_notices.py", "--platform", "android", "--out",
+        destinationDirectory.get().dir("source-notices").asFile.absolutePath)
+}
+
+// Explicit candidate only until the same arm64 bytes pass target codec/runtime
+// acceptance. This never changes release signing or the default upstream AAR.
+val androidAudioRuntimeCandidate = providers.gradleProperty("choplabAndroidAudioRuntime").orNull?.let(rootProject::file)
+val androidPythonRuntimeCandidate = providers.gradleProperty("choplabAndroidPythonRuntime").orNull?.let(rootProject::file)
+check(androidPythonRuntimeCandidate == null || androidAudioRuntimeCandidate != null) {
+    "The Python linkage candidate must be paired with the reviewed audio FFmpeg candidate"
+}
+
+// Transform the one fixed AAR, retaining its original module identity and
+// transitive metadata. No replacement Maven coordinate or dependency downgrade.
+abstract class AndroidPythonLinkageTransform : TransformAction<AndroidPythonLinkageTransform.Parameters> {
+    interface Parameters : TransformParameters {
+        @get:InputFile @get:PathSensitive(PathSensitivity.NONE)
+        val candidate: RegularFileProperty
+        @get:Input val upstreamSha256: Property<String>
+        @get:Input val derivedSha256: Property<String>
+        @get:Input val derivedBytes: Property<Long>
+    }
+    @get:InputArtifact @get:PathSensitive(PathSensitivity.NAME_ONLY)
+    abstract val inputArtifact: Provider<FileSystemLocation>
+    override fun transform(outputs: TransformOutputs) {
+        val original = inputArtifact.get().asFile
+        if (original.name != "library-0.18.1.aar") { outputs.file(original); return }
+        fun sha(file: File): String = MessageDigest.getInstance("SHA-256").let { digest ->
+            file.inputStream().use { input ->
+                val buffer = ByteArray(64 * 1024)
+                while (true) { val n = input.read(buffer); if (n < 0) break; digest.update(buffer, 0, n) }
+            }
+            digest.digest().joinToString("") { "%02x".format(it.toInt() and 255) }
+        }
+        check(sha(original) == parameters.upstreamSha256.get()) { "Python runtime upstream identity changed" }
+        val candidate = parameters.candidate.get().asFile
+        check(candidate.length() == parameters.derivedBytes.get() && sha(candidate) == parameters.derivedSha256.get()) {
+            "Python linkage candidate differs from the reviewed alias-only derivation"
+        }
+        candidate.copyTo(outputs.file("library-0.18.1.aar"), overwrite = true)
+    }
+}
+if (androidPythonRuntimeCandidate != null) {
+    val profile = JsonSlurper().parse(rootProject.file("config/android-ffmpeg-audio.json")) as Map<*, *>
+    val linkage = profile["pythonLinkage"] as Map<*, *>
+    val original = linkage["upstream"] as Map<*, *>
+    val derived = linkage["aar"] as Map<*, *>
+    val isolated = Attribute.of("com.choplab.android-python-linkage", Boolean::class.javaObjectType)
+    val artifactType = Attribute.of("artifactType", String::class.java)
+    dependencies {
+        attributesSchema { attribute(isolated) }
+        artifactTypes.maybeCreate("aar").attributes.attribute(isolated, false)
+        registerTransform(AndroidPythonLinkageTransform::class) {
+            from.attribute(isolated, false).attribute(artifactType, "aar")
+            to.attribute(isolated, true).attribute(artifactType, "aar")
+            parameters {
+                candidate.set(androidPythonRuntimeCandidate)
+                upstreamSha256.set(original["sha256"] as String)
+                derivedSha256.set(derived["sha256"] as String)
+                derivedBytes.set((derived["bytes"] as Number).toLong())
+            }
+        }
+    }
+    // A consumer requests the transformed AAR. Do not add the same custom
+    // attribute to outgoing archives/SBOM variants: Gradle requires each
+    // consumable variant to retain its distinct identity.
+    configurations.configureEach { if (isCanBeResolved) attributes.attribute(isolated, true) }
+}
+if (androidAudioRuntimeCandidate != null) {
+    val verifyAndroidAudioRuntime = tasks.register("verifyAndroidAudioRuntime") {
+        val profile = rootProject.file("config/android-ffmpeg-audio.json")
+        inputs.file(profile)
+        inputs.file(androidAudioRuntimeCandidate)
+        doLast {
+            val document = JsonSlurper().parse(profile) as Map<*, *>
+            val expected = (document["derived"] as Map<*, *>)["aar"] as Map<*, *>
+            val digest = MessageDigest.getInstance("SHA-256")
+            androidAudioRuntimeCandidate.inputStream().use { input ->
+                val buffer = ByteArray(64 * 1024)
+                while (true) { val n = input.read(buffer); if (n < 0) break; digest.update(buffer, 0, n) }
+            }
+            val actual = digest.digest().joinToString("") { "%02x".format(it.toInt() and 255) }
+            check(androidAudioRuntimeCandidate.length() == (expected["bytes"] as Number).toLong() && actual == expected["sha256"]) {
+                "Android audio runtime candidate differs from the reviewed source build"
+            }
+        }
+    }
+    tasks.named("preBuild") { dependsOn(verifyAndroidAudioRuntime) }
+}
+
 kotlin {
     jvmToolchain(21)
     compilerOptions {
@@ -71,9 +179,14 @@ val previewKeyPassword = providers.environmentVariable("CHOPLAB_PREVIEW_KEY_PASS
 val previewSigningAvailable = listOf(previewStorePath, previewStorePassword, previewKeyAlias, previewKeyPassword)
     .all { !it.isNullOrBlank() }
 
+// Measure the actual NEXT Preview, without changing its identity, signer or the default distribution.
+val nextSizeProbe = providers.gradleProperty("choplabNextSizeProbe").map(String::toBooleanStrict).orElse(false).get()
+
 android {
     namespace = "com.choplab.sampler"
     compileSdk = 37
+    // AGP rewrites the matching test APK using this app's R8 mapping. A Debug test APK is not compatible.
+    if (nextSizeProbe) testBuildType = "preview"
 
     defaultConfig {
         applicationId = "com.choplab.sampler"
@@ -120,7 +233,10 @@ android {
     buildTypes {
         release {
             isDebuggable = false
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            // The formal size gate is the arm64 phone build. Debug/Preview retain emulator ABIs.
+            ndk.abiFilters += "arm64-v8a"
             if (releaseSigningAvailable) {
                 signingConfig = signingConfigs.getByName("release")
             }
@@ -131,10 +247,20 @@ android {
         }
         create("preview") {
             initWith(getByName("release"))
+            ndk.abiFilters.clear()
+            isMinifyEnabled = false
+            isShrinkResources = false
             // Explicit local compatibility probe; this does not change the release size/signing gate.
             if (providers.gradleProperty("choplabNewPipeR8Probe").orNull == "true") {
                 isMinifyEnabled = true
                 proguardFile(rootProject.file("config/newpipe-r8-probe.pro"))
+            }
+            if (nextSizeProbe) {
+                ndk.abiFilters += "arm64-v8a"
+                isMinifyEnabled = true
+                isShrinkResources = true
+                proguardFile("proguard-next-runtime-probe.pro")
+                testProguardFile("proguard-android-test.pro")
             }
             applicationIdSuffix = ".preview"
             versionNameSuffix = "-preview"
@@ -161,6 +287,12 @@ android {
             manifest.srcFile("src/next/AndroidManifest.xml")
         }
         for (tests in listOf("testDebug", "testPreview")) getByName(tests) { kotlin.srcDir("src/testNext/java") }
+        if (nextSizeProbe) getByName("androidTest") {
+            // Check the optimized app through Android's public launcher/runtime boundary.
+            // The regular Compose tests access internals that R8 can legitimately inline/remove.
+            java.setSrcDirs(emptyList<String>())
+            kotlin.setSrcDirs(listOf("src/nextRuntimeTest/java", "src/nextAndroidTest/java", "src/androidTest/java/com/choplab/sampler/audio"))
+        }
     }
 
     buildFeatures {
@@ -182,6 +314,16 @@ android {
 }
 
 androidComponents {
+    onVariants(selector().all()) { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(prepareSourceNotices) { it.destinationDirectory }
+    }
+    onVariants(selector().withBuildType("preview")) { variant ->
+        if (nextSizeProbe) {
+            // Store the identical optimized DEX with lossless APK compression.
+            // Scope this to the NEXT size candidate; preserve every R8/reflection rule.
+            variant.packaging.dex.useLegacyPackaging.set(true)
+        }
+    }
     beforeVariants(selector().withBuildType("preview")) { variantBuilder ->
         // Test the release-like Preview without making its APK debuggable.
         variantBuilder.hostTests.getValue(com.android.build.api.variant.HostTestBuilder.UNIT_TEST_TYPE).enable = true
@@ -197,7 +339,8 @@ dependencies {
     implementation(project(":shared"))
     implementation(project(":jvm-core"))
     implementation(libs.youtubedl.library)
-    implementation(libs.youtubedl.ffmpeg)
+    if (androidAudioRuntimeCandidate == null) implementation(libs.youtubedl.ffmpeg)
+    else implementation(files(androidAudioRuntimeCandidate))
     implementation(libs.onnxruntime.android)
     val composeBom = platform(libs.androidx.compose.bom)
     implementation(composeBom)
@@ -217,9 +360,12 @@ dependencies {
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.test.junit)
-    androidTestImplementation(libs.androidx.test.espresso)
+    androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.uiautomator)
-    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
-    androidTestImplementation(libs.androidx.compose.ui.test.junit4.accessibility)
+    if (!nextSizeProbe) {
+        androidTestImplementation(libs.androidx.test.espresso)
+        androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+        androidTestImplementation(libs.androidx.compose.ui.test.junit4.accessibility)
+    }
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }

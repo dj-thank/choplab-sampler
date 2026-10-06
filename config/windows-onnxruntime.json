@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "upstream": {
+    "coordinate": "com.microsoft.onnxruntime:onnxruntime:1.30.0",
+    "url": "https://repo.maven.apache.org/maven2/com/microsoft/onnxruntime/onnxruntime/1.30.0/onnxruntime-1.30.0.jar",
+    "bytes": 55572031,
+    "sha256": "57d8cedf6f0c8fd6d50ed65c17bf9939f55a4512f4a1f3e732023d258f262ac6",
+    "publishedSha1": "a18c77f0320a8231fa2935fc75e7ce8f746cf152",
+    "sourceUrl": "https://repo.maven.apache.org/maven2/com/microsoft/onnxruntime/onnxruntime/1.30.0/onnxruntime-1.30.0-sources.jar",
+    "sourceBytes": 89031,
+    "sourceSha256": "cd5fea391b8f46d1e217f89b21b187032779d417f60e71d8a21aaf9bddd41114",
+    "licenseUrl": "https://github.com/microsoft/onnxruntime/blob/v1.30.0/LICENSE",
+    "licenseSha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c"
+  },
+  "windows": {
+    "filename": "onnxruntime-1.30.0.jar",
+    "target": "win-x64",
+    "bytes": 17186806,
+    "sha256": "b221718064ae92b1754571c0165b529471c5e89ee1b45333a927be61379a3eef",
+    "entryCount": 72,
+    "entriesSha256": "63db2fe37aa4f67a8854329c4a17f4cc1719159819d4b1880dcbc84d8b92c7e4",
+    "format": "ZIP_STORED; sorted entries; 1980-01-01; Unix 0644"
+  }
+}

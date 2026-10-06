@@ -11,7 +11,8 @@ import kotlinx.coroutines.flow.*
 data class DocumentState(val project: Project, val revision: Long, val canUndo: Boolean = false, val canRedo: Boolean = false, val savedRevision: Long? = null, val audiblePending: Boolean = true)
 data class SelectionState(val padId: Int = 0, val patternId: String = "pattern-1", val slice: Int? = null,
                           val playbackTarget: PlaybackTarget = PlaybackTarget.Pattern(patternId))
-data class WorkState(val jobId: Long? = null, val operation: Operation? = null, val basedOnRevision: Long? = null, val preparationId: Long? = null)
+data class WorkState(val jobId: Long? = null, val operation: Operation? = null, val basedOnRevision: Long? = null, val preparationId: Long? = null,
+                     val stemProgress: StemExportProgress? = null)
 
 sealed interface Action {
     data class Edit(val intent: Intent, val expectedRevision: Long? = null) : Action {
@@ -30,8 +31,11 @@ sealed interface Action {
     data class New(val project: Project = Project()) : Action
     data class Save(val location: Location) : Action
     data class Export(val request: ExportRequest, val target: PlaybackTarget? = null) : Action
+    data class ExportStems(val request: StemExportRequest, val target: PlaybackTarget? = null) : Action
     data object CancelWork : Action
     data class Trigger(val padId: Int, val velocity: Float = 1f) : Action
+    data class StartLoopOverdub(val take: com.choplab.engine.LoopOverdub) : Action
+    data class StartNoteRepeat(val padId: Int, val ticks: Int, val durationFrames: Int? = null) : Action
     data class Release(val padId: Int) : Action
     /**
      * A PAD scratched by hand: taken at [sourceFrame] (its asset's frames at 48 kHz), then moved to absolute positions
@@ -100,6 +104,7 @@ class Studio(scope: CoroutineScope, private val services: Services, initial: Pro
         data class Complete(val id: Long, val generation: Long, val revision: Long, val operation: Operation, val result: Result<Any>) : Message
         data class Prepared(val id: Long, val generation: Long, val revision: Long, val result: Result<EngineProgram>) : Message
         data class CancelRequest(val answer: CompletableDeferred<ActionResult>) : Message
+        data class StemProgress(val id: Long, val progress: StemExportProgress) : Message
     }
     init {
         ownedScope.launch {
@@ -117,10 +122,12 @@ class Studio(scope: CoroutineScope, private val services: Services, initial: Pro
                     is Message.Complete -> try { complete(message) }
                         catch (cancel: CancellationException) { throw cancel }
                         catch (_: Exception) {
-                            if (_work.value.jobId == message.id) _work.value = _work.value.copy(jobId = null, operation = null, basedOnRevision = null)
+                            if (_work.value.jobId == message.id) _work.value = _work.value.copy(jobId = null, operation = null, basedOnRevision = null, stemProgress = null)
                             failed(message.operation)
                         }
                     is Message.Prepared -> prepared(message)
+                    is Message.StemProgress -> if (_work.value.jobId == message.id)
+                        _work.value = _work.value.copy(stemProgress = message.progress)
                     is Message.CancelRequest -> if (preparation?.answer === message.answer) cancelPreparation()
                 }
             } finally {
@@ -186,6 +193,22 @@ class Studio(scope: CoroutineScope, private val services: Services, initial: Pro
             validateTarget(project, target)
             start(Operation.EXPORT) { services.exporter.export(project, target, action.request) }
         }
+        is Action.ExportStems -> {
+            val exporter = requireNotNull(services.stems) { "This host cannot export stems" }
+            val project = session.project; val target = action.target ?: _selection.value.playbackTarget
+            validateTarget(project, target)
+            start(Operation.EXPORT) { id ->
+                var previous: StemExportProgress? = null
+                exporter.export(project, target, action.request) { progress ->
+                    val last = previous
+                    if (last == null || last.phase != progress.phase || last.completedStems != progress.completedStems ||
+                        progress.renderedFrames / 48_000 != last.renderedFrames / 48_000) {
+                        previous = progress
+                        mailbox.trySend(Message.StemProgress(id, progress))
+                    }
+                }
+            }
+        }
         Action.CancelWork -> {
             val operation = _work.value.operation
             cancelAllWork()
@@ -195,6 +218,11 @@ class Studio(scope: CoroutineScope, private val services: Services, initial: Pro
         is Action.Trigger -> {
             require(action.padId in 0..127 && session.project.pads[action.padId].assetHash != null)
             playback { frame, id -> EngineCommand.Trigger(frame, id, action.padId, action.velocity) }
+        }
+        is Action.StartLoopOverdub -> playback { frame, id -> EngineCommand.StartLoopOverdub(frame, id, action.take) }
+        is Action.StartNoteRepeat -> {
+            require(action.padId in 0..127 && session.project.pads[action.padId].assetHash != null)
+            playback { frame, id -> EngineCommand.StartNoteRepeat(frame, id, action.padId, action.ticks, action.durationFrames) }
         }
         is Action.ScratchStart -> {
             require(session.project.pads[action.padId].assetHash != null)
@@ -334,13 +362,13 @@ class Studio(scope: CoroutineScope, private val services: Services, initial: Pro
             com.choplab.core.model.FrozenList.from(target.takeIds.filter { id -> project.takes.any { it.id == id } }), if (replacing) 0 else target.minimumFrames)
     }
 
-    private fun start(operation: Operation, block: suspend () -> Any): ActionResult {
+    private fun start(operation: Operation, block: suspend (Long) -> Any): ActionResult {
         if (_work.value.jobId != null) return rejected(Rejection.BUSY)
         check(nextJob < Long.MAX_VALUE)
         val id = ++nextJob; val capturedGeneration = generation; val revision = session.revision
         _work.value = WorkState(id, operation, revision)
         worker = ownedScope.launch {
-            val result = try { Result.success(block()) }
+            val result = try { Result.success(block(id)) }
             catch (cancel: CancellationException) { if (!isActive) return@launch else Result.failure(cancel) }
             catch (failure: Exception) { Result.failure(failure) }
             mailbox.send(Message.Complete(id, capturedGeneration, revision, operation, result))
@@ -350,8 +378,8 @@ class Studio(scope: CoroutineScope, private val services: Services, initial: Pro
     private suspend fun complete(message: Message.Complete) {
         if (_work.value.jobId != message.id) { notice(Notice.StaleCompletion); return }
         worker = null
-        if (message.generation != generation || message.revision != session.revision) { _work.value = _work.value.copy(jobId = null, operation = null, basedOnRevision = null); notice(Notice.StaleCompletion); return }
-        if (message.result.isFailure) { _work.value = _work.value.copy(jobId = null, operation = null, basedOnRevision = null); failed(message.operation); return }
+        if (message.generation != generation || message.revision != session.revision) { _work.value = _work.value.copy(jobId = null, operation = null, basedOnRevision = null, stemProgress = null); notice(Notice.StaleCompletion); return }
+        if (message.result.isFailure) { _work.value = _work.value.copy(jobId = null, operation = null, basedOnRevision = null, stemProgress = null); failed(message.operation); return }
         when (message.operation) {
             Operation.IMPORT -> {
                 cancelPreparation()
@@ -365,7 +393,7 @@ class Studio(scope: CoroutineScope, private val services: Services, initial: Pro
                     originJobId = message.id, rescued = opened.rescued)
             }
             else -> {
-                _work.value = _work.value.copy(jobId = null, operation = null, basedOnRevision = null)
+                _work.value = _work.value.copy(jobId = null, operation = null, basedOnRevision = null, stemProgress = null)
                 if (message.operation == Operation.SAVE) _document.value = _document.value.copy(savedRevision = message.revision)
                 notice(Notice.Completed(message.operation))
             }

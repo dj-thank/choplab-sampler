@@ -113,6 +113,10 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
     readout: () -> ContinuousEditorReadout, modifier: Modifier, onDrag: ((CEPaddedDrag?) -> Unit)?, onDrop: ((Int, Offset) -> Unit)?,
     compactDetails: Boolean = false, maximumPadSide: androidx.compose.ui.unit.Dp = androidx.compose.ui.unit.Dp.Infinity) {
     var details by remember { mutableStateOf(false) }
+    var overdubSettings by remember { mutableStateOf(false) }
+    if (overdubSettings) CELoopOverdubDialog(state, onAction) { overdubSettings = false }
+    var repeatSettings by remember { mutableStateOf(false) }
+    if (repeatSettings) CENoteRepeatDialog(state, onAction) { repeatSettings = false }
     val pad = state.selectedPad
     val padName = pad?.name?.takeIf { it.isNotBlank() } ?: stringResource(Res.string.ce_empty)
     // The fill panel's starting song position while it is open; another PAD closes it.
@@ -174,9 +178,20 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { Place(Modifier.weight(1.2f)); Fill(Modifier.weight(1f)); Play(Modifier.weight(1.1f)) }
             }
         }
+        CEActionButton(stringResource(Res.string.mixer_open), ContinuousEditorAction.Mixer(com.choplab.ui.mixer.MixerAction.Open()),
+            state, ContinuousCapability.MIXER, onAction, Modifier.fillMaxWidth(), tag = "ce-mixer-open")
+        CEActionButton(stringResource(Res.string.stretch_title), ContinuousEditorAction.OpenBeatStretch(
+            com.choplab.core.model.StretchTarget(com.choplab.core.model.StretchKind.PAD, state.selectedPadId.toString())),
+            state, ContinuousCapability.BEAT_STRETCH, onAction, Modifier.fillMaxWidth(),
+            additionallyEnabled = pad != null && pad.kind != ContinuousPadKind.EMPTY, tag = "ce-stretch-pad")
         CEBankPadEditButtons(state, { onAction(ContinuousEditorAction.BankPadEdit(it)) }, state.bankPadBlocked, Modifier.fillMaxWidth())
         CEActionButton(stringResource(Res.string.pattern_editor_title), ContinuousEditorAction.OpenStepPatterns,
             state, ContinuousCapability.STEP_PATTERNS, onAction, Modifier.fillMaxWidth(), tag = "ce-step-patterns")
+        CEButton(stringResource(Res.string.ce_note_repeat_setting, stringResource(noteRepeatLabel(state.noteRepeat))),
+            { repeatSettings = true }, Modifier.fillMaxWidth(), enabled = state.permits(ContinuousCapability.NOTE_REPEAT),
+            primary = state.noteRepeat != ContinuousNoteRepeat.OFF, reason = CEReason(state, ContinuousCapability.NOTE_REPEAT), tag = "ce-note-repeat")
+        CEButton(stringResource(Res.string.ce_overdub), { overdubSettings = true }, Modifier.fillMaxWidth(),
+            enabled = state.permits(ContinuousCapability.LOOP_OVERDUB), reason = CEReason(state, ContinuousCapability.LOOP_OVERDUB), tag = "ce-overdub")
         ContinuousRecordingGuidePanel(state.recordingGuide) { onAction(ContinuousEditorAction.RecordingGuide(it)) }
         }
         CEBanks(state, onAction)
@@ -205,7 +220,7 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
         @Composable fun Voice(modifier: Modifier) = if (state.recordingVoice || state.startingVoiceRecording) CEActionButton(stringResource(Res.string.ce_stop_voice), ContinuousEditorAction.StopVoice, state,
                 ContinuousCapability.STOP_ALL, onAction, modifier, primary = true, tag = "ce-record-voice")
             else CEActionButton(stringResource(Res.string.ce_record_voice), ContinuousEditorAction.RecordVoice, state, ContinuousCapability.RECORD_VOICE, onAction, modifier, tag = "ce-record-voice")
-        @Composable fun Hits(modifier: Modifier) = if (state.recordingHits) CEActionButton(stringResource(Res.string.ce_stop_hits), ContinuousEditorAction.StopHits, state,
+        @Composable fun Hits(modifier: Modifier) = if (state.recordingHits) CEActionButton(stringResource(if (state.loopOverdubBars > 0) Res.string.ce_overdub_finish else Res.string.ce_stop_hits), ContinuousEditorAction.StopHits, state,
                 ContinuousCapability.STOP_ALL, onAction, modifier, primary = true, tag = "ce-record-hits")
             else CEActionButton(stringResource(Res.string.ce_record_hits), ContinuousEditorAction.RecordHits, state, ContinuousCapability.RECORD_HITS, onAction, modifier, tag = "ce-record-hits")
         @Composable fun Scratch(modifier: Modifier) = CEActionButton(stringResource(Res.string.ce_scratch), ContinuousEditorAction.OpenScratch, state,
@@ -219,6 +234,8 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { Voice(Modifier.weight(1f)); Scratch(Modifier.weight(1f)) }
             }
         }
+        if (state.loopOverdubBars > 0) CEButton(stringResource(Res.string.ce_overdub_discard),
+            { onAction(ContinuousEditorAction.CancelLoopOverdub) }, Modifier.fillMaxWidth(), tag = "ce-overdub-discard")
         CELyricsButton(state, onAction, Modifier.fillMaxWidth())
         }
         // Below the button that started the take or pass, so nothing it pressed moves; screen readers hear it appear.
@@ -255,6 +272,9 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
             CEButton(stringResource(Res.string.ce_repeat), { repeatFrom = readout().songFrame }, enabled = state.permits(ContinuousCapability.DUPLICATE_CLIP),
                 reason = CEReason(state, ContinuousCapability.DUPLICATE_CLIP), tag = "ce-repeat")
             CEActionButton(stringResource(Res.string.ce_delete), ContinuousEditorAction.DeleteClip(clip?.id.orEmpty()), state, ContinuousCapability.DELETE_CLIP, onAction, additionallyEnabled = clip != null, tag = "ce-delete")
+            CEButton(stringResource(Res.string.stretch_title), { clip?.let { onAction(ContinuousEditorAction.OpenBeatStretch(
+                com.choplab.core.model.StretchTarget(com.choplab.core.model.StretchKind.CLIP, it.id))) } },
+                enabled = clip != null && state.permits(ContinuousCapability.BEAT_STRETCH), tag = "ce-stretch-clip")
         }
         }
         CETimelineTools(state, onAction)
@@ -275,7 +295,7 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
     }
 }
 
-/** Zoom, and what placing and moving snap to: one row where both fit, otherwise one each (phones, large text). */
+/** Keep the wide instrument's track height; grid choices scroll within the space after zoom. */
 @Composable private fun CETimelineTools(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val zoomOut = stringResource(Res.string.ce_zoom_out)
@@ -291,16 +311,27 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
         @Composable fun Grid() = Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(snap, color = CEColor.Cream, fontSize = 14.sp)
             for ((grid, label) in listOf(ContinuousGrid.BEAT to Res.string.ce_grid_beat, ContinuousGrid.HALF to Res.string.ce_grid_half,
-                    ContinuousGrid.QUARTER to Res.string.ce_grid_quarter, ContinuousGrid.FREE to Res.string.ce_free)) {
+                    ContinuousGrid.QUARTER to Res.string.ce_grid_quarter,
+                    ContinuousGrid.EIGHTH_TRIPLET to Res.string.pattern_editor_eighth_triplet,
+                    ContinuousGrid.SIXTEENTH_TRIPLET to Res.string.pattern_editor_sixteenth_triplet,
+                    ContinuousGrid.FREE to Res.string.ce_free)) {
                 val text = stringResource(label)
                 CEButton(text, { onAction(ContinuousEditorAction.SetGrid(grid)) },
                     Modifier.semantics { contentDescription = "$snap $text"; selected = state.grid == grid },
                     dark = true, primary = state.grid == grid, tag = "ce-grid-${grid.name.lowercase()}")
             }
         }
-        if (maxWidth >= 640.dp && LocalDensity.current.fontScale <= 1.3f) Row(verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp)) { Zoom(); Grid() }
-        else Column(verticalArrangement = Arrangement.spacedBy(6.dp)) { Zoom(); Box(Modifier.horizontalScroll(rememberScrollState())) { Grid() } }
+        @Composable fun GridViewport(modifier: Modifier) = Box(modifier.horizontalScroll(rememberScrollState())
+            .testTag("ce-grid-choices")) { Grid() }
+        if (maxWidth >= 650.dp && LocalDensity.current.fontScale <= 1.3f) Row(Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            Zoom()
+            // A finite viewport with unbounded contents prevents later choices from measuring at zero width.
+            GridViewport(Modifier.weight(1f))
+        } else Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Zoom()
+            GridViewport(Modifier.fillMaxWidth())
+        }
     }
 }
 

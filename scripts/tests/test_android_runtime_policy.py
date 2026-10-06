@@ -96,9 +96,14 @@ class AndroidRuntimeAdmissionTest(unittest.TestCase):
 
     def test_real_pin_file_is_finite_and_sources_are_external_to_apk(self):
         pins = load_pins()
-        self.assertEqual(33, len(pins))
-        self.assertEqual(33, len({pin.identity for pin in pins}))
-        self.assertEqual(338673417, sum(pin.size for pin in pins))
+        upstream = [p for p in pins if not p.coordinate.startswith('choplab:')]
+        derived = [p for p in pins if p.coordinate.startswith('choplab:')]
+        self.assertEqual(33, len(upstream))
+        self.assertEqual(338673417, sum(pin.size for pin in upstream))
+        self.assertEqual(4, len(derived))
+        self.assertEqual(37, len({pin.identity for pin in pins}))
+        self.assertEqual({'lib/arm64-v8a/' + name for name in (
+            'libffmpeg.so', 'libffprobe.so', 'libffmpeg.zip.so', 'libpython.zip.so')}, {p.apk_path for p in derived})
 
 
 class AndroidResourceTableTest(unittest.TestCase):

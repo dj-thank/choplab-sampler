@@ -18,7 +18,7 @@ import kotlin.math.abs
 /** Import, project and export ports a host builds on the backend's asset store and compiler.
  * Paths or content URIs stay host-private behind opaque [Location] handles.
  */
-class HostFileServices(val importer: ImportPort, val projects: ProjectPort, val exporter: ExportPort)
+class HostFileServices(val importer: ImportPort, val projects: ProjectPort, val exporter: ExportPort, val stems: StemExportPort? = null)
 
 /**
  * UI-independent composition root shared by the desktop and Android editor hosts: one [Studio], one
@@ -32,9 +32,11 @@ class EditorBackend private constructor(
     private val pcm: WavPcmPort,
     private val scope: CoroutineScope,
     val audition: SourceAuditionController,
+    val stemsAvailable: Boolean,
     private val autosave: AutosaveStore,
     private val decoder: OriginalAudioDecoder?,
 ) {
+    val autoChop: com.choplab.core.chop.AutoChopPort = AutoChopWorker(pcm)
     private val persistenceFailed = MutableStateFlow(false)
     val persistenceFailure: StateFlow<Boolean> = persistenceFailed.asStateFlow()
     init {
@@ -84,19 +86,41 @@ class EditorBackend private constructor(
         }
     }
 
+    private val vocalCompRenderer = VocalCompRenderer(assets, pcm, assets.directory.parent.resolve("vocal-comp"))
+    suspend fun renderVocalComp(project: Project, draft: com.choplab.core.vocal.VocalCompDraft, name: String): Asset =
+        try { vocalCompRenderer.render(project, draft, name) }
+        catch (_: PcmMemoryLimit) { throw com.choplab.core.vocal.VocalEditException(com.choplab.core.vocal.VocalProblem.LIMIT) }
+    /** Offline practice uses the production compiler and the same PCM leases/budget as playback/export. */
+    fun practiceRenderer(): com.choplab.core.vocal.VocalPracticeRenderer = VocalPracticeWorker(
+        ProgramCompiler(pcm), assets, assets.directory.parent.resolve("practice-scratch"), memory = pcm.memory)
+
+    /** The worker borrows the shared PCM; closing it never closes playback's cache or decoder. */
+    fun createFourStemWorker(factory: com.choplab.jvm.separation.FourStemSessionFactory,
+                            memoryProbe: () -> com.choplab.jvm.separation.SeparationMemory): com.choplab.core.separation.FourStemPort =
+        com.choplab.jvm.separation.FourStemService(assets, pcm, assets.directory.parent.resolve("four-stem-temporary"), factory, memoryProbe)
+
     /** Renders and stores a built-in kit's 16 sounds in slot order, ready for an InstallKit edit. */
     suspend fun prepareDrumKit(kitId: String): List<Asset> = DrumKitAssets.publish(DrumKits.kit(kitId), assets)
 
+    /** The existing PCM lease/cache budget is shared with the worker and all playing voices. */
+    fun pitchRenderer(): VocalPitchRenderer = VocalPitchRenderer(assets, pcm, assets.directory.parent.resolve("vocal-pitch"))
+    fun coachAnalyzer(): com.choplab.core.vocal.VocalCoachAnalyzer = VocalCoachWorker(pcm)
+
+    suspend fun analyseSource(asset: Asset, range: com.choplab.core.model.FrameRange): com.choplab.core.analysis.SourceMusicResult =
+        analyseSourceMusic(pcm, asset, range)
+    fun stretchRenderer(): BeatStretchRenderer = BeatStretchRenderer(assets, pcm, assets.directory.parent.resolve("beat-stretch"))
+
     /**
-     * Renders [pad] from [source] with its pitch, reverse and tone, as it sounds from its PAD, into a 48 kHz float WAV in
-     * the store, ready to place on the song. The same PAD renders to the same bytes, so placing it again adds nothing.
+     * Renders [pad] from [source] with its pitch, reverse, tone and own pan into a 48 kHz float WAV in the store.
+     * Placement retains the PAD gain and applies the destination BANK mix once; neither is baked here.
+     * The same PAD renders to the same bytes, so placing it again adds nothing.
      */
     suspend fun renderPad(pad: Pad, source: Asset): Asset = withContext(Dispatchers.Default) {
         pcm.acquire(source).use { lease ->
             val prepared = ProgramCompiler.enginePad(pad, source, lease.pcm)
             pcm.memory.reserve(PadRender.frames(prepared) * 8L + 256 * 1024).use {
                 val context = currentCoroutineContext()
-                val samples = PadRender.render(prepared) { windows, render -> runBlocking(context) { pcm.prepared(windows, render) } }
+                val samples = PadRender.render(prepared, bakePan = true) { windows, render -> runBlocking(context) { pcm.prepared(windows, render) } }
                 val marks = buildList {
                     if (pad.pitchSemitones != 0.0) add("%+d".format(kotlin.math.round(pad.pitchSemitones).toInt()))
                     if (pad.reverse) add("rev")
@@ -122,8 +146,41 @@ class EditorBackend private constructor(
         }
     }
 
+    suspend fun renderNoteRepeat(pad: Pad, source: Asset, tempo: com.choplab.engine.Tempo, ticks: Int,
+                                 releaseAt: Int, limitFrames: Int, stopAt: Int? = null): Asset = withContext(Dispatchers.Default) {
+        pcm.acquire(source).use { lease ->
+            val prepared = ProgramCompiler.enginePad(pad, source, lease.pcm)
+            val frames = com.choplab.engine.NoteRepeatRender.frames(prepared, releaseAt, limitFrames, stopAt)
+            pcm.memory.reserve(frames * 8L + 256 * 1024).use {
+                val context = currentCoroutineContext()
+                val samples = com.choplab.engine.NoteRepeatRender.render(prepared, tempo, ticks, releaseAt, limitFrames, stopAt) { windows, render ->
+                    runBlocking(context) { pcm.prepared(windows, render) }
+                }
+                publishRendered(samples, source.name.take(200) + " repeat", source.hash)
+            }
+        }
+    }
+
+    /** Reserve all live/future loop PCM before it can reach render; the take never loads source copies. */
+    suspend fun createLoopOverdub(startFrame: Long, frames: Int, grid: IntArray, routes: List<com.choplab.engine.LoopOverdubRoute>): com.choplab.core.LoopOverdubCapture = withContext(Dispatchers.Default) {
+        val memory = pcm.memory.reserve(com.choplab.engine.LoopOverdub.memoryBytes(frames, grid, routes.size))
+        try {
+            val prepared = com.choplab.engine.LoopOverdub(startFrame, frames, grid, routes)
+            object : com.choplab.core.LoopOverdubCapture {
+                override val take = prepared
+                override suspend fun publish(name: String): List<com.choplab.core.LoopOverdubAsset> {
+                    check(take.completed && !take.pcmMiss) { "Incomplete loop PCM" }
+                    return (0 until take.routeCount).filter { take.acceptedPresses(it) > 0 }.map { route ->
+                        com.choplab.core.LoopOverdubAsset(route, publishRendered(take.samples(route), name, null))
+                    }
+                }
+                override fun close() { take.dispose(); memory.close() }
+            }
+        } catch (failure: Throwable) { memory.close(); throw failure }
+    }
+
     /** Stream float bytes: no second/third full-sized byte-array copy next to the rendered PCM. */
-    private suspend fun publishRendered(samples: FloatArray, name: String, sourceHash: String): Asset = withContext(Dispatchers.IO) {
+    private suspend fun publishRendered(samples: FloatArray, name: String, sourceHash: String?): Asset = withContext(Dispatchers.IO) {
         val temporary = Files.createTempFile("choplab-render-", ".wav")
         try {
             val hash = java.security.MessageDigest.getInstance("SHA-256")
@@ -183,9 +240,9 @@ class EditorBackend private constructor(
                 output = engine(compiler)
                 val services = files(assets, compiler)
                 val jobs = CoroutineScope(SupervisorJob() + Dispatchers.Default).also { scope = it }
-                val studio = Studio(jobs, Services(assets, services.importer, services.projects, services.exporter, output),
+                val studio = Studio(jobs, Services(assets, services.importer, services.projects, services.exporter, output, services.stems),
                     recovered?.project ?: Project(), recovered?.revision ?: 0)
-                return EditorBackend(studio, output, assets, pcm, jobs, SourceAuditionController(output, pcm, jobs), autosave, decoder)
+                return EditorBackend(studio, output, assets, pcm, jobs, SourceAuditionController(output, pcm, jobs), services.stems != null, autosave, decoder)
             } catch (failure: Throwable) {
                 scope?.cancel()
                 try { output?.close() } finally { pcm.close(); decoder?.close() }

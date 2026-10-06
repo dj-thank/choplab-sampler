@@ -17,6 +17,12 @@ class ProgramCompiler(private val pcm: PcmPort) {
     suspend fun compile(project: Project, target: PlaybackTarget, revision: Long): EngineProgram {
         val pattern = if (target is PlaybackTarget.Pattern) requireNotNull(project.patterns.firstOrNull { it.id == target.id }) else null
         val timeline = if (target is PlaybackTarget.Arrangement) planArrangement(project, target) else null
+        val trackIds = (timeline?.audible.orEmpty().map { it.track.id } + project.pads.filter { it.assetHash != null }
+            .mapNotNull { project.banks[it.id / 16].trackId }).distinct()
+        require(trackIds.size <= Arrangement.MAX_TRACKS) { "Mixer exceeds 16 routed tracks" }
+        val tracksById = project.tracks.associateBy { it.id }
+        val mixer = com.choplab.engine.MixerProgram(trackIds.map { tracksById.getValue(it).fx }, project.mix, trackIds)
+        val anySolo = project.tracks.any { it.solo }
         val resident = mutableMapOf<String, PcmAsset>()
         val leases = mutableListOf<com.choplab.engine.PcmLease>()
         var transferred = false
@@ -34,20 +40,21 @@ class ProgramCompiler(private val pcm: PcmPort) {
                 }
             val pads = project.pads.filter { it.assetHash != null }.map { pad ->
                 val metadata = project.asset(requireNotNull(pad.assetHash))
-                enginePad(pad, metadata, load(metadata)).also { prepared ->
+                val track = project.banks[pad.id / 16].trackId?.let(tracksById::getValue)
+                enginePad(pad, metadata, load(metadata), if (track == null) com.choplab.engine.MixerProgram.UNROUTED_BUS else trackIds.indexOf(track.id),
+                    if (track == null) 1f else if (track.mute || (anySolo && !track.solo)) 0f else track.gain, track?.pan ?: 0f).also { prepared ->
                     val start = if (pad.reverse) prepared.endFrame - 1 else prepared.startFrame
                     (pcm as? PrefetchPcmPort)?.prefetch(prepared.asset, maxOf(prepared.startFrame, start - 128),
                         minOf(prepared.endFrame, start + 4096))
                 }
             }
             val arrangement = timeline?.let { plan ->
-                val tracks = plan.audible.map { it.track.id }.distinct()
                 Arrangement(plan.audible.map { clip ->
-                    ArrangementClip(clip.id, load(clip.asset), clip.start, clip.sourceStart, clip.sourceEnd, clip.gain, clip.pan, tracks.indexOf(clip.track.id))
+                    ArrangementClip(clip.id, load(clip.asset), clip.start, clip.sourceStart, clip.sourceEnd, clip.gain, clip.pan, trackIds.indexOf(clip.track.id))
                 }, plan.duration)
             }
             return EngineProgram(pads, pattern?.let { com.choplab.engine.Pattern(it.lengthTicks, it.notes.map { note -> SequenceNote(note.tick, note.padId, note.velocity) }) },
-                project.tempo, revision, arrangement, com.choplab.engine.PcmLeaseGroup(leases)).also { transferred = true }
+                project.tempo, revision, arrangement, com.choplab.engine.PcmLeaseGroup(leases), mixer).also { transferred = true }
         } finally { if (!transferred) leases.forEach { it.close() } }
     }
 
@@ -71,6 +78,30 @@ class ProgramCompiler(private val pcm: PcmPort) {
          */
         fun songFits(project: Project): Boolean =
             try { planArrangement(project, PlaybackTarget.Arrangement()); true } catch (_: IllegalArgumentException) { false }
+
+        /** Admit all route layers together using the same selected-take and mixer limits as playback. */
+        fun canAddAudioClips(project: Project, target: PlaybackTarget.Arrangement, start: Long, end: Long, trackIds: List<String?>): Boolean = try {
+            require(start >= 0 && end > start && end <= Arrangement.MAX_DURATION_FRAMES && trackIds.isNotEmpty())
+            val plan = planArrangement(project, target)
+            val solo = project.tracks.any { it.solo }
+            val additions = trackIds.count { id ->
+                if (id == null) true else requireNotNull(project.tracks.firstOrNull { it.id == id }).let {
+                    !it.mute && it.gain > 0f && (!solo || it.solo)
+                }
+            }
+            require(plan.audible.size + additions <= Arrangement.MAX_CLIPS)
+            val usedTracks = (plan.audible.map { it.track.id } + project.pads.filter { it.assetHash != null }
+                .mapNotNull { project.banks[it.id / 16].trackId } + trackIds.filterNotNull()).toSet()
+            require(usedTracks.size + trackIds.count { it == null } <= Arrangement.MAX_TRACKS)
+            val edges = plan.audible.flatMap { clip ->
+                val from = maxOf(start, clip.start); val to = minOf(end, clip.end)
+                if (to > from) listOf(from * 2 + 1, to * 2) else emptyList()
+            }.sorted()
+            var overlap = additions
+            require(overlap <= Arrangement.MAX_SIMULTANEOUS_CLIPS)
+            for (edge in edges) { overlap += if (edge and 1L == 1L) 1 else -1; require(overlap <= Arrangement.MAX_SIMULTANEOUS_CLIPS) }
+            true
+        } catch (_: IllegalArgumentException) { false }
 
         private fun planArrangement(project: Project, target: PlaybackTarget.Arrangement): TimelinePlan {
             val takes = target.takeIds.map { id -> requireNotNull(project.takes.firstOrNull { it.id == id }) { "Unknown selected take" } }
@@ -113,10 +144,11 @@ class ProgramCompiler(private val pcm: PcmPort) {
          * resident, since muted clips count too. Compare with [RESIDENT_FRAME_LIMIT].
          */
         /** The engine's PAD for [pad], its sound [data] loaded at 48 kHz from [metadata]. */
-        fun enginePad(pad: Pad, metadata: Asset, data: PcmAsset): com.choplab.engine.Pad {
+        fun enginePad(pad: Pad, metadata: Asset, data: PcmAsset,
+                      mixBus: Int = com.choplab.engine.MixerProgram.UNROUTED_BUS, mixGain: Float = 1f, mixPan: Float = 0f): com.choplab.engine.Pad {
             val (start, end) = normalizedRange(requireNotNull(pad.range), metadata.sampleRate)
             return com.choplab.engine.Pad(pad.id, data, start, end, pad.mode, pad.pitchSemitones, pad.gain,
-                pad.pan, pad.reverse, pad.chokeGroup, pad.attackFrames, pad.releaseFrames, pad.loopCrossfadeFrames, pad.decayFrames, pad.sustainLevel, pad.tone)
+                pad.pan, pad.reverse, pad.chokeGroup, pad.attackFrames, pad.releaseFrames, pad.loopCrossfadeFrames, pad.decayFrames, pad.sustainLevel, pad.tone, mixBus, mixGain, mixPan)
         }
         /** Host admission reserves the live SOURCE/HAND too, once per hash. Legacy residentFrames is a duration diagnostic. */
         fun residentBudgetBytes(project: Project): Long =

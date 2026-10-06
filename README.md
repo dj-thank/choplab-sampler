@@ -27,9 +27,13 @@
 
 WAV・FLAC・MP3・M4A（AAC/ALAC）・AAC・Ogg・Opus・AIFF、MP4・WebM内の音声を取り込めます。「YouTubeから音源を探す」では曲名やURLから候補を確認し、選んだ音源だけを取り込みます。取得した圧縮音源は元bytesのまま保存します。通信・提供元の応答により取得できない場合があります。「ドラムを分離」では原曲全体からドラム音を取り出し、ライブラリへ保存します。完了後に「分離音を原曲として使う」を選ぶまで制作は変わらず、元の音も残ります。分離モデルは同梱され、処理中は取消できます。「音源ライブラリ」から既存Previewの素材を検索し、選んだ1つを原曲にできます。複数ファイルや`.choplib`の追加・音源セットの書き出しにも対応します。ライブラリへの追加だけでは編集中の曲を変更しません。今までのアプリで保存した制作ファイル（`.choplab`）を開くと、中の音声だけを取り出して新しい制作にします（1つ目の音声が原曲になり、音声は入りきる分だけ PAD に順に入ります。PAD の切り方や曲の並びは引き継ぎません。元のファイルは変わりません）。データは今までの Preview と別のフォルダーに保存します。Intel の Mac では動きません。
 
+### iPadで使う
+
+iPad A16向けの対応を再開しました（[対応方針](docs/adr/ADR-0010-ipad-native-support.md)）。現在は開発基盤を準備する段階で、iPadへインストールできるアプリやTestFlight招待はまだありません。専用のiPadOSアプリを作り、署名・保存再開・実音を確認してから、導入方法を案内します。最新状況は [ROADMAP](docs/ROADMAP.md) を参照してください。
+
 ## 開発と文書
 
-開発の再開・クラウドへの引継ぎは、まず [ROADMAPの現状・SSOT・修正対象](docs/ROADMAP.md#最初に読む現状とssot2026-09-28照合) を参照してください。元セッションの意図と最新の訂正を反映し、[承認済み画面](docs/DESIGN.md#承認済み画像設計参照) も保存しています。
+開発の再開・クラウドへの引継ぎは、まず [ROADMAPの現状・SSOT・修正対象](docs/ROADMAP.md#最初に読む現状とssot2026-10-01照合) を参照してください。元セッションの意図と最新の訂正を反映し、[承認済み画面](docs/DESIGN.md#承認済み画像設計参照) も保存しています。
 
 - [参加・ローカル起動](CONTRIBUTING.md) / [変更ルール](AGENTS.md)
 - [PRODUCT](docs/PRODUCT.md) — できることと再構築の要件
@@ -39,8 +43,8 @@ WAV・FLAC・MP3・M4A（AAC/ALAC）・AAC・Ogg・Opus・AIFF、MP4・WebM内�
 - [ROADMAP](docs/ROADMAP.md) / [GLOSSARY](docs/GLOSSARY.md) — 進捗・用語
 - [変更履歴](CHANGELOG.md) / [脆弱性報告](SECURITY.md) / [ライセンス](LICENSE) / [第三者表示](NOTICE.md)
 
-旧文書・未統合Pro資料・iOS previewの履歴は [0.18.0保存点](https://github.com/dj-thank/choplab-sampler/tree/2866683a5118681cf518ef47e29cac8baf882edb) から参照できます。再構築ではAndroidとWindowsを維持し、Macでの制作にも対応します。
+旧文書・未統合Pro資料・iOS previewの履歴は [0.18.0保存点](https://github.com/dj-thank/choplab-sampler/tree/2866683a5118681cf518ef47e29cac8baf882edb) から参照できます。再構築ではAndroidとWindowsを維持し、Macでの制作と新しいiPadOS対応を進めます。旧iOS配布物は現行iPad版の配布物ではありません。
 
 ## English
 
-Earth Song (internal project name: ChopLab) is an Android 10+ and Windows sampler. Import your audio, chop it onto pads, make a beat, and save or export it. The 0.18.0 baseline is being rebuilt in stages, with Mac feature parity now included in the requirements. See the [roadmap](docs/ROADMAP.md) for implemented scope, available builds and remaining verification; planned vocal and AI features are not yet a release promise.
+Earth Song (internal project name: ChopLab) is an Android 10+ and Windows sampler. Import your audio, chop it onto pads, make a beat, and save or export it. The 0.18.0 baseline is being rebuilt in stages, with Mac feature parity and resumed iPadOS development included in the requirements. An installable iPad build is not available yet. See the [roadmap](docs/ROADMAP.md) for implemented scope, available builds and remaining verification; planned vocal and AI features are not yet a release promise.

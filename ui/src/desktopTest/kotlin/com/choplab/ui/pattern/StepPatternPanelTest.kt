@@ -12,7 +12,7 @@ import java.util.Locale
 import kotlin.test.*
 
 class StepPatternPanelTest {
-    @Test fun jaEnDesktopAndPhoneLargeTextCanEditTheLastStepSavePlaceAndClose() = runBlocking<Unit> {
+    @Test fun jaEnDesktopAndPhoneLargeTextCanEditTheLastTripletStepSavePlaceAndClose() = runBlocking<Unit> {
         val previous = Locale.getDefault()
         try {
             for (locale in listOf(Locale.JAPAN, Locale.US)) for ((width, height, font) in listOf(Triple(1200, 1000, 1f), Triple(390, 844, 2f))) {
@@ -25,16 +25,21 @@ class StepPatternPanelTest {
                 try {
                     scene.settle()
                     scene.click("pattern-bars-8")
+                    scene.reach("pattern-grid-160", width, height)
+                    scene.click("pattern-grid-160")
                     scene.click("pattern-columns-64")
                     scene.click("pattern-page-next")
+                    scene.click("pattern-page-next")
                     assertEquals(8, fixture.controller.state.value.draft.bars)
-                    assertEquals(1, fixture.controller.state.value.page)
+                    assertEquals(192, fixture.controller.state.value.steps)
+                    assertEquals(2, fixture.controller.state.value.page)
                     scene.reach("pattern-grid", width, height, target = false)
                     scene.tag("pattern-grid")!!.config[SemanticsActions.ScrollBy].action!!.invoke(100_000f, 0f)
                     scene.settle()
-                    val last = scene.tag("pattern-step-127")!!.boundsInRoot
+                    val last = scene.tag("pattern-step-191")!!.boundsInRoot
                     assertTrue(last.height >= 48 && last.width >= 48 && last.left >= 0 && last.right <= width)
-                    scene.click("pattern-step-127")
+                    scene.capture("triplet-last-${locale.language}-${width}-font${(font * 100).toInt()}.png")
+                    scene.click("pattern-step-191")
                     assertEquals(1, fixture.controller.state.value.draft.notes.single().padId)
                     assertTrue(fixture.document.value.project.patterns.first().notes.isEmpty())
                     scene.reach("pattern-save", width, height)
@@ -48,7 +53,7 @@ class StepPatternPanelTest {
                     scene.click("pattern-place")
                     withTimeout(3_000) { while (fixture.document.value.project.clips.isEmpty()) { scene.settle() } }
                     assertEquals(2, fixture.edits.size)
-                    assertEquals(30_480L, fixture.document.value.project.clips.single().startTick)
+                    assertEquals(30_560L, fixture.document.value.project.clips.single().startTick)
                     val labels = scene.nodes().flatMap { it.config.getOrNull(SemanticsProperties.Text).orEmpty() }.map { it.text }
                     assertFalse(labels.any { Regex("%[1-9]\\$").containsMatchIn(it) }, "Resource substitutions are resolved")
                     scene.reach("pattern-close", width, height)

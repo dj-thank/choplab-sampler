@@ -2,12 +2,17 @@
 package com.choplab.ui.ai
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
 import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.MotionDurationScale
 import androidx.compose.ui.input.pointer.*
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import com.choplab.core.DocumentState
 import com.choplab.core.ai.*
 import com.choplab.core.edit.Intent
@@ -19,11 +24,30 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import java.io.File
 import java.util.Locale
-import kotlin.math.abs
 import kotlin.test.*
 
 class VocalGuidePanelTest {
     private var observation: () -> String = { "" }
+    @Test fun scrollWaitFinishesTheAnimationEvenWhenItsRoundedDestinationIsTransient() = runBlocking<Unit> {
+        val state = ScrollState(0)
+        val motion = object : MotionDurationScale { override val scaleFactor = 4f }
+        val scene = ImageComposeScene(200, 200, coroutineContext = coroutineContext + motion) {
+            Column(Modifier.fillMaxSize().verticalScroll(state)) { Spacer(Modifier.height(1000.dp)) }
+        }
+        try {
+            scene.until("scroll fixture") { state.maxValue == 800 }
+            // ScrollState retains this subpixel remainder while its public integer value stays zero.
+            assertEquals(.4f, state.dispatchRawDelta(.4f)); assertEquals(0, state.value)
+            val scroll = scene.nodes().first { it.config.getOrNull(SemanticsProperties.VerticalScrollAxisRange) != null }
+            scene.scrollAndWait(scroll, 100.2f, "fractional scroll")
+            // Rounding 0 + 100.2 predicts 100, which is only a transient position on the way to 101.
+            assertEquals(101, state.value)
+            assertFalse(scene.hasInvalidations(), "The scroll returned while its frame clock was still active")
+            scene.settle()
+            assertEquals(101, state.value)
+        } finally { scene.close() }
+    }
+
     @Test fun jaAndEnCompactDialogsKeepStopAndCloseFixedAndReachLinePreviewRegenerateAndApply() = runBlocking<Unit> {
         val previous = Locale.getDefault()
         try {
@@ -118,15 +142,18 @@ class VocalGuidePanelTest {
             val scroll = nodes().first { it.config.getOrNull(SemanticsProperties.VerticalScrollAxisRange) != null }
             val area = scroll.boundsInRoot
             if (node.positionInRoot.y < area.top || node.positionInRoot.y + node.size.height > area.bottom) {
-                val axis = scroll.config[SemanticsProperties.VerticalScrollAxisRange]
                 val distance = node.positionInRoot.y - area.top - area.height / 3f
-                val destination = (axis.value() + distance).coerceIn(0f, axis.maxValue())
-                assertTrue(requireNotNull(scroll.config[SemanticsActions.ScrollBy].action)(0f, distance))
-                // ScrollBy starts an animation. Wait for its requested destination before measuring or pressing.
-                until("scroll to $value") { abs(axis.value() - destination) <= 1f }
+                scrollAndWait(scroll, distance, "scroll to $value")
             }
         }
         hit(value, width, height)
+    }
+    private suspend fun ImageComposeScene.scrollAndWait(scroll: SemanticsNode, distance: Float, label: String) {
+        assertTrue(requireNotNull(scroll.config[SemanticsActions.ScrollBy].action)(0f, distance))
+        // Integer pixels can match a guessed destination before the animation completes, and
+        // ScrollState's subpixel remainder can also shift its final integer position. Wait for
+        // the real frame-clock awaiters and pending composition/draw work to finish instead.
+        until(label) { !hasInvalidations() }
     }
     private suspend fun ImageComposeScene.click(value: String) {
         val point = requireNotNull(tag(value)).boundsInRoot.center

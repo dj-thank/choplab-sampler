@@ -4,12 +4,22 @@ import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.math.max
 
+/** Listening preferences for a fresh monitor engine. Never enter the document or export graph. */
+data class MonitorGains(val original: Float = 1f, val song: Float = 1f, val hand: Float = 1f) {
+    init {
+        require(original.isFinite() && original in 0f..2f)
+        require(song.isFinite() && song in 0f..1f)
+        require(hand.isFinite() && hand in 0f..1f)
+    }
+}
+
 /**
  * Single render owner, one ControlRing producer, one EventRing consumer. Construct on a worker.
  * All state and filter storage is bounded and preallocated. No callback is invoked from render.
  * Commands and sequence notes take effect BEFORE their exact output frame is synthesized.
  */
-class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config: EngineConfig = EngineConfig()) {
+class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config: EngineConfig = EngineConfig(),
+                 monitorGains: MonitorGains = MonitorGains()) {
     private val pcmOwnership = PcmOwnership(config.residentByteLimit, initialProgram)
     private var programSlots = pcmOwnership.initialSlots
     val controls = ControlRing(config.controlCapacity, pcmOwnership, config.outputMode)
@@ -18,11 +28,15 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
     private val interpolator = PitchInterpolator()
     private val limiter = MasterLimiter()
     private val arrangementMixer = ArrangementMixer()
+    private val musicMixer = MixerDsp(initialProgram.mixer)
+    val mixerReadout: MixerReadout get() = musicMixer.readout
     private val originalVoice = OriginalSourceVoice()
     private val handVoice = OriginalHandVoice()
     /** One of the existing primary slots; never a new unbounded pool. The separate SOURCE slot is unchanged. */
     private var handReservation = -1
     private val clickVoice = MetronomeVoice()
+    private var loopTake: LoopOverdub? = null
+    private var loopReservation = -1
     private var clickReservation = -1
     private var nextClickTick = 0L
     private var countInFromFrame = 0L
@@ -31,6 +45,18 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
     private var nextCountInBeat = 0
     private val songGain = ParameterSmoother(1f)
     private val voices = Array(PRIMARY_VOICES + FADE_VOICES) { Voice() }
+    private class RepeatedPad {
+        val clock = NoteRepeatClock()
+        var pad: Pad? = null
+        var first = -1
+        var second = -1
+        var current = -1
+        var remaining = -1
+        var captureRoute = -1
+        var captureShift = 0
+    }
+    private val repeats = Array(PRIMARY_VOICES / 2) { RepeatedPad() }
+    private val repeatSlots = BooleanArray(PRIMARY_VOICES)
     private val assetScratch: Array<PcmAsset?> = arrayOfNulls(
         EngineFormat.PAD_COUNT + Arrangement.MAX_CLIPS + PRIMARY_VOICES + FADE_VOICES + 1)
     private val clock = SequenceClock(initialProgram.tempo)
@@ -81,13 +107,17 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
         private set
     val programRevision: Long get() = program.revision
     val activeVoiceCount: Int get() = countVoices(0, PRIMARY_VOICES) +
-        (if (handReservation >= 0) 1 else 0) + (if (clickReservation >= 0) 1 else 0)
+        (if (loopReservation >= 0) 1 else 0) + (if (handReservation >= 0) 1 else 0) + (if (clickReservation >= 0) 1 else 0) + silentRepeatReservations()
     val fadeVoiceCount: Int get() = countVoices(PRIMARY_VOICES, voices.size)
     internal fun playingPadMask(upper: Boolean): Long {
         var mask = 0L
         for (voice in voices) {
             val pad = voice.pad ?: continue
             if (voice.suspended || (sequencePaused && voice.transportVoice)) continue
+            if ((pad.id >= 64) == upper) mask = mask or (1L shl (pad.id and 63))
+        }
+        for (repeat in repeats) {
+            val pad = repeat.pad ?: continue
             if ((pad.id >= 64) == upper) mask = mask or (1L shl (pad.id and 63))
         }
         return mask
@@ -105,8 +135,25 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
 
     init {
         require(initialProgram.residentBytes <= config.residentByteLimit)
+        // Seed before publishing the first readout or synthesizing any audio. Recovery must not
+        // ramp from unity and leak a loud first block while the user still sees a muted monitor.
+        if (config.outputMode == EngineOutputMode.MONITOR) {
+            originalVoice.monitorGain.set(monitorGains.original, 0)
+            songGain.set(monitorGains.song, 0)
+            handVoice.monitorGain.set(monitorGains.hand, 0)
+        }
         arrangementMixer.restore(initialProgram.arrangement, 0)
         readout.publish(this, 0f, 0f)
+    }
+
+    /**
+     * Worker only, before an arrangement export starts. Only this track's stem is requested;
+     * the master and other stems are unspecified. All clip reads, missing-PCM checks, scheduling
+     * and graph activity remain unchanged. Monitor, pattern and common-return exports stay full graph.
+     */
+    fun selectTrackStemForExport(bus: Int) {
+        require(config.outputMode == EngineOutputMode.EXPORT && frame == 0L && program.arrangement != null)
+        musicMixer.selectTrackStemForExport(bus)
     }
 
     /**
@@ -117,8 +164,13 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
         require(config.outputMode == EngineOutputMode.EXPORT && maximumFrames in 1..4096)
         consumeCommands()
         scheduleNotes()
+        scheduleRepeats()
         var count = maximumFrames.toLong()
         controls.peek()?.let { count = minOf(count, (it.effectiveFrame - frame).coerceAtLeast(1)) }
+        for (repeat in repeats) if (repeat.pad != null) {
+            count = minOf(count, repeat.clock.framesUntilPulse().toLong().coerceAtLeast(1))
+            if (repeat.remaining >= 0) count = minOf(count, repeat.remaining.toLong().coerceAtLeast(1))
+        }
         if (sequencePlaying) {
             program.pattern?.takeIf { it.noteCount > 0 && program.arrangement == null }?.let {
                 count = minOf(count, clock.framesUntil(sequenceCycle * it.lengthTicks + it.note(sequenceIndex).tick).coerceAtLeast(1))
@@ -151,22 +203,35 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
 
     /** Writes (does not add to) the supplied buffer; offsets and counts are frames. */
     /** Owner only, after command publication and rendering have stopped. Idempotent. */
-    fun close() { pcmOwnership.close() }
+    fun close() { loopTake?.detach(); loopTake = null; pcmOwnership.close(); musicMixer.close() }
 
-    fun render(output: FloatArray, offsetFrames: Int = 0, frameCount: Int = output.size / 2 - offsetFrames) {
+    fun render(output: FloatArray, offsetFrames: Int = 0, frameCount: Int = output.size / 2 - offsetFrames,
+               stemOutput: FloatArray? = null, stemOffsetFrames: Int = 0) {
         check(!pcmOwnership.closed) { "Engine is closed" }
         require(offsetFrames >= 0 && frameCount >= 0 && (offsetFrames.toLong() + frameCount) * 2 <= output.size)
+        require(stemOutput == null || (stemOffsetFrames >= 0 &&
+            (stemOffsetFrames.toLong() + frameCount) * MixerProgram.STEM_COUNT * 2 <= stemOutput.size))
+        musicMixer.beginBlock()
         var peakLeft = 0f
         var peakRight = 0f
         for (f in 0 until frameCount) {
             consumeCommands()
             scheduleClickAndCue()
             scheduleNotes()
+            scheduleRepeats()
+            val take = loopTake?.takeIf { !it.completed && (sequencePlaying || !it.recording) }
+            take?.beginFrame()
             var left = 0.0
             var right = 0.0
             var pcmMiss = false
+            musicMixer.beginFrame()
+            if (take != null) for (route in 0 until take.routeCount) {
+                val l = take.left(route); val r = take.right(route)
+                left += l; right += r
+                musicMixer.add(take.bus(route), l, r)
+            }
             if (sequencePlaying && program.arrangement != null) {
-                if (arrangementMixer.render(sequenceFrame)) {
+                if (arrangementMixer.render(sequenceFrame, musicMixer)) {
                     left += arrangementMixer.outputLeft
                     right += arrangementMixer.outputRight
                     pcmMiss = pcmMiss || arrangementMixer.pcmMiss
@@ -175,12 +240,25 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
             for (i in voices.indices) {
                 val voice = voices[i]
                 if (voice.pad != null && !voice.suspended && !(sequencePaused && voice.transportVoice)) {
+                    val bus = voice.mixBus
+                    val captureRoute = voice.overdubRoute
+                    val shift = voice.overdubShift
                     voice.render(interpolator)
-                    left += voice.outputLeft
-                    right += voice.outputRight
+                    if (captureRoute >= 0 && take != null) {
+                        take.capture(voice.outputLeft.toFloat(), voice.outputRight.toFloat(), shift, captureRoute)
+                        if (voice.pcmMiss) take.pcmMiss = true
+                    }
+                    val routedLeft = voice.outputLeft * voice.mixLeftGain
+                    val routedRight = voice.outputRight * voice.mixRightGain
+                    left += routedLeft
+                    right += routedRight
+                    musicMixer.add(bus, routedLeft, routedRight)
                     pcmMiss = pcmMiss || voice.pcmMiss
                 }
             }
+            musicMixer.process(left, right)
+            left = musicMixer.outputLeft; right = musicMixer.outputRight
+            if (stemOutput != null) musicMixer.writeStems(stemOutput, (stemOffsetFrames + f) * MixerProgram.STEM_COUNT * 2)
             if (config.outputMode == EngineOutputMode.MONITOR) {
                 val gain = songGain.next().toDouble()
                 left *= gain
@@ -209,13 +287,25 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
                 clock.advance(1)
                 sequenceFrame++
                 val arrangement = program.arrangement
-                if (arrangement != null && sequenceFrame >= arrangement.durationFrames) {
+                if (take != null && take.recording && sequenceFrame >= take.endFrame) {
+                    sequenceFrame = take.startFrame
+                    clock.seekFrame(sequenceFrame)
+                    if (!arrangementMixer.restore(arrangement, sequenceFrame)) failArrangementOverload()
+                    repositionClick()
+                } else if (arrangement != null && sequenceFrame >= arrangement.durationFrames) {
                     sequencePlaying = false
                     sequencePaused = false
                     clickVoice.stop()
                     clickReservation = -1
                 }
             }
+            for (repeat in repeats) if (repeat.pad != null) {
+                repeat.clock.advance(1)
+                if (repeat.remaining > 0) repeat.remaining--
+            }
+            take?.advance()
+            if (take != null && take.elapsedFrames >= LoopOverdub.MAX_RECORDING_FRAMES && take.recording) stop(false)
+            if (loopTake?.completed == true) { loopTake = null; loopReservation = -1 }
             frame++
         }
         residentBytes = retainedBytes(program)
@@ -224,6 +314,7 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
         for (voice in voices) if (voice.pad != null) pcmOwnership.retain(voice.assetSlot)
         if (originalLoaded) pcmOwnership.retain(originalVoice.assetSlot)
         pcmOwnership.finishRetention()
+        musicMixer.endBlock(frame, frameCount)
         readout.publish(this, peakLeft, peakRight)
     }
 
@@ -279,14 +370,26 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
     private fun apply(command: EngineCommand, reservations: IntArray?) {
         var accepted = true
         when (command) {
+            is EngineCommand.StartLoopOverdub -> {
+                val arrangement = program.arrangement
+                val slot = if (loopTake == null && arrangement != null && command.take.endFrame <= arrangement.durationFrames &&
+                    command.take.startFrame == sequenceFrame && !sequencePlaying && !command.take.completed && command.take.prepareRouting(program)) acquireVoice() else -1
+                if (slot < 0) {
+                    accepted = false
+                    events.emit(EngineEventType.INVALID_COMMAND, command.orderId, command.effectiveFrame, frame)
+                } else { loopTake = command.take; loopReservation = slot }
+            }
             is EngineCommand.Trigger -> accepted = trigger(command.padId, command.velocity, command.orderId)
-            is EngineCommand.Release -> for (voice in voices) {
-                if (voice.pad?.id == command.padId && !voice.scratch) voice.release()
+            is EngineCommand.StartNoteRepeat -> accepted = startRepeat(command)
+            is EngineCommand.Release -> {
+                releaseRepeatPad(command.padId)
+                for (voice in voices) if (voice.pad?.id == command.padId && !voice.scratch) voice.release()
             }
             is EngineCommand.Stop -> { stop(false); songFenceId = maxOf(songFenceId, command.orderId); handFenceId = maxOf(handFenceId, command.orderId) }
             is EngineCommand.Panic -> { stop(true); fenceId = maxOf(fenceId, command.orderId) }
             is EngineCommand.StopAll -> {
                 stop(false)
+                musicMixer.stop(false)
                 originalVoice.stop(false)
                 fenceId = maxOf(fenceId, command.orderId)
             }
@@ -296,11 +399,17 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
                     accepted = false
                     events.emit(EngineEventType.PROGRAM_MEMORY_LIMIT, command.orderId, command.effectiveFrame, frame)
                 } else {
+                    loopTake?.stop()
+                    releaseRepeats(STEAL_FADE_FRAMES)
                     cancelRecordingCue()
                     handVoice.end()
                     handFenceId = maxOf(handFenceId, command.orderId)
                     val arrangementChanged = program.arrangement != null || command.program.arrangement != null
+                    for (voice in voices) if (voice.pad != null)
+                        voice.mixBus = command.program.mixer.busIndex(program.mixer.busId(voice.mixBus))
                     program = command.program
+                    musicMixer.use(program.mixer)
+                    loopTake?.updateRouting(program.mixer)
                     programSlots = reservations!!
                     residentBytes = bytes
                     clock.setTempo(program.tempo)
@@ -320,6 +429,9 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
                 }
             }
             is EngineCommand.StartSequence -> {
+                musicMixer.reset()
+                loopTake?.stop()
+                releaseRepeats(STEAL_FADE_FRAMES)
                 cancelRecordingCue()
                 clearTransportVoices()
                 clock.reset(); clock.setTempo(program.tempo)
@@ -336,8 +448,11 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
                     accepted = false
                     events.emit(EngineEventType.INVALID_COMMAND, command.orderId, command.effectiveFrame, frame)
                 } else {
+                    loopTake?.stop()
+                    releaseRepeats(STEAL_FADE_FRAMES)
                     cancelRecordingCue()
                     sequenceFrame = command.sequenceFrame
+                    musicMixer.reset()
                     clock.seekFrame(sequenceFrame)
                     clearTransportVoices()
                     if (!arrangementMixer.restore(arrangement, sequenceFrame)) failArrangementOverload()
@@ -347,6 +462,9 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
                 }
             }
             is EngineCommand.Pause -> {
+                musicMixer.reset()
+                loopTake?.stop()
+                releaseRepeats()
                 sequencePlaying = false
                 sequencePaused = true
                 cancelRecordingCue()
@@ -430,7 +548,7 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
             is EngineCommand.ScratchOriginalEnd -> { handVoice.end(); handFenceId = maxOf(handFenceId, command.orderId) }
             is EngineCommand.SetOriginalPitch -> originalVoice.pitch(command.semitones)
             is EngineCommand.SetSongMonitorGain -> songGain.set(command.gain, 96)
-            is EngineCommand.SetTempo -> { cancelRecordingCue(); clock.setTempo(command.tempo); repositionClick() }
+            is EngineCommand.SetTempo -> { loopTake?.stop(); releaseRepeats(STEAL_FADE_FRAMES); cancelRecordingCue(); clock.setTempo(command.tempo); repositionClick() }
             is EngineCommand.ScratchStart -> accepted = startScratch(command)
             is EngineCommand.ScratchPosition -> {
                 if (scratchIndex >= 0) {
@@ -463,6 +581,7 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
             return false
         }
         if (padId == scratchPad || velocity == 0f) return true
+        chokeRepeats(pad.chokeGroup)
         if (pad.chokeGroup != 0) for (voice in voices) {
             if (voice.pad?.chokeGroup == pad.chokeGroup) voice.release()
         }
@@ -472,20 +591,25 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
             events.emit(EngineEventType.VOICE_LIMIT, orderId, frame, frame, padId)
             return false
         }
+        musicMixer.resume()
         voices[slot].start(pad, velocity, triggerSerial++)
         voices[slot].assetSlot = slotForPad(pad)
         voices[slot].transportVoice = transportVoice
+        loopTake?.takeIf { it.recording && sequencePlaying && !transportVoice }?.let { take ->
+            val route = take.routeForBus(pad.mixBus)
+            voices[slot].overdubRoute = route; voices[slot].overdubShift = take.press(route)
+        }
         return true
     }
 
     private fun acquireVoice(): Int {
-        for (i in 0 until PRIMARY_VOICES) if (i != handReservation && i != clickReservation && voices[i].pad == null) return i
+        for (i in 0 until PRIMARY_VOICES) if (i != handReservation && i != clickReservation && i != loopReservation && !repeatSlots[i] && voices[i].pad == null) return i
         var fade = -1
         for (i in PRIMARY_VOICES until voices.size) if (voices[i].pad == null) { fade = i; break }
         if (fade < 0) return -1 // Preserve all existing tails; overload rejects the newest trigger.
         var oldest = -1
         for (i in 0 until PRIMARY_VOICES) {
-            if (i != handReservation && i != clickReservation && voices[i].pad != null && !voices[i].scratch && !voices[i].suspended &&
+            if (i != handReservation && i != clickReservation && i != loopReservation && !repeatSlots[i] && voices[i].pad != null && !voices[i].scratch && !voices[i].suspended &&
                 (oldest < 0 || voices[i].serial < voices[oldest].serial)) oldest = i
         }
         if (oldest < 0) return -1
@@ -495,12 +619,107 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
         return oldest
     }
 
+    private fun startRepeat(command: EngineCommand.StartNoteRepeat): Boolean {
+        val pad = program.pad(command.padId)
+        if (pad == null) {
+            events.emit(EngineEventType.ASSET_MISS, command.orderId, frame, frame, command.padId)
+            return false
+        }
+        if (pad.id == scratchPad) {
+            events.emit(EngineEventType.INVALID_COMMAND, command.orderId, frame, frame, command.padId)
+            return false
+        }
+        var available = 0
+        var empty = 0
+        var fades = 0
+        for (i in 0 until PRIMARY_VOICES) if (i != handReservation && i != clickReservation && i != loopReservation &&
+            (!repeatSlots[i] || repeatSlotReleasedBy(i, pad))) {
+            val voice = voices[i]
+            if (voice.pad == null) { empty++; available++ }
+            else if (!voice.scratch && !voice.suspended) available++
+        }
+        for (i in PRIMARY_VOICES until voices.size) if (voices[i].pad == null) fades++
+        if (available < 2 || fades < (2 - empty).coerceAtLeast(0)) {
+            rejectedVoices++
+            events.emit(EngineEventType.VOICE_LIMIT, command.orderId, frame, frame, command.padId)
+            return false
+        }
+        // Admission precedes mutation: a refused retrigger cannot silence the previous hold.
+        releaseRepeatPad(pad.id, STEAL_FADE_FRAMES)
+        chokeRepeats(pad.chokeGroup)
+        var owner = 0
+        while (repeats[owner].pad != null) owner++ // Two free primary reservations imply an available owner.
+        val repeat = repeats[owner]
+        repeat.first = acquireVoice()
+        repeatSlots[repeat.first] = true
+        repeat.second = acquireVoice()
+        repeatSlots[repeat.second] = true
+        repeat.pad = pad
+        repeat.current = repeat.second
+        repeat.remaining = command.durationFrames ?: -1
+        val take = loopTake?.takeIf { it.recording && sequencePlaying }
+        repeat.captureRoute = take?.routeForBus(pad.mixBus) ?: -1
+        repeat.captureShift = take?.press(repeat.captureRoute) ?: 0
+        repeat.clock.reset(clock.tempo, command.ticks)
+        if (pad.chokeGroup != 0) for (voice in voices) if (voice.pad?.chokeGroup == pad.chokeGroup) voice.release()
+        check(repeat.clock.pulse())
+        strikeRepeat(repeat)
+        return true
+    }
+
+    private fun strikeRepeat(repeat: RepeatedPad) {
+        val pad = repeat.pad ?: return
+        voices[repeat.current].release(STEAL_FADE_FRAMES)
+        repeat.current = if (repeat.current == repeat.first) repeat.second else repeat.first
+        val voice = voices[repeat.current]
+        voice.start(pad, 1f, triggerSerial++)
+        voice.assetSlot = slotForPad(pad)
+        voice.overdubRoute = repeat.captureRoute
+        voice.overdubShift = repeat.captureShift
+    }
+
+    private fun repeatSlotReleasedBy(slot: Int, incoming: Pad): Boolean {
+        for (repeat in repeats) {
+            val pad = repeat.pad ?: continue
+            if ((repeat.first == slot || repeat.second == slot) &&
+                (pad.id == incoming.id || (incoming.chokeGroup != 0 && pad.chokeGroup == incoming.chokeGroup))) return true
+        }
+        return false
+    }
+
+    private fun scheduleRepeats() {
+        for (repeat in repeats) if (repeat.pad != null) {
+            if (repeat.remaining == 0) releaseRepeat(repeat)
+            else if (repeat.clock.pulse()) strikeRepeat(repeat)
+        }
+    }
+
+    private fun releaseRepeat(repeat: RepeatedPad, frames: Int? = null) {
+        val pad = repeat.pad ?: return
+        voices[repeat.first].release(frames ?: pad.releaseFrames)
+        voices[repeat.second].release(frames ?: pad.releaseFrames)
+        repeatSlots[repeat.first] = false
+        repeatSlots[repeat.second] = false
+        repeat.pad = null
+    }
+    private fun releaseRepeatPad(padId: Int, frames: Int? = null) { for (repeat in repeats) if (repeat.pad?.id == padId) releaseRepeat(repeat, frames) }
+    private fun chokeRepeats(group: Int) {
+        if (group != 0) for (repeat in repeats) if (repeat.pad?.chokeGroup == group) releaseRepeat(repeat, STEAL_FADE_FRAMES)
+    }
+    private fun releaseRepeats(frames: Int? = null) { for (repeat in repeats) releaseRepeat(repeat, frames) }
+    private fun silentRepeatReservations(): Int {
+        var count = 0
+        for (i in repeatSlots.indices) if (repeatSlots[i] && voices[i].pad == null) count++
+        return count
+    }
+
     private fun startScratch(command: EngineCommand.ScratchStart): Boolean {
         val pad = program.pad(command.padId)
         if (pad == null) {
             events.emit(EngineEventType.ASSET_MISS, command.orderId, command.effectiveFrame, frame, command.padId)
             return false
         }
+        releaseRepeatPad(command.padId)
         endScratch()
         // A PAD that sounds is taken where it plays, like a record under the hand; a silent one at the given frame.
         var from = command.sourceFrame
@@ -539,6 +758,8 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
     }
 
     private fun stop(panic: Boolean) {
+        if (panic) { loopTake?.detach(); loopTake = null; loopReservation = -1 } else loopTake?.stop()
+        releaseRepeats(STEAL_FADE_FRAMES)
         handVoice.end(panic)
         if (panic) handReservation = -1
         sequencePlaying = false
@@ -555,7 +776,7 @@ class EngineCore(initialProgram: EngineProgram = EngineProgram.EMPTY, val config
             voice.suspended = false
             if (panic) voice.clear() else voice.release(STEAL_FADE_FRAMES)
         }
-        if (panic) { originalVoice.stop(true); limiter.reset() }
+        if (panic) { musicMixer.stop(true); originalVoice.stop(true); limiter.reset() }
     }
 
     private fun scheduleNotes() {
@@ -708,7 +929,12 @@ internal class Voice {
     var suspended = false
     var scratch = false
     var transportVoice = false
+    var overdubRoute = -1
+    var overdubShift = 0
     var assetSlot = -1
+    var mixBus = MixerProgram.UNROUTED_BUS
+    var mixLeftGain = 1f
+    var mixRightGain = 1f
     var scratchStep = 0.0
     var motionFrames = 0
     val cut = ParameterSmoother(1f)
@@ -733,7 +959,10 @@ internal class Voice {
         private set
 
     fun start(pad: Pad, velocity: Float, serial: Long) {
+        overdubRoute = -1; overdubShift = 0
         this.pad = pad
+        mixBus = pad.mixBus
+        mixLeftGain = pad.mixLeftGain; mixRightGain = pad.mixRightGain
         this.velocity = velocity
         this.serial = serial
         position = if (pad.reverse) pad.endFrame - 1.0 else pad.startFrame.toDouble()
@@ -763,7 +992,10 @@ internal class Voice {
         pad = other.pad; position = other.position; serial = other.serial; age = other.age
         suspended = other.suspended; scratch = other.scratch; scratchStep = other.scratchStep; motionFrames = other.motionFrames
         transportVoice = other.transportVoice
+        overdubRoute = other.overdubRoute; overdubShift = other.overdubShift
         assetSlot = other.assetSlot
+        mixBus = other.mixBus
+        mixLeftGain = other.mixLeftGain; mixRightGain = other.mixRightGain
         velocity = other.velocity; released = other.released; releaseAge = other.releaseAge; releaseLength = other.releaseLength
         releaseGain = other.releaseGain
         toneLeft = other.toneLeft; toneRight = other.toneRight

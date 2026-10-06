@@ -3,24 +3,37 @@ package com.choplab.desktop.next
 import androidx.compose.runtime.*
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.MenuBar
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.choplab.core.*
+import com.choplab.core.ai.GoogleLyricSession
+import com.choplab.jvm.VocalPunchCapture
 import com.choplab.core.model.Asset
 import com.choplab.core.model.Pad
 import com.choplab.desktop.DesktopProfile
 import com.choplab.desktop.applyMacOsHostProperties
+import com.choplab.desktop.prepareDesktopOnnxRuntime
 import com.choplab.desktop.isMacOsHost
 import com.choplab.desktop.provider.SpotifyDesktopSession
 import com.choplab.desktop.provider.SpotifySessionPurpose
+import com.choplab.jvm.FileQuickStartStore
 import com.choplab.jvm.OriginalAudioImportPort
+import com.choplab.jvm.OriginalPlaybackProbe
 import com.choplab.jvm.OutputRecovery
 import com.choplab.jvm.VoiceTakes
 import com.choplab.jvm.closeAfterAutosave
 import com.choplab.jvm.ai.*
+import com.choplab.jvm.separation.*
+import com.choplab.ui.separation.FourStemFactory
 import com.choplab.ui.*
+import com.choplab.ui.vocal.*
 import com.choplab.ui.ai.LyricProposalPort
+import com.choplab.ui.ai.SessionLyricProposalPort
 import com.choplab.ui.ai.VocalGuidePort
+import com.choplab.ui.onboarding.QuickStartController
+import com.choplab.ui.resources.*
+import org.jetbrains.compose.resources.stringResource
 import kotlinx.coroutines.*
 import java.awt.Desktop
 import java.awt.FileDialog
@@ -44,6 +57,7 @@ import kotlin.coroutines.resume
 /** Development Preview entry; the existing production/default launcher remains unchanged. */
 fun main() {
     check(java.lang.Boolean.getBoolean("choplab.preview")) { "Linked editor requires the isolated Preview profile" }
+    prepareDesktopOnnxRuntime()
     val title = if (Locale.getDefault().language == "ja") "おとひろい NEXT" else "Earth Song NEXT"
     applyMacOsHostProperties(title)
     val directory = DesktopProfile.dataDirectory(preview = true).toPath().resolve("next-v10")
@@ -54,8 +68,11 @@ fun main() {
     val parent = AtomicReference<AwtWindow?>(null)
     val ports = DesktopEditorPorts(backend) { parent.get() }
     val presenter = ContinuousEditorPresenter(backend.studio, scope, ports)
+    val guideStore = FileQuickStartStore(directory.resolve("ui"))
+    val quickStart = QuickStartController(scope, autoShow = backend.studio.document.value.revision == 0L,
+        guideStore::completed, guideStore::complete)
     // A device change or a stalled driver drops output to editing-only; bring it back while the window is open.
-    val recovery = OutputRecovery(backend.engine, scope).apply { start() }
+    val recovery = if (backend.windowsAudio == null) OutputRecovery(backend.engine, scope).apply { start() } else null
     val closedWithoutAutosave = AtomicBoolean(false)
     try {
         application {
@@ -95,7 +112,7 @@ fun main() {
                 DisposableEffect(window) {
                     // Java Sound reports no device changes: coming back to the window tries a lost output once more.
                     val focus = object : WindowAdapter() {
-                        override fun windowGainedFocus(event: WindowEvent) { recovery.retry() }
+                        override fun windowGainedFocus(event: WindowEvent) { recovery?.retry() }
                     }
                     window.addWindowFocusListener(focus)
                     onDispose { window.removeWindowFocusListener(focus) }
@@ -103,30 +120,106 @@ fun main() {
                 val state by presenter.state.collectAsState()
                 val refresh by presenter.refreshKey.collectAsState()
                 val lyricProposal by presenter.lyricProposal.collectAsState()
+                val vocalPractice by presenter.vocalPractice.collectAsState()
+                val vocalPitch by presenter.vocalPitch.collectAsState()
+                val vocalCoach by presenter.vocalCoach.collectAsState()
+                val beatStretch by presenter.beatStretch.collectAsState()
                 val stepPatterns by presenter.stepPatterns.collectAsState()
                 val vocalGuide by presenter.vocalGuide.collectAsState()
+                val fourStems by presenter.fourStems.collectAsState()
                 val onlineSource by presenter.onlineSource.collectAsState()
+                val autoChop by presenter.autoChop.collectAsState()
+                val sourceAnalysis by presenter.sourceAnalysis.collectAsState()
+                val vocalTakes by presenter.vocalTakes.collectAsState()
+                val vocalPunch by presenter.vocalPunch.collectAsState()
                 val failed by backend.persistenceFailure.collectAsState()
+                backend.windowsAudio?.let { audio ->
+                    val route by audio.route.collectAsState()
+                    var changing by remember { mutableStateOf(false) }
+                    val menu = stringResource(Res.string.next_audio_menu)
+                    val wasapi = stringResource(Res.string.next_audio_wasapi)
+                    val javaSound = stringResource(Res.string.next_audio_java_sound)
+                    val retry = stringResource(Res.string.next_audio_retry)
+                    val refusal = stringResource(Res.string.next_audio_refused)
+                    val allowed = !changing && !state.recordingVoice && !state.startingVoiceRecording && !state.recordingSource &&
+                        !state.startingSourceRecording && !state.recordingSystemAudio && !state.recordingHits && !state.liveChopping && !state.vocalPreview
+                    fun choose(next: NextAudioRoute) {
+                        if (!allowed) return
+                        changing = true
+                        scope.launch {
+                            try {
+                                if (!backend.chooseAudioRoute(next)) SwingUtilities.invokeLater {
+                                    JOptionPane.showMessageDialog(window, refusal, menu, JOptionPane.INFORMATION_MESSAGE)
+                                }
+                            } finally { changing = false }
+                        }
+                    }
+                    MenuBar {
+                        Menu(menu) {
+                            CheckboxItem(wasapi, checked = route == NextAudioRoute.WASAPI, enabled = allowed, onCheckedChange = { choose(NextAudioRoute.WASAPI) })
+                            CheckboxItem(javaSound, checked = route == NextAudioRoute.JAVA_SOUND, enabled = allowed, onCheckedChange = { choose(NextAudioRoute.JAVA_SOUND) })
+                            Separator()
+                            Item(retry, enabled = allowed, onClick = { choose(route) })
+                        }
+                    }
+                }
                 ContinuousEditor(if (failed) state.copy(status = ContinuousStatus.FAILED) else state,
-                    presenter::onAction, presenter::readout, refresh, diagnostics = presenter::diagnostics,
-                    lyricProposal = lyricProposal, stepPatterns = stepPatterns, vocalGuide = vocalGuide, onlineSource = onlineSource)
+                    presenter::onAction, presenter::readout, refresh, diagnostics = presenter::diagnostics, mixerReadout = presenter::readMixer,
+                    lyricProposal = lyricProposal, stepPatterns = stepPatterns, vocalGuide = vocalGuide, fourStems = fourStems,
+                    autoChop = autoChop, onlineSource = onlineSource, sourceAnalysis = sourceAnalysis, vocalTakes = vocalTakes, vocalPunch = vocalPunch, vocalPractice = vocalPractice, vocalPitch = vocalPitch, vocalCoach = vocalCoach, beatStretch = beatStretch, quickStart = quickStart)
             }
         }
-    } finally { ports.close(); recovery.stop(); runBlocking { backend.shutdown(flush = !closedWithoutAutosave.get()) }; scope.cancel() }
+    } finally { quickStart.close(); ports.close(); recovery?.stop(); runBlocking { backend.shutdown(flush = !closedWithoutAutosave.get()) }; scope.cancel() }
 }
 
 internal class DesktopEditorPorts(
     private val backend: NextBackend,
     private val spotify: SpotifyDesktopSession = SpotifyDesktopSession(onStatus = {}, purpose = SpotifySessionPurpose.METADATA_ONLY),
+    private val fourStemSessions: FourStemSessionFactory = OnnxFourStemFactory(FourStemModelStore(backend.assets.directory.parent.resolve("four-stem-model"))),
+    private val fourStemMemory: () -> SeparationMemory = FourStemMemoryProbe()::sample,
     private val onlineDirectory: () -> Path = { DesktopProfile.dataDirectory(preview = true).toPath().resolve("audio-library") },
     private val onlineBackend: () -> com.choplab.sampler.source.YoutubeSourceBackend = { com.choplab.sampler.source.newpipe.NewPipeSourceBackend() },
+    private val googleTransport: () -> GeminiHttpTransport = { UrlConnectionGeminiTransport() },
     private val parent: () -> AwtWindow?,
 ) : ContinuousEditorPorts, AutoCloseable {
     init { require(spotify.purpose == SpotifySessionPurpose.METADATA_ONLY) }
+    override val fourStems = FourStemFactory { backend.createFourStemWorker(fourStemSessions, fourStemMemory) }
     override val spotifyMetadataAvailable = true
     override suspend fun openSpotifyMetadata() = NextSpotifyDialog.show(parent(), spotify)
     private val speechScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val speechPreview = SourceVocalPreview(backend.studio, backend.engine, backend.audition, speechScope)
+    private val pitchRenderer = backend.pitchRenderer()
+    /** Only this instance's current dialog/credential can receive an explicit reviewed allowance. */
+    val googleLyrics = GoogleLyricSession(System::currentTimeMillis)
+    override val vocalCoach = object : VocalCoachHost {
+        override val analyzer = backend.coachAnalyzer()
+        override val renderer = backend.practiceRenderer()
+        override val preview = speechPreview
+    }
+    private val stretchRenderer = backend.stretchRenderer()
+    override val beatStretch = object : com.choplab.ui.stretch.BeatStretchHost {
+        override val preview = speechPreview
+        override suspend fun render(project: com.choplab.core.model.Project, draft: com.choplab.core.edit.StretchDraft, progress: (Int, Int) -> Unit) =
+            stretchRenderer.render(project, draft, if (japanese) "テンポ伸縮" else "Tempo stretch", progress)
+        override suspend fun original(project: com.choplab.core.model.Project, draft: com.choplab.core.edit.StretchDraft) =
+            stretchRenderer.original(project, draft, if (japanese) "元の素材" else "Original sound")
+    }
+    override val vocalPitch = object : VocalPitchHost {
+        override val preview = speechPreview
+        override suspend fun render(project: com.choplab.core.model.Project, draft: com.choplab.core.vocal.VocalPitchDraft,
+            progress: (com.choplab.engine.PitchCorrectionPhase, Int, Int) -> Unit): PreparedVocalPitch {
+            val result = pitchRenderer.render(project, draft, if (japanese) "声のピッチ補正" else "Voice pitch correction", progress)
+            return PreparedVocalPitch((result as? com.choplab.jvm.VocalPitchRenderResult.Rendered)?.asset, result.report)
+        }
+        override suspend fun original(project: com.choplab.core.model.Project, draft: com.choplab.core.vocal.VocalPitchDraft) =
+            pitchRenderer.original(project, draft, if (japanese) "原音の試聴" else "Original audition")
+    }
+    override val vocalPunch = VocalPunchCapture(backend.studio, backend.engine, backend.voice)
+    override val vocalTakes = object : com.choplab.ui.vocal.VocalTakePort {
+        override val preview = speechPreview
+        override suspend fun render(project: com.choplab.core.model.Project, draft: com.choplab.core.vocal.VocalCompDraft, name: String) =
+            backend.renderVocalComp(project, draft, name)
+    }
     override val vocalGuide: VocalGuidePort = object : VocalGuidePort {
         override val preview = speechPreview
         override fun createSynthesis(): com.choplab.core.ai.VocalSynthesisPort {
@@ -134,18 +227,25 @@ internal class DesktopEditorPorts(
             return VocalTtsService(DesktopTtsProvider(directory.resolve("temporary")), TtsCache(directory.resolve("cache")), backend.assets)
         }
     }
-    override fun close() { try { runBlocking { speechPreview.close() } } finally { speechScope.cancel(); spotify.close() } }
-    override val lyricProposal: LyricProposalPort = object : LyricProposalPort {
-        override fun createProvider() = GeminiLyricProvider()
+    override fun close() { googleLyrics.close(); try { runBlocking { speechPreview.close() } } finally { speechScope.cancel(); spotify.close() } }
+    override val vocalPractice = object : VocalPracticePort {
+        override val renderer = backend.practiceRenderer()
+        override val preview = speechPreview
     }
+    override val lyricProposal: LyricProposalPort = SessionLyricProposalPort(googleLyrics) { GeminiLyricProvider(googleTransport()) }
     override val lyricFiles: LyricFiles = DesktopLyricFiles { save ->
         choose(save, listOf("lrc"), if (japanese) { if (save) "歌詞を書き出す" else "歌詞を読み込む" }
             else { if (save) "Export lyrics" else "Import lyrics" })
     }
     override val systemAudioCapture get() = backend.systemAudio
     private val japanese get() = Locale.getDefault().language == "ja"
+    override val autoChop get() = backend.autoChop
     override val originalAvailable get() = backend.engine.status.value.phase == DriverPhase.ATTACHED
-    override fun originalPlaying() = backend.engine.originalPlayback().playing
+    override fun originalPlaying(): Boolean? = when (val probe = backend.engine.originalPlaybackProbe()) {
+        is OriginalPlaybackProbe.Ready -> probe.playback.playing
+        OriginalPlaybackProbe.Contended -> null
+        OriginalPlaybackProbe.Unavailable -> if (backend.engine.status.value.phase != DriverPhase.ATTACHED) false else null
+    }
     override fun playingPads() = backend.engine.playingPads()
     override fun cancelOriginalPreparation() = backend.audition.cancelPreparation()
     override suspend fun playOriginal(asset: Asset) = backend.audition.play(asset)
@@ -164,10 +264,20 @@ internal class DesktopEditorPorts(
     override suspend fun scratchOriginalEnd() = backend.audition.scratchEnd()
     override val padRenderAvailable = true
     override val stepPatternsAvailable = true
+    override val noteRepeatAvailable = true
+    override val sourceAnalysisAvailable = true
+    override suspend fun analyseSource(asset: Asset, range: com.choplab.core.model.FrameRange) = backend.analyseSource(asset, range)
+    override val loopOverdubAvailable = true
+    override suspend fun createLoopOverdub(startFrame: Long, frames: Int, grid: IntArray, routes: List<com.choplab.engine.LoopOverdubRoute>) = backend.createLoopOverdub(startFrame, frames, grid, routes)
     override suspend fun renderPad(pad: Pad, source: Asset) = backend.renderPad(pad, source)
     override suspend fun renderPerformance(pad: Pad, source: Asset, releaseAt: Int?, limitFrames: Int, stopAt: Int?) =
         backend.renderPerformance(pad, source, releaseAt, limitFrames, stopAt)
+    override suspend fun renderNoteRepeat(pad: Pad, source: Asset, tempo: com.choplab.engine.Tempo, ticks: Int,
+                                         releaseAt: Int, limitFrames: Int, stopAt: Int?) =
+        backend.renderNoteRepeat(pad, source, tempo, ticks, releaseAt, limitFrames, stopAt)
     override suspend fun setSongMonitorGain(gain: Float) = backend.audition.songGain(gain)
+    override fun liveChopOutput() = backend.engine.liveChopOutput()
+    override fun liveChopProbe() = backend.engine.liveChopProbe()
     override fun readout() = ContinuousEditorReadout(backend.audition.nativeFrame(), backend.engine.playback().sequenceRenderFrames,
         handSourceFrame = backend.audition.nativeHandFrame(), countInBeatsRemaining = backend.engine.snapshot().countInBeatsRemaining,
         pcm = pcmReadout())
@@ -230,6 +340,12 @@ internal class DesktopEditorPorts(
     override suspend fun chooseAudio() = choose(false, OriginalAudioImportPort.EXTENSIONS, if (japanese) "音源を開く" else "Open audio")?.let(backend.files::register)
     override suspend fun chooseOpen() = choose(false, listOf("choplab"), if (japanese) "制作を開く" else "Open project")?.let(backend.files::register)
     override suspend fun chooseSave() = choose(true, listOf("choplab"), if (japanese) "制作を保存" else "Save project")?.let(backend.files::register)
+    override val stemsAvailable = true
+    override fun readMixer(target: com.choplab.engine.MixerSnapshot) = backend.engine.status.value.phase == DriverPhase.ATTACHED && backend.engine.copyMixerReadout(target)
+    override suspend fun chooseStems(frames: Long): com.choplab.core.StemExportRequest? {
+        val path = choose(true, listOf("zip"), if (japanese) "パート別WAVを書き出す" else "Export stems") ?: return null
+        return com.choplab.core.StemExportRequest(backend.files.register(path), Math.toIntExact(frames))
+    }
     override suspend fun chooseExport(frames: Long): ExportRequest? {
         val path = choose(true, listOf("wav"), if (japanese) "WAVを書き出す" else "Export WAV") ?: return null
         return ExportRequest(backend.files.register(path), Math.toIntExact(frames), bits = 24)

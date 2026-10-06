@@ -42,6 +42,29 @@ class PatternEditsTest {
         assertEquals(1, PatternEdits.clear(result, 0).notes.size)
     }
 
+    @Test fun tripletInputAndQuantizationKeepExclusiveBoundsAndOtherPads() {
+        val project = project()
+        for (grid in listOf(PatternEdits.EIGHTH_TRIPLET_TICKS, PatternEdits.SIXTEENTH_TRIPLET_TICKS)) {
+            for (bars in 1..8) {
+                val pattern = Pattern("p", bars = bars)
+                val steps = pattern.lengthTicks / grid
+                val last = PatternEdits.toggle(project, pattern, 1, steps - 1, .5f, grid)
+                assertEquals(listOf(Note(pattern.lengthTicks - grid, 1, .5f)), last.notes)
+                assertTrue(PatternEdits.toggle(project, last, 1, steps - 1, .5f, grid).notes.isEmpty())
+                for (invalid in listOf(-1, steps)) assertEquals(PatternProblem.INVALID_INPUT,
+                    assertFailsWith<PatternEditException> { PatternEdits.toggle(project, pattern, 1, invalid, 1f, grid) }.problem)
+                val offGrid = pattern.copy(notes = frozenListOf(Note(grid / 2 - 1, 0, .2f), Note(grid / 2, 0, .5f),
+                    Note(grid - 1, 0, .8f), Note(pattern.lengthTicks - 1, 0, .9f), Note(grid / 2, 1, .7f)))
+                val snapped = PatternEdits.quantize(offGrid, 0, grid)
+                assertEquals(listOf(Note(0, 0, .2f), Note(grid / 2, 1, .7f), Note(grid, 0, .8f),
+                    Note(pattern.lengthTicks - grid, 0, .9f)), snapped.notes)
+                assertEquals(snapped, PatternEdits.quantize(snapped, 0, grid), "Quantizing twice is a no-op")
+            }
+        }
+        for (grid in listOf(0, -160, 1, 480)) assertEquals(PatternProblem.INVALID_INPUT,
+            assertFailsWith<PatternEditException> { PatternEdits.toggle(project, project.patterns.first(), 0, 0, 1f, grid) }.problem)
+    }
+
     @Test fun repeatsUseAbsoluteTicksWithNoCumulativeFrameRoundingOrLostSwing() {
         for (tempo in listOf(Tempo(97_125, 500), Tempo(97_125, 710), Tempo(240_000, 750), Tempo(40_000, 540))) {
             val base = project(tempo).copy(patterns = frozenListOf(Pattern("a", bars = 1, notes = frozenListOf(Note(0, 0), Note(240, 1))),
@@ -108,6 +131,25 @@ class PatternEditsTest {
             PatternPlacement.intent(overlap, plan, plan.renders.associateWith { rendered(it, overlap) }, { "c-${++id}" }, "P")
         }.problem)
         assertTrue(base.clips.isEmpty()); assertEquals(2, base.assets.size)
+    }
+
+    @Test fun newBankRouteKeepsLongLegalLabelsAndJoinsItsClipsInOneUndo() {
+        val base = project().let { p -> p.copy(
+            banks = p.banks.map { if (it.id == 1) it.copy(name = "B".repeat(48)) else it }.frozen(),
+            pads = p.pads.map { if (it.id == 16) p.pads[0].copy(id = 16) else it }.frozen(),
+            tracks = frozenListOf(Track("legacy", "Earlier beat", TrackKind.BANK)),
+            patterns = frozenListOf(Pattern("p", notes = frozenListOf(Note(0, 16))))) }
+        val plan = PatternPlacement.plan(base, listOf(SongSection("p")), 0)
+        var serial = 0
+        val intent = PatternPlacement.intent(base, plan, plan.renders.associateWith { rendered(it, base) },
+            { "id-${++serial}" }, "P".repeat(80))
+        val session = EditSession(base)
+        val edit = session.plan(intent); edit.effects.indices.forEach { session.acknowledge(edit, it) }; session.commit(edit)
+        val route = assertNotNull(session.project.banks[1].trackId)
+        assertNotEquals("legacy", route); assertEquals(route, session.project.clips.single().trackId)
+        assertEquals(80, session.project.tracks.last().name.length); assertEquals(1, session.undoCount)
+        val undo = assertNotNull(session.planUndo()); undo.effects.indices.forEach { session.acknowledge(undo, it) }; session.commit(undo)
+        assertEquals(base, session.project)
     }
 
     private fun project(tempo: Tempo = Tempo()): Project {

@@ -12,6 +12,10 @@ SDKはAPI29/R8、通信基盤の重複、APK増分を計測し、必要なら薄
 
 Googleの作詞adapterは固定HTTPS originへ薄いRESTで接続し、redirectや自動再送は許可しません。hostの利用適合判定 `LyricProviderAvailability` と毎回の送信同意は別です。未確認のhostは `UNVERIFIED` として送信を無効にし、鍵の入力やローカル試験だけで `AVAILABLE` にしません。採用時の[Google追加規約](https://ai.google.dev/gemini-api/terms)、用途・利用者・地域・アカウント条件を確認した上でhostを有効化します。モデル名を利用者のsession入力にし、無料枠や料金を固定の既定にしません。
 
+通常のAndroid/Desktop hostは、同じ `GoogleLyricSession` と `SessionLyricProposalPort` を所有します。現在のdialogの鍵/model入力に結び付くopaqueな `pendingReview()` に対し、既に確認した個別条件を `install(binding, ReviewedGoogleUse)` で渡す入口だけを持ちます。ここで用途等の適合、実account区分、model、価格snapshot、適用input枠、system/schemaを含む最大input token、thinkingを含む全課金outputの上界、対応する `maxOutputTokens`、通貨と今回1回の金額/期限を確認できなければ送信しません。文字数や4行指定をtoken上界にせず、固定8192を課金上限とみなしません。未知値はnull/型付き拒否、0は明示的に確認した無料条件だけです。条件の事実確認を行うUIやprivate設定の自動探索、価格/modelの既定値は追加しません。
+
+費用上界は通貨の10億分の1単位の整数で、inputと全課金outputを各々切り上げて計算します。通貨/価格適用枠不一致・overflow・予算超過・期限切れは0 POSTです。送信同意は確認条件の世代に結び付け、key/model/本文/条件変更で解除します。permitはjobを開始する前に1回だけ消費し、HTTP直前にも同じdialog/key/model/期限を再照合します。取消・失敗・timeout・429や待機終了で復活せず、次の送信には別の明示的な個別確認と同意が必要です。条件はsessionメモリ内だけで、鍵の生値/安定fingerprint/owner IDを確認record・log・archiveへ入れません。表示する最大額は実請求額ではなく、実usageと料金不明の表示を保持します。
+
 提案にはtheme、雰囲気、構成、韻、保持行など明示入力だけを送り、制作ID・音声・ファイル名を自動付加しません。応答のUTF-8、schema、文字/行/section上限を検証し、日本語のモーラと韻はかなから再計算します。鍵は当該job/sessionのメモリ内で所有し、取消/終了で破棄します。保存できる鍵の導入は下の端末別契約を満たす別実装です。
 
 ## 作詞・FlowPlanner・TTS
@@ -39,5 +43,9 @@ Googleの作詞adapterは固定HTTPS originへ薄いRESTで接続し、redirect�
 timing/pitch指標はlocalで計算し、LLMはその説明を担当します。基準melody/音符時刻/reference takeがある歌唱と、拍/発声timingを扱うrapを分けます。基準のない自由歌唱は観測pitchとして示し、音程正解率を作りません。rapではpitch点を出さず、低信頼・無声・伴奏かぶりは採点対象外と表示。ASRがない段階で歌詞内容の正誤を採点しません。
 
 テイク履歴、苦手な行の反復、日本語の具体的助言へつなぎます。モデルの自由文だけで点数を作らず、根拠と限界を画面から確認できるようにします。声複製やメロディ付き歌唱AIは将来候補です。
+
+local coachは保存済みの原テイクを履歴の正本とし、1回30秒・64行までを共有PCM予算内で読みます。両テイクが声だけであることを利用者が確認するまで比較せず、伴奏かぶりは明示除外します。発声開始は10ms窓のエネルギー立上り、歌のpitchは補正と同じ保守的YIN判定による観測です。比較は補正済みの曲時刻を揃えた基準takeとの差で、referenceなしは観測pitch、rapは発声timingだけを示します。信頼不足・録音範囲不足・区間に入る行の一部だけの場合を区別し、測った差に基づく日本語の定型助言と反復候補を出します。これはASRやLLMの採点、route校正の実測ではありません。
+
+分析結果はsession内に限り、制作revision変更・録音開始・取消で無効にします。行の反復は選んだ原takeと伴奏を一時的に聴き、通常のvoice/guide clipと二重に鳴らしません。掛合いは配置済みで聴取可能なGUIDEの同区間を共有SOURCEで一度再生し、終了後に同範囲のpunch画面を開きます。録音開始は利用者の明示操作とし、Stop/取消/出力失敗を聴取完了に数えません。これらの試聴は文書・Undo・通常書出しを変えず、原曲の位置・音量・pitchを停止状態へ復帰します。
 
 構造化歌詞の保存と時刻の根拠は[ADR9](adr/ADR-0009-structured-lyrics-and-timing.md)・[ARCHITECTURE](ARCHITECTURE.md)に従う。FlowPlannerは1小節・2小節・倍速を音楽tickで明示配置し、16分あたりの密度を助言する。本文に一致しない読みや不足をtyped拒否し、duration変更時に古いword anchorを使わない。端末TTSがword timingを返さない時はESTIMATEDと表示する。

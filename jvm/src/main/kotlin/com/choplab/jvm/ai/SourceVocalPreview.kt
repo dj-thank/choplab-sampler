@@ -51,28 +51,54 @@ class SourceVocalPreview(private val studio: Studio, private val engine: Streami
         }
         jobs.launch {
             while (isActive) {
-                if (state.value.phase == VocalPreviewPhase.PLAYING && engine.status.value.phase == DriverPhase.ATTACHED &&
-                    !engine.originalPlayback().playing) restore(null)
+                if (state.value.phase == VocalPreviewPhase.PLAYING) {
+                    when (val readout = engine.originalPlaybackProbe()) {
+                        is OriginalPlaybackProbe.Ready -> if (!readout.playback.playing) restore(null)
+                        OriginalPlaybackProbe.Contended -> Unit
+                        // An unavailable engine is not a completed preview; the driver/revision observers above
+                        // handle real loss and retry restoration without clearing its failure or SOURCE ownership.
+                        OriginalPlaybackProbe.Unavailable -> Unit
+                    }
+                }
                 delay(25)
             }
         }
     }
 
-    override suspend fun start(asset: Asset, expectedRevision: Long): TtsResult<Unit> = controls.withLock {
+    override suspend fun start(asset: Asset, expectedRevision: Long): TtsResult<Unit> = start(asset, expectedRevision, false, VocalPreviewOwner.GUIDE)
+
+    override suspend fun start(asset: Asset, expectedRevision: Long, loop: Boolean, owner: VocalPreviewOwner): TtsResult<Unit> =
+        startScoped(asset, expectedRevision, loop, owner, null)
+
+    override suspend fun startRange(asset: Asset, range: FrameRange, expectedRevision: Long, owner: VocalPreviewOwner): TtsResult<Unit> =
+        if (owner == VocalPreviewOwner.CHOP) startScoped(asset, expectedRevision, false, owner, range) else ttsFailure(TtsProblem.UNAVAILABLE)
+
+    private suspend fun startScoped(asset: Asset, expectedRevision: Long, loop: Boolean, owner: VocalPreviewOwner, range: FrameRange?): TtsResult<Unit> = controls.withLock {
+        currentCoroutineContext().ensureActive()
         if (closed.get()) return@withLock ttsFailure(TtsProblem.CLOSED)
         if (studio.document.value.revision != expectedRevision) return@withLock ttsFailure(TtsProblem.STALE_DOCUMENT)
-        if (asset.sampleRate != 48_000 || asset.channels != 2 || asset.role != AssetRole.RENDERED) return@withLock ttsFailure(TtsProblem.INVALID_AUDIO)
+        val project = studio.document.value.project
+        if (owner == VocalPreviewOwner.CHOP) {
+            val source = project.source
+            if (range == null || source?.assetHash != asset.hash || project.assets.none { it == asset } ||
+                range.start < source.range.start || range.end > source.range.end) return@withLock ttsFailure(TtsProblem.INVALID_AUDIO)
+        } else {
+            val roleAllowed = asset.role == AssetRole.RENDERED || (owner == VocalPreviewOwner.PITCH && asset.role == AssetRole.ORIGINAL)
+            if (range != null || asset.sampleRate != 48_000 || asset.channels != 2 || !roleAllowed) return@withLock ttsFailure(TtsProblem.INVALID_AUDIO)
+        }
+        if (state.value.ownsSource && state.value.owner != owner) return@withLock ttsFailure(TtsProblem.BUSY)
         cancelLoad()
         val document = studio.document.value
         if (saved == null) saved = Saved(document.project.id, document.revision, document.project.source, audition.nativeFrame(), engine.originalPlayback().gain)
         ownedRevision = expectedRevision
         val token = generation.get()
-        mutable.value = VocalPreviewState(VocalPreviewPhase.LOADING, true, asset.hash, originalFrame = requireNotNull(saved).frame)
+        mutable.value = VocalPreviewState(VocalPreviewPhase.LOADING, true, asset.hash, originalFrame = requireNotNull(saved).frame, owner = owner)
         loading = jobs.launch {
             val ready = try {
                 studio.dispatch(Action.Silence).accepted && current(token, expectedRevision) && audition.pause() &&
                     current(token, expectedRevision) && audition.pitch(0f) && audition.originalGain(1f) &&
-                    current(token, expectedRevision) && audition.seek(asset, 0) && current(token, expectedRevision) && audition.play(asset)
+                    current(token, expectedRevision) && audition.seek(asset, range?.start ?: 0, loop, range) &&
+                    current(token, expectedRevision) && audition.play(asset, loop, range)
             } catch (cancel: CancellationException) { throw cancel }
             catch (_: Exception) { false }
             controls.withLock {
@@ -91,11 +117,24 @@ class SourceVocalPreview(private val studio: Studio, private val engine: Streami
         audition.cancelPreparation()
         return token
     }
-    override fun requestStop() {
-        val token = cancelLoad()
-        if (!closed.get()) jobs.launch { restore(null, token) }
+    override fun requestStop() = requestStop(VocalPreviewOwner.GUIDE)
+    override fun requestStop(owner: VocalPreviewOwner) {
+        // Keep an older feature's queued cancellation from stopping a newer claim.
+        val token = generation.get()
+        if (controls.tryLock()) {
+            val stopped = try { if (generation.get() == token && state.value.owner == owner) cancelLoad() else null }
+                finally { controls.unlock() }
+            if (stopped != null) jobs.launch { restore(null, stopped) }
+        } else jobs.launch { stopOwned(owner, token) }
     }
-    override suspend fun stop(): TtsResult<Unit> { cancelLoad(); return restore(null) }
+    private suspend fun stopOwned(owner: VocalPreviewOwner, expected: Long? = null): TtsResult<Unit> {
+        val token = controls.withLock {
+            if (state.value.owner != owner || (expected != null && generation.get() != expected)) null else cancelLoad()
+        } ?: return TtsResult.Success(Unit)
+        return restore(null, token)
+    }
+    override suspend fun stop(owner: VocalPreviewOwner): TtsResult<Unit> = stopOwned(owner)
+    override suspend fun stop(): TtsResult<Unit> = stop(VocalPreviewOwner.GUIDE)
 
     private suspend fun restore(reason: TtsFailure?, expectedGeneration: Long? = null): TtsResult<Unit> = controls.withLock {
         if (expectedGeneration != null && generation.get() != expectedGeneration) return@withLock TtsResult.Success(Unit)
@@ -121,7 +160,7 @@ class SourceVocalPreview(private val studio: Studio, private val engine: Streami
             TtsResult.Success(Unit)
         } else {
             val failure = reason ?: TtsFailure(TtsProblem.FAILED)
-            mutable.value = VocalPreviewState(VocalPreviewPhase.FAILED, true, failure = failure, originalFrame = original.frame)
+            mutable.value = VocalPreviewState(VocalPreviewPhase.FAILED, true, failure = failure, originalFrame = original.frame, owner = mutable.value.owner)
             TtsResult.Failure(failure)
         }
     }
