@@ -87,6 +87,9 @@ jobs:
           :app:lintRelease
           :app:assembleDebug
 
+      - name: Verify dependency guard after configuration cache reuse
+        run: python3 scripts/check_gradle_configuration_cache.py --offline
+
       - name: Upload failed engine test diagnostics
         if: ${{ failure() && !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -102,6 +105,8 @@ jobs:
             jvm/build/reports/tests/test/**
             ui/build/test-results/desktopTest/*.xml
             ui/build/reports/tests/desktopTest/**
+            work/configuration-cache-*.log
+            work/configuration-cache-results.json
           retention-days: 7
 
       - name: Build release APK without publishing
