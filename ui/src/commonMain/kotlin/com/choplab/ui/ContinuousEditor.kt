@@ -8,6 +8,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -431,7 +432,7 @@ import kotlin.math.roundToLong
             CEWaveform(original?.peaks.orEmpty(), Modifier.weight(1f).height(56.dp), waveLabel,
                 position = { if (original == null) 0f else live.value.originalFrame.toFloat() / original.frames },
                 onSeek = if (original != null && state.permits(ContinuousCapability.ORIGINAL_SEEK)) ({ fraction -> onAction(ContinuousEditorAction.SeekOriginal((fraction * original.frames).roundToLong())) }) else null,
-                tag = "ce-original-wave")
+                tag = "ce-original-wave", positionText = { ceOriginalPosition(original, live.value.originalFrame) })
             if (!compact) {
                 CEActionButton(stringResource(if (state.originalPlaying) Res.string.ce_stop else Res.string.ce_play_original),
                     if (state.originalPlaying) ContinuousEditorAction.StopOriginal else ContinuousEditorAction.PlayOriginal,
@@ -481,7 +482,7 @@ import kotlin.math.roundToLong
                 stringResource(Res.string.ce_original_wave, original?.title.orEmpty()),
                 position = { if (original == null) 0f else live.value.originalFrame.toFloat() / original.frames },
                 onSeek = if (original != null && state.permits(ContinuousCapability.ORIGINAL_SEEK)) ({ onAction(ContinuousEditorAction.SeekOriginal((it * original.frames).roundToLong())) }) else null,
-                tag = "ce-original-wave")
+                tag = "ce-original-wave", positionText = { ceOriginalPosition(original, live.value.originalFrame) })
             CEOriginalTime(state, readout, refreshKey, true)
             if (wideTransport) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.CenterVertically) {
                 Row(Modifier.weight(.55f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -497,10 +498,11 @@ import kotlin.math.roundToLong
                     Text(stringResource(Res.string.ce_semitones, (if ((original?.pitchSemitones ?: 0f) >= 0) "+" else "") + (original?.pitchSemitones ?: 0f).roundToInt()), Modifier.weight(1f), fontSize = 14.sp)
                     val decrease = stringResource(Res.string.ce_decrease, stringResource(Res.string.ce_song_key))
                     val increase = stringResource(Res.string.ce_increase, stringResource(Res.string.ce_song_key))
+                    val pitchValue = stringResource(Res.string.ce_a11y_semitones, (original?.pitchSemitones ?: 0f).roundToInt())
                     CEActionButton("−", ContinuousEditorAction.SetOriginalPitch(((original?.pitchSemitones ?: 0f) - 1).coerceAtLeast(-24f)), state, ContinuousCapability.ORIGINAL_PITCH, onAction,
-                        Modifier.semantics { contentDescription = decrease }, tag = "ce-source-pitch-down")
+                        Modifier.semantics { contentDescription = decrease; stateDescription = pitchValue }, tag = "ce-source-pitch-down")
                     CEActionButton("+", ContinuousEditorAction.SetOriginalPitch(((original?.pitchSemitones ?: 0f) + 1).coerceAtMost(24f)), state, ContinuousCapability.ORIGINAL_PITCH, onAction,
-                        Modifier.semantics { contentDescription = increase }, tag = "ce-source-pitch-up")
+                        Modifier.semantics { contentDescription = increase; stateDescription = pitchValue }, tag = "ce-source-pitch-up")
                 }
             } else FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 CEActionButton(stringResource(Res.string.ce_top), ContinuousEditorAction.PlayOriginalFromStart, state, ContinuousCapability.ORIGINAL_SEEK, onAction)
@@ -527,6 +529,7 @@ import kotlin.math.roundToLong
                 else CEActionButton(stringResource(Res.string.ce_device_record), ContinuousEditorAction.RecordSystemSource,
                     state, ContinuousCapability.RECORD_SYSTEM_SOURCE, onAction, Modifier.weight(1f), tag = "ce-system-record")
             }
+            CERecordingEstimates(state)
             CEActionButton(stringResource(Res.string.four_stem_title), ContinuousEditorAction.OpenFourStems,
                 state, ContinuousCapability.FOUR_STEMS, onAction, Modifier.fillMaxWidth(), tag = "ce-four-stems-open")
             if (ContinuousCapability.SEPARATE_SOURCE in state.capabilities) {
@@ -584,7 +587,8 @@ import kotlin.math.roundToLong
         CEWaveform(original?.peaks.orEmpty(), Modifier.fillMaxWidth().then(if (fixedWaveHeight == null) Modifier.weight(1f) else Modifier.height(fixedWaveHeight)),
             stringResource(Res.string.ce_original_wave, original?.title.orEmpty()), position = { if (original == null) 0f else live.value.originalFrame.toFloat() / original.frames },
             onSeek = if (original != null && state.permits(ContinuousCapability.ORIGINAL_SEEK)) ({ onAction(ContinuousEditorAction.SeekOriginal((it * original.frames).roundToLong())) }) else null,
-            tag = "ce-original-wave", markers = original?.markers.orEmpty().map { it.toFloat() / (original?.frames ?: 1) })
+            tag = "ce-original-wave", markers = original?.markers.orEmpty().map { it.toFloat() / (original?.frames ?: 1) },
+            positionText = { ceOriginalPosition(original, live.value.originalFrame) })
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             // Ending a pass is always possible; starting one needs the original on an output.
             if (state.liveChopping) CEActionButton(stringResource(Res.string.ce_chop_stop), ContinuousEditorAction.EndLiveChop, state,
@@ -613,12 +617,24 @@ import kotlin.math.roundToLong
         LaunchedEffect(state.status) { if (state.status == ContinuousStatus.FAILED) pending = null }
         val (start, end) = pending?.let(::framesOf) ?: ((original?.rangeStartFrame ?: 0L) to (original?.rangeEndFrame ?: 0L))
         val rangeLabel = stringResource(Res.string.ce_a11y_source_range)
+        val startLabel = stringResource(Res.string.ce_a11y_source_start)
+        val endLabel = stringResource(Res.string.ce_a11y_source_end)
+        val startTime = ceTime(start, original?.sampleRate ?: 48_000, true)
+        val endTime = ceTime(end, original?.sampleRate ?: 48_000, true)
+        val rangeEnabled = original != null && state.permits(ContinuousCapability.SOURCE_RANGE)
+        val startInteraction = remember { MutableInteractionSource() }
+        val endInteraction = remember { MutableInteractionSource() }
+        val rangeColors = SliderDefaults.colors(thumbColor = CEColor.Orange, activeTrackColor = CEColor.Orange, inactiveTrackColor = CEColor.Tan)
         val rangeState = stringResource(Res.string.ce_range, ceTime(start, original?.sampleRate ?: 48_000, true), ceTime(end, original?.sampleRate ?: 48_000, true))
         Text(stringResource(Res.string.ce_range, ceTime(start, original?.sampleRate ?: 48_000, true), ceTime(end, original?.sampleRate ?: 48_000, true)), fontSize = 12.sp)
         RangeSlider(pending ?: (start.toFloat() / frames)..(end.toFloat() / frames), { pending = it },
-            Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("ce-source-range").semantics { contentDescription = rangeLabel; stateDescription = rangeState }, enabled = original != null && state.permits(ContinuousCapability.SOURCE_RANGE),
+            Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("ce-source-range").semantics { contentDescription = rangeLabel; stateDescription = rangeState }, enabled = rangeEnabled,
             onValueChangeFinished = { pending?.let(::framesOf)?.let { (a, b) -> onAction(ContinuousEditorAction.SetSourceRange(a, b)) } },
-            colors = SliderDefaults.colors(thumbColor = CEColor.Orange, activeTrackColor = CEColor.Orange, inactiveTrackColor = CEColor.Tan))
+            colors = rangeColors, startInteractionSource = startInteraction, endInteractionSource = endInteraction,
+            startThumb = { SliderDefaults.Thumb(startInteraction, enabled = rangeEnabled, colors = rangeColors,
+                modifier = Modifier.testTag("ce-source-range-start").semantics { contentDescription = startLabel; stateDescription = startTime }) },
+            endThumb = { SliderDefaults.Thumb(endInteraction, enabled = rangeEnabled, colors = rangeColors,
+                modifier = Modifier.testTag("ce-source-range-end").semantics { contentDescription = endLabel; stateDescription = endTime }) })
         original?.let { source -> CEExactRange(source.rangeStartFrame, source.rangeEndFrame, source.frames,
             source.sampleRate, state.permits(ContinuousCapability.SOURCE_RANGE), "ce-source-exact") { a, b ->
             onAction(ContinuousEditorAction.SetSourceRange(a, b))
@@ -694,6 +710,11 @@ import kotlin.math.roundToLong
             state, ContinuousCapability.MIXER, onAction, Modifier.fillMaxWidth(), tag = "ce-mixer-open")
         if (compact) { SaveCard(false, Modifier.fillMaxWidth()); SaveCard(true, Modifier.fillMaxWidth()) }
         else Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) { SaveCard(false, Modifier.weight(1f)); SaveCard(true, Modifier.weight(1f)) }
+        state.completedOutputName?.let { name ->
+            Text(stringResource(Res.string.ce_output_ready, name), Modifier.testTag("ce-output-name").semantics { liveRegion = LiveRegionMode.Polite })
+            CEButton(stringResource(Res.string.ce_output_reveal), { onAction(ContinuousEditorAction.RevealCompletedOutput) },
+                Modifier.fillMaxWidth(), tag = "ce-output-reveal")
+        }
         CEActionButton(stringResource(Res.string.ce_reopen), ContinuousEditorAction.OpenProject, state, ContinuousCapability.OPEN_PROJECT, onAction, Modifier.fillMaxWidth(), tag = "ce-reopen")
         diagnostics?.let { CEDiagnostics(it, onAction, compact) }
     }
@@ -779,7 +800,8 @@ import kotlin.math.roundToLong
                 .semantics { contentDescription = seekLabel; stateDescription = seekState }, enabled = state.permits(ContinuousCapability.SONG_SEEK),
             colors = SliderDefaults.colors(thumbColor = CEColor.Orange, activeTrackColor = CEColor.Orange, inactiveTrackColor = CEColor.Tan))
         CEValueSlider(stringResource(Res.string.ce_song_gain), state.songMonitorGain, state, ContinuousCapability.SONG_MONITOR_GAIN,
-            { onAction(ContinuousEditorAction.SetSongMonitorGain(it)) }, Modifier.width(if (stretch) 220.dp else 260.dp), dark = true, tag = "ce-song-monitor")
+            { onAction(ContinuousEditorAction.SetSongMonitorGain(it)) }, Modifier.width(if (stretch) 220.dp else 260.dp), dark = true, tag = "ce-song-monitor",
+            stacked = LocalDensity.current.fontScale > 1.3f)
         // A swung tempo can be wider than the compact viewport at large text sizes. Wrap its label
         // within that measured width so scrolling can expose the entire input target beside fixed Stop.
         CETempo(state, onAction, Modifier.widthIn(max = viewportWidth))
@@ -847,6 +869,7 @@ private val CE_SWINGS = listOf(500, 540, 580, 620, 660, 710)
         ContinuousStatus.SAVED -> Res.string.ce_saved; ContinuousStatus.EXPORTING -> Res.string.ce_exporting
         ContinuousStatus.EXPORTED -> Res.string.ce_exported; ContinuousStatus.CANCELLED -> Res.string.ce_cancelled
         ContinuousStatus.FAILED -> Res.string.ce_failed; ContinuousStatus.NO_OUTPUT -> Res.string.ce_no_output
+        ContinuousStatus.OUTPUT_UNAVAILABLE -> Res.string.ce_output_unavailable
         ContinuousStatus.COPIED -> Res.string.ce_copied
         ContinuousStatus.IMPORT_FAILED -> Res.string.ce_import_failed
         ContinuousStatus.OPEN_FAILED -> Res.string.ce_open_failed

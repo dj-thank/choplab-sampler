@@ -144,7 +144,8 @@ internal object CEColor {
 
 @Composable internal fun CEWaveform(peaks: List<Float>, modifier: Modifier, label: String,
     position: () -> Float = { 0f }, range: ClosedFloatingPointRange<Float>? = null,
-    color: Color = CEColor.Green, onSeek: ((Float) -> Unit)? = null, tag: String = "", markers: List<Float> = emptyList()) {
+    color: Color = CEColor.Green, onSeek: ((Float) -> Unit)? = null, tag: String = "", markers: List<Float> = emptyList(),
+    positionText: (() -> String)? = null) {
     val latestSeek by rememberUpdatedState(onSeek)
     var focused by remember { mutableStateOf(false) }
     fun current() = position().takeIf { it.isFinite() }?.coerceIn(0f, 1f) ?: 0f
@@ -157,6 +158,7 @@ internal object CEColor {
         .border(if (focused) 3.dp else 2.dp, if (focused) CEColor.Cream else CEColor.Ink, RoundedCornerShape(8.dp))
         .testTag(tag).semantics {
             contentDescription = label
+            positionText?.let { stateDescription = it() }
             if (onSeek != null) {
                 progressBarRangeInfo = ProgressBarRangeInfo(current(), 0f..1f)
                 setProgress { seek(it) }
@@ -364,6 +366,9 @@ internal fun ceTapBpm(taps: List<Long>): Int? {
 }
 
 /** Minutes, seconds and milliseconds, for trims a millisecond at a time. */
+internal fun ceOriginalPosition(source: ContinuousSource?, frame: Long): String = if (source == null) "–" else
+    "${ceTime(frame.coerceIn(0, source.frames), source.sampleRate, true)} / ${ceTime(source.frames, source.sampleRate, true)}"
+
 internal fun ceTimeMillis(frame: Long, rate: Int): String {
     val millis = frame.coerceAtLeast(0) * 1000 / rate.coerceAtLeast(1)
     return "${millis / 60_000}:${(millis / 1000 % 60).toString().padStart(2, '0')}.${(millis % 1000).toString().padStart(3, '0')}"

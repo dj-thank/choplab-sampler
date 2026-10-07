@@ -73,6 +73,7 @@ internal object NextLibraryDialog {
                 val content = androidx.compose.ui.awt.ComposePanel().apply {
                     name = "next-library-browser"
                     setContent {
+                        NextDisplayEnvironment {
                         val state by library.state.collectAsState()
                         androidx.compose.runtime.SideEffect(onRendered)
                         com.choplab.sampler.ui.theme.ChopLabTheme {
@@ -81,6 +82,7 @@ internal object NextLibraryDialog {
                                     exportSelection = state.exportItems.map { it.id }.toSet(),
                                     onExportToggle = { library.toggleExport(it) }, onExportPage = { library.addExportItems(it) })
                             }
+                        }
                         }
                     }
                 }

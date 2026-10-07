@@ -30,10 +30,17 @@ internal class NextDisplaySettings(private val file: Path, private val systemLoc
     val preferences = MutableStateFlow(try { read(file) } catch (_: Exception) { problem.value = true; NextDisplayPreferences() })
     init { apply(preferences.value) }
 
-    suspend fun change(value: NextDisplayPreferences) = mutex.withLock {
+    suspend fun change(value: NextDisplayPreferences) = update { value }
+    suspend fun update(transform: (NextDisplayPreferences) -> NextDisplayPreferences) = mutex.withLock {
+        val value = transform(preferences.value)
         val saved = withContext(Dispatchers.IO) { runCatching { write(file, value) }.isSuccess }
         problem.value = !saved
-        if (saved) { apply(value); preferences.value = value }
+        if (saved) {
+            // Language starts with the next app instance; recreating this composition would discard
+            // remembered text drafts and gestures. Text scale can safely update the existing editor.
+            current.value = current.value.copy(scale = value.scale)
+            preferences.value = value
+        }
         saved
     }
     private fun apply(value: NextDisplayPreferences) {
@@ -67,9 +74,7 @@ internal class NextDisplaySettings(private val file: Path, private val systemLoc
 @Composable internal fun NextDisplayEnvironment(content: @Composable () -> Unit) {
     val preferences by NextDisplaySettings.current.collectAsState()
     val density = LocalDensity.current
-    key(preferences.language) {
-        CompositionLocalProvider(LocalDensity provides Density(density.density, density.fontScale * preferences.scale), content = content)
-    }
+    CompositionLocalProvider(LocalDensity provides Density(density.density, density.fontScale * preferences.scale), content = content)
 }
 
 @Composable internal fun MenuBarScope.NextDisplayMenu(settings: NextDisplaySettings, disabled: Boolean) {
@@ -85,13 +90,13 @@ internal class NextDisplaySettings(private val file: Path, private val systemLoc
                     NextDisplayLanguage.ENGLISH -> "English"
                 }
                 CheckboxItem(label, checked = value.language == language,
-                    onCheckedChange = { scope.launch { settings.change(value.copy(language = language)) } })
+                    onCheckedChange = { scope.launch { settings.update { it.copy(language = language) } } })
             }
         }
         Menu(stringResource(Res.string.next_display_size), enabled = !disabled) {
             for ((scale, label) in listOf(1f to "100%", 1.3f to "130%", 2f to "200%"))
                 CheckboxItem(label, checked = value.scale == scale,
-                    onCheckedChange = { scope.launch { settings.change(value.copy(scale = scale)) } })
+                    onCheckedChange = { scope.launch { settings.update { it.copy(scale = scale) } } })
         }
         if (problem) Item(stringResource(Res.string.next_display_failed), enabled = false, onClick = {})
     }

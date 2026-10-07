@@ -45,12 +45,14 @@ internal object NextSpotifyDialog {
             val content = androidx.compose.ui.awt.ComposePanel().apply {
                 name = "next-spotify-catalog"
                 setContent {
+                    NextDisplayEnvironment {
                     val state by session.state.collectAsState()
                     androidx.compose.runtime.SideEffect(onRendered)
                     com.choplab.sampler.ui.theme.ChopLabTheme {
                         com.choplab.desktop.SpotifyCatalogPanel(state, browser, onOpenSpotify = { track ->
                             controller.openCatalogTrack(track, browser.page?.entries.orEmpty().mapNotNull { it.track })
                         })
+                    }
                     }
                 }
             }

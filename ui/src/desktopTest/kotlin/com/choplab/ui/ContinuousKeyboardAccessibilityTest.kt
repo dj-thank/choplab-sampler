@@ -13,10 +13,47 @@ import com.choplab.core.chop.LiveChopOutput
 import com.choplab.core.chop.LiveChopRoute
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import java.util.Locale
 import kotlin.test.*
 
 /** Real Compose key routing, with synthetic state/action collectors and no audio device. */
 class ContinuousKeyboardAccessibilityTest {
+    @Test fun sourcePitchRangeEndsAndSongPositionHaveLocalizedMeaningAndValues() = runBlocking {
+        val originalLocale = Locale.getDefault()
+        try { for (japanese in listOf(true, false)) {
+            Locale.setDefault(if (japanese) Locale.JAPANESE else Locale.ENGLISH)
+            val state = mutableStateOf(ContinuousEditorFixture.state(ContinuousStage.CAPTURE).copy(
+                voiceRecordingEstimateMillis = 71_000, systemRecordingEstimateMillis = 25_000))
+            val scene = ImageComposeScene(width = 1440, height = 1024, coroutineContext = coroutineContext) {
+                ContinuousEditor(state.value, {}, readout = ContinuousEditorFixture::readout)
+            }
+            try {
+                scene.settle()
+                assertEquals(ceOriginalPosition(state.value.original, 0),
+                    scene.tag("ce-original-wave").config[SemanticsProperties.StateDescription])
+                assertTrue(scene.tag("ce-mic-estimate").config[SemanticsProperties.Text].single().text.contains("1:11"))
+                assertTrue(scene.tag("ce-system-estimate").config[SemanticsProperties.Text].single().text.contains("0:25"))
+                for (tag in listOf("ce-source-pitch-down", "ce-source-pitch-up")) {
+                    val config = scene.tag(tag).config
+                    assertTrue(config[SemanticsProperties.ContentDescription].single().length > 1)
+                    assertEquals(if (japanese) "0 半音" else "0 semitones", config[SemanticsProperties.StateDescription])
+                }
+                state.value = state.value.copy(stage = ContinuousStage.CHOP); scene.settle()
+                assertEquals(if (japanese) "原曲範囲の開始" else "Original audio range start",
+                    scene.tag("ce-source-range-start").config[SemanticsProperties.ContentDescription].single())
+                assertEquals(if (japanese) "原曲範囲の終了" else "Original audio range end",
+                    scene.tag("ce-source-range-end").config[SemanticsProperties.ContentDescription].single())
+                assertEquals(ceTime(0, 48_000, true), scene.tag("ce-source-range-start").config[SemanticsProperties.StateDescription])
+                assertEquals(ceTime(288_000, 48_000, true), scene.tag("ce-source-range-end").config[SemanticsProperties.StateDescription])
+                state.value = state.value.copy(stage = ContinuousStage.BEAT); scene.settle()
+                assertEquals(if (japanese) "曲全体の再生位置" else "Song playback position",
+                    scene.tag("ce-song-seek").config[SemanticsProperties.ContentDescription].single())
+                assertEquals("${ceTime(ContinuousEditorFixture.readout().songFrame, precise = true)} / ${ceTime(state.value.timelineDurationFrames, precise = true)}",
+                    scene.tag("ce-song-seek").config[SemanticsProperties.StateDescription])
+            } finally { scene.close() }
+        } } finally { Locale.setDefault(originalLocale) }
+    }
+
     @Test fun liveChopUsesKeyDownPositionOnceAndFocusLossDiscardsIt() = runBlocking {
         val actions = mutableListOf<ContinuousEditorAction>()
         val route = LiveChopRoute(Any(), Any(), 0, 48_000, 2, true, 480, 480)

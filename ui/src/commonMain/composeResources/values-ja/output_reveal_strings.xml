@@ -1,0 +1,5 @@
+<resources>
+    <string name="ce_output_ready">保存したファイル: %1$s</string>
+    <string name="ce_output_reveal">保存先を表示</string>
+    <string name="ce_output_unavailable">保存したファイルを表示できません。移動・削除されていないか確認してください。制作の内容は変わりません。</string>
+</resources>

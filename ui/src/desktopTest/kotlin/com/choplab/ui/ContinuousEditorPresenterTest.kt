@@ -28,6 +28,77 @@ import kotlin.test.*
 
 /** Presenter/Studio contracts with fake platform ports; not physical audio evidence. */
 class ContinuousEditorPresenterTest {
+    @Test fun outputReceiptAppearsOnlyAfterSuccessAndRevealKeepsProjectAndHistory() = runBlocking<Unit> {
+        val revealed = mutableListOf<Location>()
+        var exists = true
+        val h = Harness(decoratePorts = { base -> object : ContinuousEditorPorts by base {
+            override val outputRevealAvailable = true
+            override fun outputDisplayName(location: Location) = "${location.handle}.fixture"
+            override suspend fun revealOutput(location: Location): Boolean { revealed += location; return exists }
+        } })
+        try {
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(0, null, 0)))
+            val before = h.studio.document.value
+            h.saveGate = CompletableDeferred()
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SaveProject))
+            h.until { it.status == ContinuousStatus.SAVING || it.status == ContinuousStatus.LOADING }
+            assertNull(h.presenter.state.value.completedOutputName)
+            h.saveGate!!.complete(Unit)
+            h.until { it.completedOutputName == "save.fixture" }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RevealCompletedOutput))
+            assertEquals(listOf(Location("save")), revealed)
+            assertEquals(before.project, h.studio.document.value.project)
+            assertEquals(before.revision, h.studio.document.value.revision)
+            assertEquals(before.canUndo, h.studio.document.value.canUndo)
+            exists = false
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.RevealCompletedOutput))
+            h.until { it.status == ContinuousStatus.OUTPUT_UNAVAILABLE }
+            assertEquals(before.project, h.studio.document.value.project)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ExportWav))
+            h.until { it.completedOutputName == "export.fixture" }
+            h.saveGate = null; h.saveFails = true
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SaveProject))
+            h.until { it.status == ContinuousStatus.SAVE_FAILED }
+            assertNull(h.presenter.state.value.completedOutputName)
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.RevealCompletedOutput))
+        } finally { h.saveGate?.complete(Unit); h.close() }
+    }
+
+    @Test fun cancelledOutputChooserDoesNotCreateAReceipt() = runBlocking<Unit> {
+        val h = Harness(decoratePorts = { base -> object : ContinuousEditorPorts by base {
+            override val outputRevealAvailable = true
+            override fun outputDisplayName(location: Location) = "cancelled.fixture"
+            override suspend fun chooseSave(): Location? = null
+        } })
+        try {
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.SaveProject))
+            h.until { it.status == ContinuousStatus.CANCELLED }
+            assertNull(h.presenter.state.value.completedOutputName); assertEquals(0, h.saveCount)
+        } finally { h.close() }
+    }
+
+    @Test fun stopAllDoesNotWaitForSpotifyOrSeparationDialogToClose() = runBlocking<Unit> {
+        for (spotify in listOf(true, false)) {
+            val entered = CompletableDeferred<Unit>(); val closed = CompletableDeferred<Unit>()
+            val h = Harness(decoratePorts = { base -> object : ContinuousEditorPorts by base {
+                override suspend fun openSpotifyMetadata() { entered.complete(Unit); closed.await() }
+                override suspend fun separateSource(source: Asset): Location? { entered.complete(Unit); closed.await(); return null }
+            } })
+            try {
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlayOriginal))
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(0, null, 0)))
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlaySong))
+                val pending = async { h.presenter.dispatch(if (spotify) ContinuousEditorAction.OpenSpotifyMetadata else ContinuousEditorAction.SeparateSource) }
+                entered.await()
+                val stops = h.ports.stops
+                h.presenter.onAction(ContinuousEditorAction.StopAll)
+                withTimeout(5_000) { while (h.ports.stops == stops || h.engine.transport.playing) delay(5) }
+                assertFalse(pending.isCompleted)
+                closed.complete(Unit); pending.await()
+            } finally { closed.complete(Unit); h.close() }
+        }
+    }
+
     @Test fun recordingEstimatesProbeStorageWithoutOpeningInputsAndRefreshAfterDiscard() = runBlocking<Unit> {
         var microphoneEstimate = 71_000L
         val requests = java.util.concurrent.CopyOnWriteArrayList<Int>()

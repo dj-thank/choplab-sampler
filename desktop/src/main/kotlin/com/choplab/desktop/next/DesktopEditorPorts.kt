@@ -46,6 +46,7 @@ internal class DesktopEditorPorts(
     private val onlineDirectory: () -> Path = { DesktopProfile.dataDirectory(preview = true).toPath().resolve("audio-library") },
     private val onlineBackend: () -> com.choplab.sampler.source.YoutubeSourceBackend = { com.choplab.sampler.source.newpipe.NewPipeSourceBackend() },
     private val googleTransport: () -> GeminiHttpTransport = { UrlConnectionGeminiTransport() },
+    private val outputRevealer: NextOutputRevealer = NextOutputRevealer(),
     private val parent: () -> AwtWindow?,
 ) : ContinuousEditorPorts, AutoCloseable {
     init { require(spotify.purpose == SpotifySessionPurpose.METADATA_ONLY) }
@@ -215,6 +216,9 @@ internal class DesktopEditorPorts(
     override suspend fun chooseAudio() = choose(false, OriginalAudioImportPort.EXTENSIONS, if (japanese) "音源を開く" else "Open audio")?.let(backend.files::register)
     override suspend fun chooseOpen() = choose(false, listOf("choplab"), if (japanese) "制作を開く" else "Open project")?.let(backend.files::register)
     override suspend fun chooseSave() = choose(true, listOf("choplab"), if (japanese) "制作を保存" else "Save project")?.let(backend.files::register)
+    override val outputRevealAvailable get() = outputRevealer.available()
+    override fun outputDisplayName(location: Location) = backend.files.resolve(location).fileName.toString()
+    override suspend fun revealOutput(location: Location) = outputRevealer.reveal(backend.files.resolve(location))
     override val stemsAvailable = true
     override fun readMixer(target: com.choplab.engine.MixerSnapshot) = backend.engine.status.value.phase == DriverPhase.ATTACHED && backend.engine.copyMixerReadout(target)
     override suspend fun chooseStems(frames: Long): com.choplab.core.StemExportRequest? {

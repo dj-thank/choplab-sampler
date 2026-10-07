@@ -80,7 +80,7 @@ import kotlin.math.roundToLong
             stringResource(Res.string.ce_original_wave, source?.title.orEmpty()), position = { fraction },
             onSeek = if (source != null && state.permits(ContinuousCapability.ORIGINAL_SEEK))
                 ({ onAction(ContinuousEditorAction.SeekOriginal((it * source.frames).roundToLong())) }) else null,
-            tag = "ce-scratch-source-wave")
+            tag = "ce-scratch-source-wave", positionText = { ceOriginalPosition(source, live.originalFrame) })
         Text(if (source == null) "–" else "${ceTime(live.originalFrame, source.sampleRate, true)} / ${ceTime(source.frames, source.sampleRate, true)}",
             color = CEColor.Green, modifier = Modifier.testTag("ce-scratch-source-position"))
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {

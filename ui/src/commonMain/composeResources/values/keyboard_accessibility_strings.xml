@@ -1,4 +1,7 @@
 <resources>
     <string name="ce_a11y_source_range">Original audio cut range</string>
     <string name="ce_a11y_song_position">Song playback position</string>
+    <string name="ce_a11y_source_start">Original audio range start</string>
+    <string name="ce_a11y_source_end">Original audio range end</string>
+    <string name="ce_a11y_semitones">%1$d semitones</string>
 </resources>

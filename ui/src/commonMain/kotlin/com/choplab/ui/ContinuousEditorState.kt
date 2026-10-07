@@ -40,7 +40,7 @@ enum class ContinuousCapability {
 enum class ContinuousUnavailable { NOT_CONNECTED, BUSY, NO_SOURCE, EMPTY_PAD, NO_CLIP, NO_OUTPUT, NO_SONG, RECORDING }
 enum class ContinuousStatus {
     LOADING, SAVING, SAVED, EXPORTING, EXPORTED, CANCELLED, FAILED, NO_OUTPUT, COPIED,
-    IMPORT_FAILED, OPEN_FAILED, SAVE_FAILED, EXPORT_FAILED, BUSY, SOURCE_STOP_FAILED, SPLIT_POSITION,
+    IMPORT_FAILED, OPEN_FAILED, SAVE_FAILED, EXPORT_FAILED, OUTPUT_UNAVAILABLE, BUSY, SOURCE_STOP_FAILED, SPLIT_POSITION,
     /**
      * A voice take went to a BANK D PAD and onto the song; with BANK D full, onto the song only; to the PAD only when
      * the song refused it; it stopped at its length limit, or because the microphone went away.
@@ -232,6 +232,8 @@ enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
     val capabilities: Set<ContinuousCapability> = emptySet(),
     val unavailable: Map<ContinuousCapability, ContinuousUnavailable> = emptyMap(),
     val status: ContinuousStatus? = null,
+    /** Last host-confirmed output; no path or handle enters the saved document. */
+    val completedOutputName: String? = null,
     val drumKits: List<ContinuousDrumKit> = emptyList(),
     /** The kit on the drum BANK when its PADs hold one kit's sounds. */
     val installedDrumKit: String? = null,
@@ -309,6 +311,7 @@ data class ContinuousChopGesture(val pass: Any, val revision: Long, val output: 
 
 /** Typed requests. Hosts/Studio confirm every edit; UI drag previews are never document commits. */
 sealed interface ContinuousEditorAction {
+    data object RevealCompletedOutput : ContinuousEditorAction
     data class RecordingGuide(val action: RecordingGuideAction) : ContinuousEditorAction
     data class Lyrics(val action: LyricAction) : ContinuousEditorAction
     data object OpenVocalPunch : ContinuousEditorAction

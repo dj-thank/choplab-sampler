@@ -31,6 +31,20 @@ internal fun nextDialogGeometry(workArea: Rectangle, preferred: Dimension, minim
         Dimension(minimum.width.coerceIn(1, width), minimum.height.coerceIn(1, height)))
 }
 
+/** Scale only this newly created dialog; never change Swing defaults or another window's fonts. */
+internal fun applyNextDialogTypography(component: Component, scale: Float) {
+    fun children(value: Component): List<Component> = if (value is androidx.compose.ui.awt.ComposePanel) emptyList()
+        else listOf(value) + (value as? Container)?.components.orEmpty().flatMap(::children)
+    // Snapshot inherited fonts before changing a parent, so a child cannot accidentally receive 4x.
+    val values = children(component).map { it to it.font }
+    values.forEach { (value, font) -> font?.let { value.font = it.deriveFont(it.size2D * scale) } }
+    values.forEach { (value, _) -> if (value is AbstractButton) {
+        val metrics = value.getFontMetrics(value.font)
+        value.preferredSize = Dimension(maxOf(value.preferredSize.width, metrics.stringWidth(value.text.orEmpty()) + 32),
+            maxOf(48, metrics.height + 16))
+    } }
+}
+
 /** One close path, global stop for this owner, and reachable controls on small work areas. Call on EDT. */
 internal fun configureNextDialog(dialog: JDialog, preferred: Dimension, minimum: Dimension, close: () -> Unit) {
     check(SwingUtilities.isEventDispatchThread())
@@ -46,8 +60,12 @@ internal fun configureNextDialog(dialog: JDialog, preferred: Dimension, minimum:
         add(JButton(labels.second).apply { name = "next-dialog-close"; addActionListener { finish() } })
     }
     val original = dialog.contentPane
+    val scale = NextDisplaySettings.current.value.scale
+    applyNextDialogTypography(original, scale)
+    applyNextDialogTypography(controls, scale)
     // At small sizes, content scrolls while Stop/Close stay visible. Compose regions keep their usual size.
-    original.preferredSize = Dimension((minimum.width - 32).coerceAtLeast(240), (minimum.height - 88).coerceAtLeast(160))
+    original.preferredSize = Dimension(((minimum.width - 32).coerceAtLeast(240) * scale).toInt(),
+        ((minimum.height - 88).coerceAtLeast(160) * scale).toInt())
     dialog.contentPane = JPanel(BorderLayout()).apply {
         add(JScrollPane(original).apply { border = null; verticalScrollBar.unitIncrement = 24 }, BorderLayout.CENTER)
         add(controls, BorderLayout.SOUTH)
@@ -63,6 +81,9 @@ internal fun configureNextDialog(dialog: JDialog, preferred: Dimension, minimum:
     val center = if (owner != null) Point(owner.x + owner.width / 2, owner.y + owner.height / 2)
         else Point(work.x + work.width / 2, work.y + work.height / 2)
     val geometry = nextDialogGeometry(work, preferred, minimum, center)
+    val needed = controls.components.sumOf { it.preferredSize.width } + 24
+    controls.layout = GridLayout(if (needed > geometry.bounds.width) 2 else 1, if (needed > geometry.bounds.width) 1 else 2, 8, 8)
+    controls.border = BorderFactory.createEmptyBorder(8, 8, 8, 8)
     dialog.minimumSize = geometry.minimum
     dialog.bounds = geometry.bounds
     var stopHeld = false
