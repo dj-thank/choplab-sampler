@@ -219,7 +219,9 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
             ContinuousEditorAction.AddDrum, state, ContinuousCapability.ADD_DRUM, onAction, modifier, tag = "ce-add-drums")
         @Composable fun Voice(modifier: Modifier) = if (state.recordingVoice || state.startingVoiceRecording) CEActionButton(stringResource(Res.string.ce_stop_voice), ContinuousEditorAction.StopVoice, state,
                 ContinuousCapability.STOP_ALL, onAction, modifier, primary = true, tag = "ce-record-voice")
-            else CEActionButton(stringResource(Res.string.ce_record_voice), ContinuousEditorAction.RecordVoice, state, ContinuousCapability.RECORD_VOICE, onAction, modifier, tag = "ce-record-voice")
+            else CEActionButton(stringResource(Res.string.ce_record_voice) + (state.voiceRecordingEstimateMillis?.let {
+                "\n" + stringResource(Res.string.ce_recording_estimate, ceRecordingTime(it))
+            } ?: ""), ContinuousEditorAction.RecordVoice, state, ContinuousCapability.RECORD_VOICE, onAction, modifier, tag = "ce-record-voice")
         @Composable fun Hits(modifier: Modifier) = if (state.recordingHits) CEActionButton(stringResource(if (state.loopOverdubBars > 0) Res.string.ce_overdub_finish else Res.string.ce_stop_hits), ContinuousEditorAction.StopHits, state,
                 ContinuousCapability.STOP_ALL, onAction, modifier, primary = true, tag = "ce-record-hits")
             else CEActionButton(stringResource(Res.string.ce_record_hits), ContinuousEditorAction.RecordHits, state, ContinuousCapability.RECORD_HITS, onAction, modifier, tag = "ce-record-hits")
@@ -253,6 +255,10 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
 @Composable private fun CETimelinePanel(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit,
     readout: () -> ContinuousEditorReadout, refreshKey: Long, modifier: Modifier, onTarget: (CEPlacementTarget) -> Unit) {
     val clip = state.selectedClip
+    val live by CELive(state.songPlaying, refreshKey, readout)
+    val canSplit = clip != null && ceCanSplit(clip.timelineStartFrame, clip.timelineDurationFrames, clip.sourceStartFrame, clip.sourceEndFrame, clip.sourceRate, live.songFrame)
+    var viewportWidth by remember { mutableStateOf(0f) }
+    var fitRequest by remember { mutableStateOf(0) }
     // The repeat panel's starting song position while it is open.
     var repeatFrom by remember { mutableStateOf<Long?>(null) }
     repeatFrom?.let { from -> CERepeatDialog(state, from, onAction) { repeatFrom = null } }
@@ -267,7 +273,7 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
             Text(stringResource(Res.string.ce_arrangement), if (inline) Modifier.weight(1f) else Modifier.widthIn(min = 220.dp), color = CEColor.Cream, fontSize = 24.sp, fontWeight = FontWeight.Bold)
             CEActionButton(stringResource(Res.string.ce_undo), ContinuousEditorAction.Undo, state, ContinuousCapability.HISTORY, onAction, dark = true, additionallyEnabled = state.canUndo, tag = "ce-undo")
             CEButton(stringResource(Res.string.ce_split), { clip?.let { onAction(ContinuousEditorAction.SplitClip(it.id, readout().songFrame)) } },
-                enabled = clip != null && state.permits(ContinuousCapability.SPLIT_CLIP), reason = CEReason(state, ContinuousCapability.SPLIT_CLIP), tag = "ce-split")
+                enabled = canSplit && state.permits(ContinuousCapability.SPLIT_CLIP), reason = if (!canSplit) stringResource(Res.string.ce_split_position) else CEReason(state, ContinuousCapability.SPLIT_CLIP), tag = "ce-split")
             CEActionButton(stringResource(Res.string.ce_duplicate), ContinuousEditorAction.DuplicateClip(clip?.id.orEmpty()), state, ContinuousCapability.DUPLICATE_CLIP, onAction, additionallyEnabled = clip != null, tag = "ce-duplicate")
             CEButton(stringResource(Res.string.ce_repeat), { repeatFrom = readout().songFrame }, enabled = state.permits(ContinuousCapability.DUPLICATE_CLIP),
                 reason = CEReason(state, ContinuousCapability.DUPLICATE_CLIP), tag = "ce-repeat")
@@ -277,18 +283,23 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
                 enabled = clip != null && state.permits(ContinuousCapability.BEAT_STRETCH), tag = "ce-stretch-clip")
         }
         }
-        CETimelineTools(state, onAction)
-        CETimelineGrid(state, onAction, readout, refreshKey, if (roomy) Modifier.weight(1f).fillMaxWidth() else Modifier.height(300.dp).fillMaxWidth(), onTarget)
+        CETimelineTools(state, onAction) { if (viewportWidth > 0) { onAction(ContinuousEditorAction.FitTimelineWidth(viewportWidth)); fitRequest++ } }
+        CETimelineGrid(state, onAction, readout, refreshKey, if (roomy) Modifier.weight(1f).fillMaxWidth() else Modifier.height(300.dp).fillMaxWidth(), onTarget, fitRequest) { viewportWidth = it }
+        if (clip != null && !canSplit) Text(stringResource(Res.string.ce_split_position), color = CEColor.Tan, modifier = Modifier.testTag("ce-split-hint"))
         Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).border(1.dp, CEColor.Border, RoundedCornerShape(8.dp)).padding(8.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
             Text(if (clip == null) stringResource(Res.string.ce_no_selected_clip) else stringResource(Res.string.ce_selected_clip, clip.title), color = CEColor.Green, fontSize = 14.sp, lineHeight = 20.sp)
             if (clip != null) {
                 Text(stringResource(Res.string.ce_clip_position, ceTime(clip.timelineStartFrame, precise = true), ceTime(clip.timelineDurationFrames, precise = true)), color = CEColor.Cream, fontSize = 12.sp, lineHeight = 16.sp, fontFamily = FontFamily.Monospace)
                 // Keyed by clip, so a gain dragged on one clip is never shown on the next selection.
-                key(clip.id) {
+                key(clip.id) { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     CEValueSlider(stringResource(Res.string.ce_clip_gain), clip.gain, state, ContinuousCapability.CLIP_GAIN,
-                        { onAction(ContinuousEditorAction.SetClipGain(clip.id, it)) }, Modifier.fillMaxWidth(), dark = true, tag = "ce-clip-gain", range = 0f..2f,
+                        { onAction(ContinuousEditorAction.SetClipGain(clip.id, it)) }, Modifier.weight(1f), dark = true, tag = "ce-clip-gain", range = 0f..2f,
                         commitOnRelease = true)
+                CEExactRange(clip.sourceStartFrame, clip.sourceEndFrame, clip.sourceTotalFrames, clip.sourceRate,
+                    state.permits(ContinuousCapability.TRIM_CLIP), "ce-clip-exact", ContinuousClipEdits.trimEndRange(clip).first - clip.sourceStartFrame) { start, end ->
+                    onAction(ContinuousEditorAction.TrimClip(clip.id, start, end, clip.timelineStartFrame))
                 }
+                } }
             }
         }
     }
@@ -296,16 +307,16 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
 }
 
 /** Keep the wide instrument's track height; grid choices scroll within the space after zoom. */
-@Composable private fun CETimelineTools(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit) {
+@Composable private fun CETimelineTools(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit, fit: () -> Unit) {
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val zoomOut = stringResource(Res.string.ce_zoom_out)
         val zoomIn = stringResource(Res.string.ce_zoom_in)
         @Composable fun Zoom() = Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            CEButton("−", { onAction(ContinuousEditorAction.SetPixelsPerSecond((state.pixelsPerSecond / 1.25f).coerceAtLeast(4f))) }, dark = true,
+            CEButton("−", { onAction(ContinuousEditorAction.SetPixelsPerSecond((state.pixelsPerSecond / 1.25f).coerceAtLeast(.01f))) }, dark = true,
                 modifier = Modifier.semantics { contentDescription = zoomOut }, tag = "ce-zoom-out")
             CEButton("+", { onAction(ContinuousEditorAction.SetPixelsPerSecond((state.pixelsPerSecond * 1.25f).coerceAtMost(240f))) }, dark = true,
                 modifier = Modifier.semantics { contentDescription = zoomIn }, tag = "ce-zoom-in")
-            CEButton(stringResource(Res.string.ce_fit), { onAction(ContinuousEditorAction.FitTimeline) }, dark = true)
+            CEButton(stringResource(Res.string.ce_fit), fit, dark = true, tag = "ce-fit")
         }
         val snap = stringResource(Res.string.ce_grid)
         @Composable fun Grid() = Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -360,9 +371,11 @@ internal fun ceGridLines(tempo: Tempo, grid: ContinuousGrid, pxPerSecond: Float,
 }
 
 @Composable private fun CETimelineGrid(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit,
-    readout: () -> ContinuousEditorReadout, refreshKey: Long, modifier: Modifier, onTarget: (CEPlacementTarget) -> Unit) {
+    readout: () -> ContinuousEditorReadout, refreshKey: Long, modifier: Modifier, onTarget: (CEPlacementTarget) -> Unit,
+    fitRequest: Int, onViewport: (Float) -> Unit) {
     val horizontal = rememberScrollState()
     val vertical = rememberScrollState()
+    LaunchedEffect(fitRequest) { if (fitRequest > 0) horizontal.scrollTo(0) }
     val density = LocalDensity.current
     val rowHeight = 110.dp
     val live = CELive(state.songPlaying, refreshKey, readout)
@@ -382,6 +395,7 @@ internal fun ceGridLines(tempo: Tempo, grid: ContinuousGrid, pxPerSecond: Float,
             }
         }
         BoxWithConstraints(Modifier.weight(1f).fillMaxHeight()) {
+            LaunchedEffect(maxWidth) { onViewport(maxWidth.value) }
             val width = (state.timelineDurationFrames.toDouble() / CONTINUOUS_TIMELINE_RATE * state.pixelsPerSecond + 80).toFloat().dp.coerceAtLeast(maxWidth)
             val rows = state.tracks.size.coerceAtLeast(1)
             Column {
@@ -449,7 +463,7 @@ internal fun ceGridLines(tempo: Tempo, grid: ContinuousGrid, pxPerSecond: Float,
             latestAction(ContinuousEditorAction.MoveClip(clip.id, destination.id, (clip.timelineStartFrame + deltaFrames).coerceAtLeast(0)))
         } else if (state.permits(ContinuousCapability.TRIM_CLIP)) {
             val sourceLength = clip.sourceEndFrame - clip.sourceStartFrame
-            val boundedTimelineDelta = deltaFrames.coerceAtLeast(-clip.timelineStartFrame)
+            val boundedTimelineDelta = if (trimEdge < 0) deltaFrames.coerceAtLeast(-clip.timelineStartFrame) else deltaFrames
             val sourceDelta = (boundedTimelineDelta.toDouble() * sourceLength / clip.timelineDurationFrames).roundToLong()
             if (trimEdge < 0) {
                 val start = (clip.sourceStartFrame + sourceDelta).coerceIn(ContinuousClipEdits.trimStartRange(clip))
@@ -506,7 +520,7 @@ internal fun ceGridLines(tempo: Tempo, grid: ContinuousGrid, pxPerSecond: Float,
         .pointerInput(clip, state.permits(ContinuousCapability.MOVE_CLIP), state.permits(ContinuousCapability.TRIM_CLIP)) {
             detectDragGestures(onDragStart = { at ->
                 latestAction(ContinuousEditorAction.SelectClip(clip.id))
-                trimEdge = if (!state.permits(ContinuousCapability.TRIM_CLIP)) 0 else when {
+                trimEdge = if (!state.permits(ContinuousCapability.TRIM_CLIP) || visualWidth < 48.dp) 0 else when {
                     pressX < 12.dp.toPx() -> -1
                     pressX > with(density) { visualWidth.toPx() } - 12.dp.toPx() -> 1
                     else -> 0

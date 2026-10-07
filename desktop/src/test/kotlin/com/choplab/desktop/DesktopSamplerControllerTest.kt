@@ -58,12 +58,16 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class DesktopSamplerControllerTest {
+    private val testRecordings = Files.createTempDirectory("controller-test-recordings-").toFile()
+    @org.junit.jupiter.api.AfterEach fun removeTestRecordings() { testRecordings.deleteRecursively() }
+    private fun recordingFiles() = testRecordings
+
     @Test
     fun loopLayersKeepCoreDuringAddDrumsTrimRemovalAndRestoreAfterSave() {
         val directory = Files.createTempDirectory("choplab-loop-layers").toFile()
         val project = directory.resolve("layers.choplab")
         val engine = FakeAudioEngine()
-        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        val controller = DesktopSamplerController(engine, recordingDirectory = ::recordingFiles, autosaveStore = null)
         val core = 36
         val layer = 32
         try {
@@ -110,7 +114,7 @@ class DesktopSamplerControllerTest {
 
     @Test fun failedLayerStartKeepsTheCoreAndProjectHistory() {
         val engine = FakeAudioEngine()
-        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        val controller = DesktopSamplerController(engine, recordingDirectory = ::recordingFiles, autosaveStore = null)
         try {
             assertTrue(controller.setPadLoopLayer(36, true))
             val before = controller.state.value
@@ -126,7 +130,7 @@ class DesktopSamplerControllerTest {
     @Test
     fun transportIncludesConfiguredLoopAndRestoresWholeBeatAfterScratch() {
         val engine = FakeAudioEngine()
-        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        val controller = DesktopSamplerController(engine, recordingDirectory = ::recordingFiles, autosaveStore = null)
         try {
             val loop = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
             controller.selectPad(loop)
@@ -151,7 +155,7 @@ class DesktopSamplerControllerTest {
     @Test
     fun rejectedConfiguredLoopDoesNotStartDrumsOrPublishTransport() {
         val engine = FakeAudioEngine()
-        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        val controller = DesktopSamplerController(engine, recordingDirectory = ::recordingFiles, autosaveStore = null)
         try {
             val loop = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
             controller.selectPad(loop)
@@ -167,7 +171,7 @@ class DesktopSamplerControllerTest {
     @Test
     fun drumKitReplacementDuringRecordingHasNoPlaybackOrProjectEffects() {
         val engine = FakeAudioEngine()
-        val controller = DesktopSamplerController(engine, microphone = FakeRecorder(), autosaveStore = null)
+        val controller = DesktopSamplerController(engine, microphone = FakeRecorder(), recordingDirectory = ::recordingFiles, autosaveStore = null)
         try {
             val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
             controller.selectPad(loopPad)
@@ -197,7 +201,8 @@ class DesktopSamplerControllerTest {
         val source = directory.resolve("loading.wav")
         WavFileWriter(source, sampleRate = 48000, channelCount = 1).use { it.writePcm16(ShortArray(64)) }
         val engine = FakeAudioEngine().apply { blockNextLoad = true }
-        val controller = DesktopSamplerController(engine, autosaveStore = null, recoverAutosaveOnStart = false)
+        val controller = DesktopSamplerController(engine, recordingDirectory = ::recordingFiles, autosaveStore = null,
+            recoverAutosaveOnStart = false)
         try {
             controller.loadWav(source)
             engine.awaitBlockedLoad()
@@ -221,13 +226,13 @@ class DesktopSamplerControllerTest {
     }
 
     private fun controller(): DesktopSamplerController =
-        DesktopSamplerController(JavaSoundWavPlayer(), autosaveStore = null)
+        DesktopSamplerController(JavaSoundWavPlayer(), recordingDirectory = ::recordingFiles, autosaveStore = null)
 
     @Test
     fun patternRefinementPreservesOtherVariationThroughUndoAndSaveReopen() {
         val directory = Files.createTempDirectory("choplab-pattern-refinement").toFile()
         val project = directory.resolve("refinement.choplab")
-        val controller = DesktopSamplerController(FakeAudioEngine(), autosaveStore = null)
+        val controller = DesktopSamplerController(FakeAudioEngine(), recordingDirectory = ::recordingFiles, autosaveStore = null)
         try {
             controller.ensurePlayablePadSelected()
             val patternA = controller.state.value.activeSteps
@@ -292,7 +297,7 @@ class DesktopSamplerControllerTest {
     @Test
     fun transportStartsWithEveryAudibleStepZeroHitExactlyOnce() {
         val engine = FakeAudioEngine()
-        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        val controller = DesktopSamplerController(engine, recordingDirectory = ::recordingFiles, autosaveStore = null)
         try {
             val stepZeroPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
             controller.clearAllPattern()
@@ -347,7 +352,8 @@ class DesktopSamplerControllerTest {
             }
         }
         val engine = FakeAudioEngine()
-        val controller = DesktopSamplerController(engine, autosaveStore = null, recoverAutosaveOnStart = false)
+        val controller = DesktopSamplerController(engine, recordingDirectory = ::recordingFiles, autosaveStore = null,
+            recoverAutosaveOnStart = false)
         try {
             controller.loadWav(first)
             awaitCondition { controller.state.value.currentAudio?.name == "first.wav" }
@@ -376,7 +382,8 @@ class DesktopSamplerControllerTest {
     @Test
     fun drumSeparationRequiresLoadedSourceBeforeAcquiringModel() {
         val engine = FakeAudioEngine()
-        val controller = DesktopSamplerController(engine, autosaveStore = null, recoverAutosaveOnStart = false)
+        val controller = DesktopSamplerController(engine, recordingDirectory = ::recordingFiles, autosaveStore = null,
+            recoverAutosaveOnStart = false)
         controller.separatorModelStoreFactory = { error("No model acquisition without a source") }
         try {
             controller.separateDrumsFromCurrentSource()
@@ -401,7 +408,8 @@ class DesktopSamplerControllerTest {
         val previousModels = System.getProperty("choplab.separatorModels")
         System.setProperty("choplab.separatorModels", blockedModels.absolutePath)
         val engine = FakeAudioEngine()
-        val controller = DesktopSamplerController(engine, autosaveStore = null, recoverAutosaveOnStart = false)
+        val controller = DesktopSamplerController(engine, recordingDirectory = ::recordingFiles, autosaveStore = null,
+            recoverAutosaveOnStart = false)
         try {
             controller.loadWav(source)
             awaitCondition { controller.state.value.currentAudio?.name == "song.wav" }
@@ -494,7 +502,8 @@ class DesktopSamplerControllerTest {
             })
         })
         val engine = FakeAudioEngine()
-        val controller = DesktopSamplerController(engine, autosaveStore = null, recoverAutosaveOnStart = false)
+        val controller = DesktopSamplerController(engine, recordingDirectory = ::recordingFiles, autosaveStore = null,
+            recoverAutosaveOnStart = false)
         controller.separatorModelStoreFactory = { models }
         try {
             controller.loadWav(source)
@@ -535,7 +544,7 @@ class DesktopSamplerControllerTest {
     @Test
     fun padScratchLayersOverTheBeatAndRestartsOnlyTheScratchedOwner() {
         val engine = FakeAudioEngine()
-        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        val controller = DesktopSamplerController(engine, recordingDirectory = ::recordingFiles, autosaveStore = null)
         controller.scratch = FakeScratchPlayer()
         try {
             val loop = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
@@ -571,7 +580,8 @@ class DesktopSamplerControllerTest {
             writer.writePcm16(ShortArray(48_000) { index -> (index % 251).toShort() })
         }
         val engine = FakeAudioEngine()
-        val controller = DesktopSamplerController(engine, autosaveStore = null, recoverAutosaveOnStart = false)
+        val controller = DesktopSamplerController(engine, recordingDirectory = ::recordingFiles, autosaveStore = null,
+            recoverAutosaveOnStart = false)
         controller.scratch = FakeScratchPlayer()
         try {
             controller.loadWav(source)
@@ -659,7 +669,7 @@ class DesktopSamplerControllerTest {
             if (it.globalIndex == 0) PadModel(0, audio, 0, 800) else it
         }))
         val engine = FakeAudioEngine()
-        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        val controller = DesktopSamplerController(engine, recordingDirectory = ::recordingFiles, autosaveStore = null)
         try {
             controller.openProject(project)
             awaitCondition { controller.state.value.statusMessage == "input.choplabを開きました" }
@@ -876,7 +886,7 @@ class DesktopSamplerControllerTest {
         )
         val controller = DesktopSamplerController(
             FakeAudioEngine(),
-            autosaveStore = store,
+            recordingDirectory = ::recordingFiles, autosaveStore = store,
             autosaveDelayMillis = 0L,
         )
         try {
@@ -946,11 +956,12 @@ class DesktopSamplerControllerTest {
         val controller = DesktopSamplerController(
             FakeAudioEngine(),
             microphone = recorder,
-            autosaveStore = null,
+            recordingDirectory = ::recordingFiles, autosaveStore = null,
         )
         try {
             controller.setBpm(126f)
             controller.toggleMicrophoneRecording()
+            awaitCondition { (controller.state.value.recordingSession as? RecordingSession.Active)?.phase == RecordingPhase.RECORDING }
             val before = controller.state.value
             assertEquals(
                 RecordingSession.Active(RecordingKind.SOURCE_MICROPHONE, RecordingPhase.RECORDING),
@@ -981,7 +992,7 @@ class DesktopSamplerControllerTest {
         val engine = FakeAudioEngine().apply { blockNextLoad = true }
         val controller = DesktopSamplerController(
             engine,
-            autosaveStore = null,
+            recordingDirectory = ::recordingFiles, autosaveStore = null,
             recoverAutosaveOnStart = false,
         )
         try {
@@ -1027,7 +1038,7 @@ class DesktopSamplerControllerTest {
         )
         val controller = DesktopSamplerController(
             FakeAudioEngine(),
-            autosaveStore = store,
+            recordingDirectory = ::recordingFiles, autosaveStore = store,
             autosaveDelayMillis = 0L,
         )
         try {
@@ -1063,7 +1074,7 @@ class DesktopSamplerControllerTest {
         )
         val controller = DesktopSamplerController(
             FakeAudioEngine(),
-            autosaveStore = store,
+            recordingDirectory = ::recordingFiles, autosaveStore = store,
             autosaveDelayMillis = 0L,
         )
         try {
@@ -1083,7 +1094,7 @@ class DesktopSamplerControllerTest {
     @Test
     fun padPerformanceModeUsesSharedGatePolicyAndStopsLoopOwnership() {
         val engine = FakeAudioEngine()
-        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        val controller = DesktopSamplerController(engine, recordingDirectory = ::recordingFiles, autosaveStore = null)
         try {
             val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
             controller.selectPad(loopPad)
@@ -1106,7 +1117,7 @@ class DesktopSamplerControllerTest {
     @Test
     fun failedLoopStopDoesNotPublishTheRequestedModeChange() {
         val engine = FakeAudioEngine()
-        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        val controller = DesktopSamplerController(engine, recordingDirectory = ::recordingFiles, autosaveStore = null)
         try {
             val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
             controller.selectPad(loopPad)
@@ -1131,7 +1142,7 @@ class DesktopSamplerControllerTest {
         val store = AtomicProjectStore(directory)
         val controller = DesktopSamplerController(
             JavaSoundWavPlayer(),
-            autosaveStore = store,
+            recordingDirectory = ::recordingFiles, autosaveStore = store,
             autosaveDelayMillis = 0L,
         )
         try {
@@ -1152,7 +1163,7 @@ class DesktopSamplerControllerTest {
         val store = AtomicProjectStore(directory)
         val controller = DesktopSamplerController(
             FakeAudioEngine(),
-            autosaveStore = store,
+            recordingDirectory = ::recordingFiles, autosaveStore = store,
             autosaveDelayMillis = 60_000L,
             recoverAutosaveOnStart = false,
         )
@@ -1181,7 +1192,7 @@ class DesktopSamplerControllerTest {
             engine,
             microphone = microphone,
             systemAudio = FakeRecorder(),
-            autosaveStore = store,
+            recordingDirectory = ::recordingFiles, autosaveStore = store,
             autosaveDelayMillis = 60_000L,
             recoverAutosaveOnStart = false,
         )
@@ -1209,7 +1220,7 @@ class DesktopSamplerControllerTest {
             FakeAudioEngine(),
             microphone = FakeRecorder(),
             systemAudio = FakeRecorder(),
-            autosaveStore = store,
+            recordingDirectory = ::recordingFiles, autosaveStore = store,
             autosaveDelayMillis = 0L,
             recoverAutosaveOnStart = false,
         )
@@ -1246,7 +1257,7 @@ class DesktopSamplerControllerTest {
             engine,
             microphone = microphone,
             systemAudio = systemAudio,
-            autosaveStore = store,
+            recordingDirectory = ::recordingFiles, autosaveStore = store,
             autosaveDelayMillis = 0L,
             recoverAutosaveOnStart = false,
         )
@@ -1291,7 +1302,7 @@ class DesktopSamplerControllerTest {
             engine,
             microphone = FakeRecorder(),
             systemAudio = FakeRecorder(),
-            autosaveStore = store,
+            recordingDirectory = ::recordingFiles, autosaveStore = store,
             autosaveDelayMillis = 0L,
             recoverAutosaveOnStart = false,
         )
@@ -1352,7 +1363,7 @@ class DesktopSamplerControllerTest {
             engine,
             microphone = FakeRecorder(),
             systemAudio = FakeRecorder(),
-            autosaveStore = store,
+            recordingDirectory = ::recordingFiles, autosaveStore = store,
             autosaveDelayMillis = 0L,
             recoverAutosaveOnStart = false,
         )
@@ -1392,7 +1403,7 @@ class DesktopSamplerControllerTest {
             FakeAudioEngine(),
             microphone = FakeRecorder(),
             systemAudio = FakeRecorder(),
-            autosaveStore = store,
+            recordingDirectory = ::recordingFiles, autosaveStore = store,
             autosaveDelayMillis = 0L,
             recoverAutosaveOnStart = false,
         )
@@ -1418,13 +1429,13 @@ class DesktopSamplerControllerTest {
         val controller = DesktopSamplerController(
             FakeAudioEngine(),
             microphone = recorder,
-            autosaveStore = null,
+            recordingDirectory = ::recordingFiles, autosaveStore = null,
         )
         try {
             val launchRevision = controller.state.value.projectLaunchRevision
 
             controller.toggleMicrophoneRecording()
-            assertTrue(controller.state.value.recordingSession is RecordingSession.Active)
+            awaitCondition { (controller.state.value.recordingSession as? RecordingSession.Active)?.phase == RecordingPhase.RECORDING }
             controller.toggleMicrophoneRecording()
             awaitCondition { controller.state.value.currentAudio != null }
 
@@ -1442,7 +1453,7 @@ class DesktopSamplerControllerTest {
         val controller = DesktopSamplerController(
             engine,
             microphone = recorder,
-            autosaveStore = null,
+            recordingDirectory = ::recordingFiles, autosaveStore = null,
         )
         try {
             val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
@@ -1452,6 +1463,7 @@ class DesktopSamplerControllerTest {
             val triggersBeforeRecording = engine.triggered.size
 
             controller.toggleVocalRecording()
+            awaitCondition { (controller.state.value.recordingSession as? RecordingSession.Active)?.phase == RecordingPhase.RECORDING }
 
             assertTrue(controller.state.value.recordingSession is RecordingSession.Active)
             assertEquals(loopPad, controller.state.value.loopingPadIndex)
@@ -1496,7 +1508,7 @@ class DesktopSamplerControllerTest {
                 },
             ),
         )
-        val controller = DesktopSamplerController(engine, autosaveStore = store, autosaveDelayMillis = 0L)
+        val controller = DesktopSamplerController(engine, recordingDirectory = ::recordingFiles, autosaveStore = store, autosaveDelayMillis = 0L)
         try {
             awaitCondition { !controller.state.value.isLoading }
             engine.triggered.clear()
@@ -1525,7 +1537,7 @@ class DesktopSamplerControllerTest {
         store.save(SamplerUiState(bpm = 117f))
         val controller = DesktopSamplerController(
             FakeAudioEngine(),
-            autosaveStore = store,
+            recordingDirectory = ::recordingFiles, autosaveStore = store,
             autosaveDelayMillis = 0L,
             recoverAutosaveOnStart = false,
         )
@@ -1557,7 +1569,7 @@ class DesktopSamplerControllerTest {
             FakeAudioEngine(),
             microphone = FakeRecorder(),
             systemAudio = FakeRecorder(),
-            autosaveStore = store,
+            recordingDirectory = ::recordingFiles, autosaveStore = store,
             autosaveDelayMillis = 0L,
             recoverAutosaveOnStart = false,
             preserveAutosaveUntilInitialProjectReplacement = true,
@@ -1604,7 +1616,7 @@ class DesktopSamplerControllerTest {
                     engine,
                     microphone = FakeRecorder(),
                     systemAudio = FakeRecorder(),
-                    autosaveStore = store,
+                    recordingDirectory = ::recordingFiles, autosaveStore = store,
                     autosaveDelayMillis = 0L,
                     recoverAutosaveOnStart = true,
                 )
@@ -1658,7 +1670,7 @@ class DesktopSamplerControllerTest {
                     engine,
                     microphone = FakeRecorder(),
                     systemAudio = FakeRecorder(),
-                    autosaveStore = store,
+                    recordingDirectory = ::recordingFiles, autosaveStore = store,
                     autosaveDelayMillis = 0L,
                     recoverAutosaveOnStart = true,
                 )
@@ -1713,7 +1725,7 @@ class DesktopSamplerControllerTest {
                     engine,
                     microphone = FakeRecorder(),
                     systemAudio = FakeRecorder(),
-                    autosaveStore = store,
+                    recordingDirectory = ::recordingFiles, autosaveStore = store,
                     autosaveDelayMillis = 60_000L,
                     recoverAutosaveOnStart = true,
                 )
@@ -1771,7 +1783,7 @@ class DesktopSamplerControllerTest {
                     engine,
                     microphone = FakeRecorder(),
                     systemAudio = FakeRecorder(),
-                    autosaveStore = store,
+                    recordingDirectory = ::recordingFiles, autosaveStore = store,
                     autosaveDelayMillis = 60_000L,
                     recoverAutosaveOnStart = true,
                 )
@@ -1821,7 +1833,7 @@ class DesktopSamplerControllerTest {
             engine,
             microphone = FakeRecorder(),
             systemAudio = FakeRecorder(),
-            autosaveStore = store,
+            recordingDirectory = ::recordingFiles, autosaveStore = store,
             autosaveDelayMillis = 60_000L,
             recoverAutosaveOnStart = true,
         )
@@ -1868,7 +1880,7 @@ class DesktopSamplerControllerTest {
             engine,
             microphone = FakeRecorder(),
             systemAudio = FakeRecorder(),
-            autosaveStore = store,
+            recordingDirectory = ::recordingFiles, autosaveStore = store,
             autosaveDelayMillis = 60_000L,
             recoverAutosaveOnStart = true,
         )
@@ -1911,7 +1923,7 @@ class DesktopSamplerControllerTest {
                     FakeAudioEngine(),
                     microphone = FakeRecorder(),
                     systemAudio = FakeRecorder(),
-                    autosaveStore = store,
+                    recordingDirectory = ::recordingFiles, autosaveStore = store,
                     autosaveDelayMillis = 0L,
                     recoverAutosaveOnStart = true,
                 )
@@ -1954,7 +1966,7 @@ class DesktopSamplerControllerTest {
                     engine,
                     microphone = FakeRecorder(),
                     systemAudio = FakeRecorder(),
-                    autosaveStore = store,
+                    recordingDirectory = ::recordingFiles, autosaveStore = store,
                     autosaveDelayMillis = 60_000L,
                     recoverAutosaveOnStart = true,
                 )
@@ -2017,7 +2029,7 @@ class DesktopSamplerControllerTest {
                     engine,
                     microphone = FakeRecorder(),
                     systemAudio = FakeRecorder(),
-                    autosaveStore = store,
+                    recordingDirectory = ::recordingFiles, autosaveStore = store,
                     autosaveDelayMillis = 0L,
                     recoverAutosaveOnStart = true,
                 )
@@ -2066,7 +2078,7 @@ class DesktopSamplerControllerTest {
             engine,
             microphone = FakeRecorder(),
             systemAudio = FakeRecorder(),
-            autosaveStore = store,
+            recordingDirectory = ::recordingFiles, autosaveStore = store,
             autosaveDelayMillis = 0L,
             recoverAutosaveOnStart = true,
         )
@@ -2118,7 +2130,7 @@ class DesktopSamplerControllerTest {
             engine,
             microphone = FakeRecorder(),
             systemAudio = FakeRecorder(),
-            autosaveStore = store,
+            recordingDirectory = ::recordingFiles, autosaveStore = store,
             autosaveDelayMillis = 60_000L,
             recoverAutosaveOnStart = true,
         )
@@ -2163,7 +2175,7 @@ class DesktopSamplerControllerTest {
             engine,
             microphone = FakeRecorder(),
             systemAudio = FakeRecorder(),
-            autosaveStore = store,
+            recordingDirectory = ::recordingFiles, autosaveStore = store,
             autosaveDelayMillis = 60_000L,
             recoverAutosaveOnStart = true,
         )
@@ -2218,7 +2230,7 @@ class DesktopSamplerControllerTest {
             engine,
             microphone = FakeRecorder(),
             systemAudio = FakeRecorder(),
-            autosaveStore = store,
+            recordingDirectory = ::recordingFiles, autosaveStore = store,
             autosaveDelayMillis = 60_000L,
             recoverAutosaveOnStart = true,
         )
@@ -2267,7 +2279,7 @@ class DesktopSamplerControllerTest {
             engine,
             microphone = FakeRecorder(),
             systemAudio = FakeRecorder(),
-            autosaveStore = store,
+            recordingDirectory = ::recordingFiles, autosaveStore = store,
             autosaveDelayMillis = 60_000L,
             recoverAutosaveOnStart = true,
         )
@@ -2311,7 +2323,7 @@ class DesktopSamplerControllerTest {
             engine,
             microphone = FakeRecorder(),
             systemAudio = FakeRecorder(),
-            autosaveStore = store,
+            recordingDirectory = ::recordingFiles, autosaveStore = store,
             autosaveDelayMillis = 60_000L,
             recoverAutosaveOnStart = true,
         )
@@ -2369,7 +2381,7 @@ class DesktopSamplerControllerTest {
             engine,
             microphone = FakeRecorder(),
             systemAudio = FakeRecorder(),
-            autosaveStore = store,
+            recordingDirectory = ::recordingFiles, autosaveStore = store,
             autosaveDelayMillis = 60_000L,
             recoverAutosaveOnStart = true,
         )
@@ -2432,7 +2444,7 @@ class DesktopSamplerControllerTest {
             engine,
             microphone = FakeRecorder(),
             systemAudio = FakeRecorder(),
-            autosaveStore = store,
+            recordingDirectory = ::recordingFiles, autosaveStore = store,
             autosaveDelayMillis = 60_000L,
             recoverAutosaveOnStart = true,
         )
@@ -2493,7 +2505,7 @@ class DesktopSamplerControllerTest {
             engine,
             microphone = FakeRecorder(),
             systemAudio = FakeRecorder(),
-            autosaveStore = store,
+            recordingDirectory = ::recordingFiles, autosaveStore = store,
             autosaveDelayMillis = 60_000L,
             recoverAutosaveOnStart = true,
         )
@@ -2538,7 +2550,7 @@ class DesktopSamplerControllerTest {
             FakeAudioEngine(),
             microphone = FakeRecorder(),
             systemAudio = FakeRecorder(),
-            autosaveStore = store,
+            recordingDirectory = ::recordingFiles, autosaveStore = store,
             autosaveDelayMillis = 0L,
             recoverAutosaveOnStart = true,
         )
@@ -2566,7 +2578,7 @@ class DesktopSamplerControllerTest {
         val controller = DesktopSamplerController(
             engine,
             microphone = recorder,
-            autosaveStore = null,
+            recordingDirectory = ::recordingFiles, autosaveStore = null,
         )
         try {
             val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
@@ -2582,7 +2594,8 @@ class DesktopSamplerControllerTest {
             assertEquals(false, recorder.isRecording)
             assertEquals(null, controller.state.value.loopingPadIndex)
             assertTrue(controller.state.value.statusMessage.contains("出力デバイスを確認"))
-            assertEquals(false, recorder.lastOutput?.exists())
+            assertEquals(true, recorder.lastOutput?.exists())
+            assertTrue(controller.pendingRecordingAvailable)
         } finally {
             controller.close()
         }
@@ -2591,7 +2604,7 @@ class DesktopSamplerControllerTest {
     @Test
     fun padControlsAndLoopCommandsReachTheDesktopAudioPort() {
         val engine = FakeAudioEngine()
-        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        val controller = DesktopSamplerController(engine, recordingDirectory = ::recordingFiles, autosaveStore = null)
         try {
             controller.applyBuiltInDrumKit("boom-bap", replaceExisting = false)
             controller.selectPad(SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK)
@@ -2619,7 +2632,7 @@ class DesktopSamplerControllerTest {
     @Test
     fun olderPointerReleaseClosesOnlyItsVoiceAfterANewerTrigger() {
         val engine = FakeAudioEngine()
-        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        val controller = DesktopSamplerController(engine, recordingDirectory = ::recordingFiles, autosaveStore = null)
         try {
             controller.applyBuiltInDrumKit("boom-bap", replaceExisting = false)
             val padIndex = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
@@ -2646,7 +2659,7 @@ class DesktopSamplerControllerTest {
     @Test
     fun failedActiveLoopEditKeepsTheOldPadLoopAndHistoryFrontier() {
         val engine = FakeAudioEngine()
-        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        val controller = DesktopSamplerController(engine, recordingDirectory = ::recordingFiles, autosaveStore = null)
         try {
             val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
             controller.selectPad(loopPad)
@@ -2680,7 +2693,7 @@ class DesktopSamplerControllerTest {
     @Test
     fun successfulActiveLoopEditStartsTheCandidateThenCommitsExactlyOneEdit() {
         val engine = FakeAudioEngine()
-        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        val controller = DesktopSamplerController(engine, recordingDirectory = ::recordingFiles, autosaveStore = null)
         try {
             val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
             controller.selectPad(loopPad)
@@ -2711,7 +2724,7 @@ class DesktopSamplerControllerTest {
     @Test
     fun activeLoopUndoAndRedoReplaceTheSameOwnerWithoutStoppingTheLoop() {
         val engine = FakeAudioEngine()
-        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        val controller = DesktopSamplerController(engine, recordingDirectory = ::recordingFiles, autosaveStore = null)
         try {
             val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
             controller.selectPad(loopPad)
@@ -2748,7 +2761,7 @@ class DesktopSamplerControllerTest {
     @Test
     fun failedActiveLoopUndoKeepsTheEditedLoopAndHistoryFrontier() {
         val engine = FakeAudioEngine()
-        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        val controller = DesktopSamplerController(engine, recordingDirectory = ::recordingFiles, autosaveStore = null)
         try {
             val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
             controller.selectPad(loopPad)
@@ -2805,7 +2818,7 @@ class DesktopSamplerControllerTest {
     @Test
     fun undoPastTheLoopOwnerUsesTheExistingDisruptiveHistoryPath() {
         val engine = FakeAudioEngine()
-        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        val controller = DesktopSamplerController(engine, recordingDirectory = ::recordingFiles, autosaveStore = null)
         try {
             val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
             controller.selectPad(loopPad)
@@ -2827,7 +2840,7 @@ class DesktopSamplerControllerTest {
     @Test
     fun activeLoopUndoWithAnUnchangedOwnerPadDoesNotRetriggerAudio() {
         val engine = FakeAudioEngine()
-        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        val controller = DesktopSamplerController(engine, recordingDirectory = ::recordingFiles, autosaveStore = null)
         try {
             val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
             controller.selectPad(loopPad)
@@ -2856,7 +2869,7 @@ class DesktopSamplerControllerTest {
     @Test
     fun fatalActiveLoopUndoErrorDoesNotConsumeHistoryOrRewriteStatus() {
         val engine = FakeAudioEngine()
-        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        val controller = DesktopSamplerController(engine, recordingDirectory = ::recordingFiles, autosaveStore = null)
         try {
             val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
             controller.selectPad(loopPad)
@@ -2883,7 +2896,7 @@ class DesktopSamplerControllerTest {
     @Test
     fun fatalLoopReplacementErrorIsNotMisreportedAsARecoverableEditFailure() {
         val engine = FakeAudioEngine()
-        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        val controller = DesktopSamplerController(engine, recordingDirectory = ::recordingFiles, autosaveStore = null)
         try {
             val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
             controller.selectPad(loopPad)
@@ -2910,7 +2923,7 @@ class DesktopSamplerControllerTest {
         val controller = DesktopSamplerController(
             player = engine,
             microphone = recorder,
-            autosaveStore = null,
+            recordingDirectory = ::recordingFiles, autosaveStore = null,
         )
         try {
             val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
@@ -2936,7 +2949,7 @@ class DesktopSamplerControllerTest {
     @Test
     fun matchingChokeTriggerStopsPublishedLoopSessionBeforePlayingRequestedPad() {
         val engine = FakeAudioEngine()
-        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        val controller = DesktopSamplerController(engine, recordingDirectory = ::recordingFiles, autosaveStore = null)
         try {
             val bankStart = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
             val loopPad = bankStart + 8
@@ -2965,7 +2978,7 @@ class DesktopSamplerControllerTest {
     @Test
     fun failedDesktopTriggerDoesNotSupersedeAnOlderGateOwner() {
         val engine = FakeAudioEngine()
-        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        val controller = DesktopSamplerController(engine, recordingDirectory = ::recordingFiles, autosaveStore = null)
         try {
             controller.applyBuiltInDrumKit("boom-bap", replaceExisting = false)
             val padIndex = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
@@ -3025,7 +3038,7 @@ class DesktopSamplerControllerTest {
         val engine = FakeAudioEngine()
         val controller = DesktopSamplerController(
             player = engine,
-            autosaveStore = store,
+            recordingDirectory = ::recordingFiles, autosaveStore = store,
             autosaveDelayMillis = 0L,
         )
         try {
@@ -3048,7 +3061,7 @@ class DesktopSamplerControllerTest {
     @Test
     fun differentChokeGroupKeepsTheLoopSessionAndOrdinaryPolyphony() {
         val engine = FakeAudioEngine()
-        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        val controller = DesktopSamplerController(engine, recordingDirectory = ::recordingFiles, autosaveStore = null)
         try {
             val bankStart = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
             val loopPad = bankStart + 8
@@ -3073,7 +3086,7 @@ class DesktopSamplerControllerTest {
     @Test
     fun chokeStopFailureKeepsLoopTruthAndRejectsTheRequestedTrigger() {
         val engine = FakeAudioEngine()
-        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        val controller = DesktopSamplerController(engine, recordingDirectory = ::recordingFiles, autosaveStore = null)
         try {
             val bankStart = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
             val loopPad = bankStart + 8
@@ -3107,7 +3120,7 @@ class DesktopSamplerControllerTest {
         val engine = FakeAudioEngine().apply { blockNextLoad = true }
         val controller = DesktopSamplerController(
             engine,
-            autosaveStore = null,
+            recordingDirectory = ::recordingFiles, autosaveStore = null,
             recoverAutosaveOnStart = false,
         )
         try {
@@ -3140,13 +3153,13 @@ class DesktopSamplerControllerTest {
         val controller = DesktopSamplerController(
             engine,
             microphone = recorder,
-            autosaveStore = null,
+            recordingDirectory = ::recordingFiles, autosaveStore = null,
         )
         try {
             val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
             controller.selectPad(loopPad)
             controller.toggleMicrophoneRecording()
-            assertTrue(controller.state.value.recordingSession is RecordingSession.Active)
+            awaitCondition { (controller.state.value.recordingSession as? RecordingSession.Active)?.phase == RecordingPhase.RECORDING }
             val before = controller.state.value
             val stopAllBefore = engine.stopAllCount
 
@@ -3168,7 +3181,7 @@ class DesktopSamplerControllerTest {
     @Test
     fun failedInitialBeatLoopStartKeepsTransportProjectAndHistoryFrontier() {
         val engine = FakeAudioEngine()
-        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        val controller = DesktopSamplerController(engine, recordingDirectory = ::recordingFiles, autosaveStore = null)
         try {
             val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
             controller.selectPad(loopPad)
@@ -3198,7 +3211,7 @@ class DesktopSamplerControllerTest {
     @Test
     fun failedInitialLoopRetirementAbandonsStartedCandidatesAndPreservesState() {
         val engine = FakeAudioEngine().apply { failNextExclusiveRetire = true }
-        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        val controller = DesktopSamplerController(engine, recordingDirectory = ::recordingFiles, autosaveStore = null)
         try {
             val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
             controller.selectPad(loopPad)
@@ -3220,7 +3233,7 @@ class DesktopSamplerControllerTest {
     @Test
     fun slowFailedInitialBeatLoopPreparationDoesNotPauseExistingTransport() {
         val engine = FakeAudioEngine()
-        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        val controller = DesktopSamplerController(engine, recordingDirectory = ::recordingFiles, autosaveStore = null)
         val executor = Executors.newSingleThreadExecutor()
         try {
             val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
@@ -3288,7 +3301,7 @@ class DesktopSamplerControllerTest {
             ),
         )
         val durableBefore = directory.resolve("autosave.choplab").readBytes()
-        val controller = DesktopSamplerController(engine, autosaveStore = store, autosaveDelayMillis = 0L)
+        val controller = DesktopSamplerController(engine, recordingDirectory = ::recordingFiles, autosaveStore = store, autosaveDelayMillis = 0L)
         try {
             awaitCondition { !controller.state.value.isLoading }
             engine.triggered.clear()
@@ -3319,7 +3332,7 @@ class DesktopSamplerControllerTest {
     @Test
     fun fatalInitialBeatLoopStartupPropagatesWithoutChangingProduction() {
         val engine = FakeAudioEngine()
-        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        val controller = DesktopSamplerController(engine, recordingDirectory = ::recordingFiles, autosaveStore = null)
         try {
             val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
             controller.selectPad(loopPad)
@@ -3346,7 +3359,7 @@ class DesktopSamplerControllerTest {
     @Test
     fun unexpectedInitialBeatLoopAdapterExceptionPropagatesWithoutChangingProduction() {
         val engine = FakeAudioEngine()
-        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        val controller = DesktopSamplerController(engine, recordingDirectory = ::recordingFiles, autosaveStore = null)
         try {
             val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
             controller.selectPad(loopPad)
@@ -3373,7 +3386,7 @@ class DesktopSamplerControllerTest {
     @Test
     fun successfulInitialBeatLoopStartCommitsOneEditAfterTheCandidateSession() {
         val engine = FakeAudioEngine()
-        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        val controller = DesktopSamplerController(engine, recordingDirectory = ::recordingFiles, autosaveStore = null)
         try {
             val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
             controller.selectPad(loopPad)
@@ -3410,7 +3423,7 @@ class DesktopSamplerControllerTest {
     @Test
     fun loopHandoffBlocksLateTransportVoicesUntilStopIsPublished() {
         val engine = FakeAudioEngine()
-        val controller = DesktopSamplerController(engine, autosaveStore = null)
+        val controller = DesktopSamplerController(engine, recordingDirectory = ::recordingFiles, autosaveStore = null)
         val executor = Executors.newSingleThreadExecutor()
         try {
             val loopPad = SamplerConfig.DRUM_BANK_INDEX * SamplerConfig.PADS_PER_BANK
@@ -3649,7 +3662,7 @@ class DesktopSamplerControllerTest {
         )
         val engine = FakeAudioEngine()
         val recorder = FakeRecorder()
-        val controller = DesktopSamplerController(engine, microphone = recorder, systemAudio = FakeRecorder(), autosaveStore = null)
+        val controller = DesktopSamplerController(engine, microphone = recorder, systemAudio = FakeRecorder(), recordingDirectory = ::recordingFiles, autosaveStore = null)
         try {
             val project = DesktopProjectFiles.save(File(directory, "input.choplab"), initial)
             controller.openProject(project)
@@ -3886,11 +3899,112 @@ class DesktopSamplerControllerTest {
         }
     }
 
+    @Test fun recordingPreparationReturnsImmediatelyAndCancellationRejectsLateStart() {
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val recorder = FakeRecorder().apply { opening = { entered.countDown(); release.await(5, TimeUnit.SECONDS) } }
+        val controller = DesktopSamplerController(FakeAudioEngine(), microphone = recorder, recordingDirectory = ::recordingFiles, autosaveStore = null,
+)
+        try {
+            val start = System.nanoTime()
+            controller.toggleMicrophoneRecording()
+            assertTrue((System.nanoTime() - start) < TimeUnit.MILLISECONDS.toNanos(500))
+            assertTrue(entered.await(2, TimeUnit.SECONDS))
+            assertEquals(RecordingPhase.STARTING, (controller.state.value.recordingSession as RecordingSession.Active).phase)
+            controller.stopActiveRecording()
+            awaitCondition { controller.state.value.recordingSession == RecordingSession.Idle }
+            assertEquals(null, controller.state.value.currentAudio)
+            release.countDown()
+            awaitCondition { recorder.stopCalls >= 2 }
+            assertEquals(RecordingSession.Idle, controller.state.value.recordingSession)
+            assertEquals(null, controller.state.value.currentAudio)
+        } finally { release.countDown(); controller.close() }
+    }
+
+    @Test fun endedInputFinishesOnceAndShowsWhyThePartialTakeEnded() {
+        val recorder = FakeRecorder()
+        val controller = DesktopSamplerController(FakeAudioEngine(), microphone = recorder, recordingDirectory = ::recordingFiles, autosaveStore = null,
+)
+        try {
+            controller.toggleMicrophoneRecording()
+            awaitCondition { (controller.state.value.recordingSession as? RecordingSession.Active)?.phase == RecordingPhase.RECORDING }
+            recorder.finishInput()
+            awaitCondition { controller.state.value.currentAudio != null && controller.state.value.recordingSession == RecordingSession.Idle }
+            assertEquals(1, recorder.stopCalls)
+            assertTrue(controller.state.value.statusMessage.contains("入力が途中"))
+        } finally { controller.close() }
+    }
+
+    @Test fun failedRecordingAutosaveRetainsOriginalAndRetryDoesNotReplaceTheSource() {
+        val root = Files.createTempDirectory("recording-autosave-failure-").toFile()
+        val blocker = root.resolve("blocked").apply { writeText("not a directory") }
+        val recorder = FakeRecorder()
+        val controller = DesktopSamplerController(FakeAudioEngine(), microphone = recorder,
+            recordingDirectory = ::recordingFiles, autosaveStore = AtomicProjectStore(blocker),
+            recoverAutosaveOnStart = false, autosaveDelayMillis = 0)
+        try {
+            controller.toggleMicrophoneRecording()
+            awaitCondition { (controller.state.value.recordingSession as? RecordingSession.Active)?.phase == RecordingPhase.RECORDING }
+            controller.stopActiveRecording()
+            awaitCondition { controller.state.value.currentAudio != null && controller.pendingRecordingAvailable }
+            val audio = controller.state.value.currentAudio
+            val launch = controller.state.value.projectLaunchRevision
+            val file = checkNotNull(recorder.lastOutput)
+            assertTrue(file.exists())
+            assertTrue(blocker.delete()); assertTrue(blocker.mkdir())
+            controller.retryPendingRecording()
+            awaitCondition { !controller.pendingRecordingAvailable && controller.state.value.recordingSession == RecordingSession.Idle }
+            assertTrue(controller.state.value.currentAudio === audio)
+            assertEquals(launch, controller.state.value.projectLaunchRevision)
+            assertEquals(1, recorder.stopCalls)
+            assertFalse(file.exists())
+            assertEquals(audio?.frameCount, AtomicProjectStore(blocker).load()?.currentAudio?.frameCount)
+        } finally { controller.close(); root.deleteRecursively() }
+    }
+
+    @Test fun failedDecodeKeepsRecordingUntilRetryOrExplicitDiscardIncludingRestart() {
+        val recorder = FakeRecorder().apply { corruptOutput = true }
+        val controller = DesktopSamplerController(FakeAudioEngine(), microphone = recorder, recordingDirectory = ::recordingFiles, autosaveStore = null,
+)
+        try {
+            controller.toggleMicrophoneRecording()
+            awaitCondition { (controller.state.value.recordingSession as? RecordingSession.Active)?.phase == RecordingPhase.RECORDING }
+            controller.stopActiveRecording()
+            awaitCondition { controller.pendingRecordingAvailable }
+            val retained = checkNotNull(recorder.lastOutput)
+            assertTrue(retained.isFile)
+            assertEquals(null, controller.state.value.currentAudio)
+            recorder.corruptOutput = false
+            recorder.stop() // Synthetic repair simulates resolving a transient decoder/format failure.
+            controller.retryPendingRecording()
+            awaitCondition { controller.state.value.currentAudio != null && !controller.pendingRecordingAvailable }
+            assertFalse(retained.exists())
+        } finally { controller.close() }
+        val remnant = testRecordings.resolve("pending-recording-restart.wav").apply { writeText("invalid but owned") }
+        val reopened = DesktopSamplerController(FakeAudioEngine(), microphone = FakeRecorder(), recordingDirectory = ::recordingFiles, autosaveStore = null,
+)
+        try {
+            awaitCondition { reopened.pendingRecordingAvailable }
+            reopened.retryPendingRecording()
+            awaitCondition { reopened.state.value.recordingSession == RecordingSession.Idle }
+            assertTrue(remnant.exists())
+            reopened.discardPendingRecording()
+            awaitCondition { !reopened.pendingRecordingAvailable }
+            assertFalse(remnant.exists())
+        } finally { reopened.close() }
+    }
+
     private class FakeRecorder : DesktopAudioRecorder {
         private var output: File? = null
         val lastOutput: File?
             get() = output
         var failStop: Boolean = false
+        var corruptOutput = false
+        var opening: () -> Unit = {}
+        @Volatile var stopCalls = 0
+        override var completionMessage: String? = null
+        override val retainedFile get() = output
+        fun finishInput() { completionMessage = "入力が途中で切断されました"; isRecording = false }
         var failClose: Boolean = false
         @Volatile var closeCalls: Int = 0
         override var isRecording: Boolean = false
@@ -3898,6 +4012,7 @@ class DesktopSamplerControllerTest {
 
         override fun start(file: File): Result<Unit> {
             output = file
+            opening()
             isRecording = true
             if (failStop) {
                 file.parentFile?.mkdirs()
@@ -3907,7 +4022,9 @@ class DesktopSamplerControllerTest {
         }
 
         override fun stop(): Result<File> {
+            stopCalls++
             val file = output ?: return Result.failure(IllegalStateException("recording was not started"))
+            if (corruptOutput) { file.parentFile?.mkdirs(); file.writeText("invalid WAV"); isRecording = false; return Result.success(file) }
             if (failStop) {
                 isRecording = false
                 return Result.failure(IllegalStateException("test recorder stop failure"))

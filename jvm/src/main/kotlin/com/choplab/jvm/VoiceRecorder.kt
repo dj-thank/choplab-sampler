@@ -28,6 +28,8 @@ interface MicInput : AutoCloseable {
     override fun close()
 }
 
+enum class InputInterruption { DEVICE_LOST, READ_FAILED, STORAGE_FAILED }
+
 /**
  * Records one take from [input] on its own thread into a private scratch file, up to [maxSeconds]; that thread owns
  * the input and releases it when it ends, also at the limit. [cue] marks when the song started; what was captured
@@ -69,15 +71,23 @@ class VoiceRecorder(private val input: MicInput, scratch: Path, maxSeconds: Int,
     @Volatile private var running = true
     @Volatile private var ended = false
     @Volatile private var abandoned = false
-    private val thread = try { Thread(::capture, "ChopLab-NEXT-voice").apply { isDaemon = true; priority = Thread.MAX_PRIORITY - 1; start() } }
-        catch (failure: Throwable) { try { input.close() } finally { take.discard() }; throw failure }
-    val terminated: Boolean get() = !thread.isAlive
+    private val stopRequested = java.util.concurrent.atomic.AtomicBoolean()
 
     /** The take reached its length limit and records nothing more. */
     val full: Boolean get() = take.full
     val recordedMillis: Long get() = take.frames * 1_000 / rate
+    val limitMillis: Long = maxSeconds * 1_000L
+    @Volatile var peakLevel: Float = 0f
+        private set
+    @Volatile var interruption: InputInterruption? = null
+        private set
     /** Recording stopped by itself before its limit: the input went away or the take could not be written. */
     val interrupted: Boolean get() = ended
+
+    private val thread = try { Thread(::capture, "ChopLab-NEXT-voice").apply { isDaemon = true; priority = Thread.MAX_PRIORITY - 1; start() } }
+        catch (failure: Throwable) { try { input.close() } finally { take.discard() }; throw failure }
+    val terminated: Boolean get() = !thread.isAlive
+
 
     private fun capture() {
         var captureFirstNanos = UNSET
@@ -97,10 +107,19 @@ class VoiceRecorder(private val input: MicInput, scratch: Path, maxSeconds: Int,
             val buffer = FloatArray(2048)
             input.onCaptureThread()
             while (running && !take.full) {
-                val count = input.read(buffer)
-                if (count < 0) { ended = running; break }
+                val count = try { input.read(buffer) } catch (failure: Exception) {
+                    if (running) interruption = InputInterruption.READ_FAILED
+                    throw failure
+                }
+                if (count < 0) { ended = running; if (running) interruption = InputInterruption.DEVICE_LOST; break }
                 if (count == 0) continue
                 require(count <= buffer.size && count % channels == 0)
+                var peak = 0f
+                for (i in 0 until count) {
+                    val sample = buffer[i]
+                    if (sample.isFinite()) peak = maxOf(peak, kotlin.math.abs(sample))
+                }
+                peakLevel = peak
                 val now = nanoTime()
                 val frames = count / channels
                 if (captureFirstNanos == UNSET) captureFirstNanos = now - frames * 1_000_000_000L / rate
@@ -127,7 +146,8 @@ class VoiceRecorder(private val input: MicInput, scratch: Path, maxSeconds: Int,
                     val at = captureFirstNanos + (capturedFrames + skip) * 1_000_000_000L / rate
                     if (firstFrameNanos == UNSET) firstFrameNanos = at
                     if (passFirst == UNSET) passFirst = at
-                    take.write(buffer, kept * channels, skip * channels)
+                    try { take.write(buffer, kept * channels, skip * channels) }
+                    catch (failure: Exception) { interruption = InputInterruption.STORAGE_FAILED; throw failure }
                 }
                 capturedFrames += frames
                 if (windowEnd != null && capturedFrames >= windowEnd) {
@@ -164,9 +184,10 @@ class VoiceRecorder(private val input: MicInput, scratch: Path, maxSeconds: Int,
      * Stops recording and stores the take named [name]; null when nothing usable was recorded. The lead-in is negative
      * when the microphone delivered its first frame only after the song had started.
      */
-    fun finish(store: FileAssetStore, name: String): VoiceTake? {
-        try { stop() } catch (failure: Throwable) { abandon(); throw failure }
-        val asset = take.finish(store, name) ?: return null
+    fun finish(store: FileAssetStore, name: String, retain: Boolean = false): VoiceTake? {
+        // A slow driver or failed publication must not silently destroy the take.
+        stop()
+        val asset = (if (retain) take.finishRetaining(store, name) else take.finish(store, name)) ?: return null
         val first = firstFrameNanos
         val cue = cueNanos
         val lead = if (first == UNSET || cue == UNSET) 0L else ((cue - first) / 1e9 * rate).roundToLong()
@@ -174,16 +195,19 @@ class VoiceRecorder(private val input: MicInput, scratch: Path, maxSeconds: Int,
         return VoiceTake(asset, lead)
     }
 
+    fun preserve() { stop(); take.seal("Recovered recording") }
+    fun acknowledge() { check(terminated); take.discard() }
+
     /** Stops recording and drops the take. */
     fun discard() {
         abandoned = true
         try { stop() } finally { if (terminated) take.discard() }
     }
-    private fun abandon() { abandoned = true; if (terminated) take.discard() }
-
     private fun stop() {
         running = false
-        try { input.stop() } catch (_: Exception) { }
+        if (stopRequested.compareAndSet(false, true)) Thread({
+            try { input.stop() } catch (_: Exception) { }
+        }, "ChopLab-input-stop").apply { isDaemon = true; start() }
         thread.join(2_000)
         check(!thread.isAlive) { "The microphone did not stop within its deadline" }
     }

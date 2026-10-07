@@ -8,7 +8,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 
-data class DocumentState(val project: Project, val revision: Long, val canUndo: Boolean = false, val canRedo: Boolean = false, val savedRevision: Long? = null, val audiblePending: Boolean = true)
+data class DocumentState(val project: Project, val revision: Long, val canUndo: Boolean = false, val canRedo: Boolean = false, val savedRevision: Long? = null, val audiblePending: Boolean = true, val undoSourceHash: String? = null, val redoSourceHash: String? = null)
 data class SelectionState(val padId: Int = 0, val patternId: String = "pattern-1", val slice: Int? = null,
                           val playbackTarget: PlaybackTarget = PlaybackTarget.Pattern(patternId))
 data class WorkState(val jobId: Long? = null, val operation: Operation? = null, val basedOnRevision: Long? = null, val preparationId: Long? = null,
@@ -413,7 +413,7 @@ class Studio(scope: CoroutineScope, private val services: Services, initial: Pro
         val accepted = apply(command); _transport.value = services.engine.snapshot()
         return ActionResult(accepted)
     }
-    private fun publishDocument() { _document.value = DocumentState(session.project, session.revision, session.canUndo, session.canRedo, _document.value.savedRevision, !services.engine.snapshot().outputAttached) }
+    private fun publishDocument() { _document.value = DocumentState(session.project, session.revision, session.canUndo, session.canRedo, _document.value.savedRevision, !services.engine.snapshot().outputAttached, session.undoSourceHash, session.redoSourceHash) }
     private fun notice(value: Notice) { _notices.tryEmit(value) }
     private fun rejected(reason: Rejection): ActionResult = ActionResult(false, Notice.Rejected(reason)).also { notice(requireNotNull(it.notice)) }
     private fun failed(operation: Operation): ActionResult = ActionResult(false, Notice.Failed(operation)).also { notice(requireNotNull(it.notice)) }

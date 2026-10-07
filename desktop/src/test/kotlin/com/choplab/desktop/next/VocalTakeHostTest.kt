@@ -52,14 +52,14 @@ class VocalTakeHostTest {
         } }
         try {
             f.ready()
-            assertEquals(VoiceTakes.Start.STARTED, f.backend.voice.start(1))
+            assertTrue(f.presenter.dispatch(ContinuousEditorAction.RecordVoice))
             until { f.backend.voice.recordedMillis >= 100 }
-            val recording = assertNotNull(f.backend.voice.stop("Candidate"))
-            val track = Track("voice", "VOICE", TrackKind.VOCAL)
-            val take = Take("take", track.id, recording.asset.hash, FrameRange(0, recording.asset.frames), 0)
-            assertTrue(f.backend.studio.dispatch(Action.Edit(VocalCompEdits.retain(f.backend.studio.document.value.project, recording.asset, take, track))).accepted)
+            assertTrue(f.presenter.dispatch(ContinuousEditorAction.StopVoice))
+            assertEquals(1, f.backend.studio.document.value.project.takes.size)
+            assertFalse(f.backend.voice.pendingSave)
             assertTrue(f.presenter.dispatch(ContinuousEditorAction.OpenVocalTakes))
             val controller = assertNotNull(f.presenter.vocalTakes.value)
+            until { controller.state.value.editable }
             assertTrue(controller.dispatch(VocalAction.WholeTake))
             val before = f.backend.studio.document.value
             val committing = async { controller.dispatch(VocalAction.Apply("Comp")) }
@@ -189,6 +189,7 @@ class VocalTakeHostTest {
         val release = CompletableDeferred<Unit>()
         val permission = CompletableDeferred<Unit>()
         val permissionEntered = CompletableDeferred<Unit>()
+        var requestPermission = false
         val f = Fixture { real -> object : ContinuousEditorPorts by real {
             override val onlineSource = idleOnlineHost {}
             override val vocalTakes = object : VocalTakePort by real.vocalTakes {
@@ -198,19 +199,23 @@ class VocalTakeHostTest {
                 }
             }
             override val recordingCue: RecordingCuePort? = null
-            override suspend fun startVoice(maxSeconds: Int): VoiceStart { permissionEntered.complete(Unit); permission.await(); return VoiceStart.DENIED }
+            override suspend fun startVoice(maxSeconds: Int): VoiceStart {
+                if (!requestPermission) return real.startVoice(maxSeconds)
+                permissionEntered.complete(Unit); permission.await(); return VoiceStart.DENIED
+            }
         } }
         try {
             f.ready()
-            // A fixture recording uses the same real recorder/store, then a normal one-Undo retain edit.
-            assertEquals(VoiceTakes.Start.STARTED, f.backend.voice.start(1))
+            // Let the real presenter retain, persist and acknowledge the candidate before opening the editor.
+            assertTrue(f.presenter.dispatch(ContinuousEditorAction.RecordVoice))
             until { f.backend.voice.recordedMillis >= 350 }
-            val recorded = assertNotNull(f.backend.voice.stop("Candidate"))
-            val track = Track("voice", "VOICE", TrackKind.VOCAL)
-            val take = Take("take", track.id, recorded.asset.hash, FrameRange(0, recorded.asset.frames), 0)
-            assertTrue(f.backend.studio.dispatch(Action.Edit(VocalCompEdits.retain(f.backend.studio.document.value.project, recorded.asset, take, track))).accepted)
+            assertTrue(f.presenter.dispatch(ContinuousEditorAction.StopVoice))
+            assertEquals(1, f.backend.studio.document.value.project.takes.size)
+            assertFalse(f.backend.voice.pendingSave)
+            requestPermission = true
             assertTrue(f.presenter.dispatch(ContinuousEditorAction.OpenVocalTakes))
             val editor = assertNotNull(f.presenter.vocalTakes.value)
+            until { editor.state.value.editable }
             assertTrue(editor.dispatch(VocalAction.WholeTake))
             val preparing = async { editor.dispatch(VocalAction.PreviewTake) }
             entered.await()

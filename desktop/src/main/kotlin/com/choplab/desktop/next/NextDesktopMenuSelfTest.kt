@@ -19,12 +19,13 @@ object NextDesktopMenuSelfTest {
         var assertions = 0
         application(exitProcessOnExit = false) {
             var recording by remember { mutableStateOf(false) }
+            var dialogOpen by remember { mutableStateOf(false) }
             val actions = remember { mutableListOf<ContinuousEditorAction>() }
             val state = ContinuousEditorState(capabilities = ContinuousCapability.entries.toSet(), canUndo = true, canRedo = true,
                 recordingSource = recording)
             Window(onCloseRequest = ::exitApplication, title = "ChopLab isolated menu acceptance",
                 state = rememberWindowState(width = 640.dp, height = 480.dp)) {
-                MenuBar { NextDesktopMenus(state, false, actions::add) }
+                MenuBar { NextDesktopMenus(state, false, actions::add, dialogOpen = dialogOpen) }
                 LaunchedEffect(window) {
                     try {
                         suspend fun awaitMenus(condition: () -> Boolean) = withTimeout(10_000) {
@@ -44,9 +45,10 @@ object NextDesktopMenuSelfTest {
                         }
                         awaitMenus { menuCount() == 3 }
                         check(label(0) == if (args[0] == "ja") "ファイル" else "File"); assertions++
-                        val expected = listOf(0 to ContinuousEditorAction.ImportAudio, 1 to ContinuousEditorAction.ImportLibrary,
-                            2 to ContinuousEditorAction.OpenProject, 4 to ContinuousEditorAction.SaveProject,
-                            5 to ContinuousEditorAction.ExportWav, 6 to ContinuousEditorAction.ExportStems)
+                        val expected = listOf(0 to ContinuousEditorAction.NewProject, 2 to ContinuousEditorAction.ImportAudio,
+                            3 to ContinuousEditorAction.ImportLibrary, 4 to ContinuousEditorAction.OpenProject,
+                            6 to ContinuousEditorAction.SaveProject, 7 to ContinuousEditorAction.ExportWav,
+                            8 to ContinuousEditorAction.ExportStems)
                         for ((index, action) in expected) {
                             click(0, index); check(actions.last() == action); assertions++
                         }
@@ -60,13 +62,18 @@ object NextDesktopMenuSelfTest {
                         recording = false
                         awaitMenus { enabled(0, 0) && enabled(1, 0) }
                         assertions++
+                        dialogOpen = true
+                        awaitMenus { !enabled(0, 0) && !enabled(1, 0) }
+                        check(!enabled(0, 6)); assertions++
+                        click(2, 0); check(actions.last() == ContinuousEditorAction.StopAll); assertions++
+                        check(!enabled(1, 1)); assertions++
                     } catch (error: Throwable) { failure = error }
                     finally { exitApplication() }
                 }
             }
         }
         failure?.let { throw it }
-        check(assertions == 18)
+        check(assertions == 23)
         println("""{"status":"LOCAL_PASS","scope":"owned-native-desktop-menus","locale":"${args[0]}","assertions":$assertions,"audioStarted":false}""")
     }
 }

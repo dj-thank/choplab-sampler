@@ -33,7 +33,7 @@ class NextFileLocations {
  */
 class NextBackend private constructor(private val shared: EditorBackend, val files: NextFileLocations, val voice: VoiceTakes,
     val systemAudio: com.choplab.ui.SystemAudioCapture?, private val decoder: DesktopOriginalAudioDecoder,
-    internal val windowsAudio: NextWindowsAudio? = null) : AutoCloseable {
+    internal val windowsAudio: NextWindowsAudio? = null, internal val macAudio: NextMacAudio? = null) : AutoCloseable {
     val autoChop: com.choplab.core.chop.AutoChopPort get() = shared.autoChop
     val studio: Studio get() = shared.studio
     val engine: StreamingEnginePort get() = shared.engine
@@ -56,6 +56,22 @@ class NextBackend private constructor(private val shared: EditorBackend, val fil
         if (!changed) return false
         return engine.reattach()
     }
+
+    internal suspend fun chooseMacAudioDevices(inputId: Int, outputId: Int): Boolean {
+        val audio = macAudio ?: return false
+        if (voice.inputBusy || (systemAudio as? NextSystemAudioCapture)?.inputBusy == true ||
+            studio.work.value.let { it.jobId != null || it.preparationId != null }) return false
+        val changed = audio.select(MacAudioSelection(inputId, outputId)) {
+            if (!studio.dispatch(Action.Silence).accepted) return@select false
+            engine.releaseOutput()
+            withTimeoutOrNull(5_000) {
+                while (engine.status.value.phase != DriverPhase.EDITING_ONLY || engine.diagnostics().openingDevice) delay(10)
+                true
+            } == true
+        }
+        return changed && engine.reattach()
+    }
+    internal suspend fun reconnectMacAudio(): Boolean = macAudio?.selection?.value?.let { chooseMacAudioDevices(it.inputId, it.outputId) } == true
 
     /** Worker-only library validation uses the same bounded decoder handoff as original import and playback. */
     fun validateLibraryFile(file: java.io.File) {
@@ -120,8 +136,9 @@ class NextBackend private constructor(private val shared: EditorBackend, val fil
         initialDownloadBytes = if (com.choplab.desktop.separation.defaultSeparatorModelStore().isInstalled()) 0
             else com.choplab.sampler.separation.SeparatorSpec.MODEL_BYTES)
 
-    /** [flush] is false only after the user chose to close without the final autosave. A take still recording is dropped. */
+    /** [flush] is false only after the user chose to close without the final autosave. A take still recording is sealed for explicit recovery. */
     suspend fun shutdown(flush: Boolean = true) {
+        macAudio?.cancelOpening()
         try { systemAudio?.close() } finally { try { voice.close() } finally {
             try { shared.shutdown(flush) } finally { windowsAudio?.close() }
         } }
@@ -131,15 +148,16 @@ class NextBackend private constructor(private val shared: EditorBackend, val fil
     companion object {
         fun create(directory: Path, sinkFactory: (() -> AudioSink)? = null, microphone: (suspend () -> MicInput?)? = null): NextBackend {
             val windows = if (sinkFactory == null && System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) NextWindowsAudio() else null
-            return createWithRoutes(directory, sinkFactory, microphone, windows)
+            val mac = if (sinkFactory == null && com.choplab.desktop.isMacOsHost()) NextMacAudio() else null
+            return createWithRoutes(directory, sinkFactory, microphone, windows, mac)
         }
 
         internal fun createWithRoutes(directory: Path, sinkFactory: (() -> AudioSink)? = null,
-            microphone: (suspend () -> MicInput?)? = null, windows: NextWindowsAudio? = null): NextBackend {
+            microphone: (suspend () -> MicInput?)? = null, windows: NextWindowsAudio? = null, mac: NextMacAudio? = null): NextBackend {
             val files = NextFileLocations()
             val decoder = DesktopOriginalAudioDecoder()
             val shared = try { EditorBackend.create(directory,
-                engine = { compiler -> JavaSoundEnginePort(compiler, sinkFactory ?: windows?.let { it::openOutput } ?: { JavaSoundSink.open() }) },
+                engine = { compiler -> JavaSoundEnginePort(compiler, sinkFactory ?: windows?.let { it::openOutput } ?: mac?.let { it::openOutput } ?: { JavaSoundSink.open() }) },
                 files = { assets, compiler ->
                     val original = OriginalAudioImportPort(assets, files::resolve, decoder)
                     val named = object : ImportPort {
@@ -151,16 +169,16 @@ class NextBackend private constructor(private val shared: EditorBackend, val fil
                     HostFileServices(named,
                     FileProjectPort(assets, files::resolve), WavExportPort(compiler, files::resolve), FileStemExportPort(compiler, files::resolve)) }, decoder = decoder) }
                 catch (failure: Throwable) { try { windows?.close() } catch (cleanup: Throwable) { failure.addSuppressed(cleanup) }; throw failure }
-            val voice = try { VoiceTakes(shared.assets, directory.resolve("voice-scratch"),
-                microphone = microphone ?: { windows?.openMicrophone() ?: if (windows == null) JavaSoundMicInput.open() else null }) }
+            val voice = try { VoiceTakes(shared.assets, directory.resolve("voice-scratch"), durableTakes = true,
+                microphone = microphone ?: { when { windows != null -> windows.openMicrophone(); mac != null -> mac.openMicrophone(); else -> JavaSoundMicInput.open() } }) }
                 catch (failure: Throwable) {
                     try { runBlocking { shared.shutdown(flush = false) } } catch (cleanup: Throwable) { failure.addSuppressed(cleanup) }
                     try { windows?.close() } catch (cleanup: Throwable) { failure.addSuppressed(cleanup) }
                     throw failure
                 }
             val system = try { when {
-                windows != null -> NextWasapiSystemAudioCapture(shared.assets, directory.resolve("system-scratch"), windows)
-                com.choplab.desktop.isMacOsHost() -> NextSystemAudioCapture(shared.assets, directory.resolve("system-scratch"))
+                windows != null -> NextWasapiSystemAudioCapture(shared.assets, directory.resolve("system-scratch"), windows, shared::flushAutosave)
+                com.choplab.desktop.isMacOsHost() -> NextSystemAudioCapture(shared.assets, directory.resolve("system-scratch"), shared::flushAutosave)
                 else -> null
             } } catch (failure: Throwable) {
                 try { runBlocking { voice.close() } } catch (cleanup: Throwable) { failure.addSuppressed(cleanup) }
@@ -168,7 +186,7 @@ class NextBackend private constructor(private val shared: EditorBackend, val fil
                 try { windows?.close() } catch (cleanup: Throwable) { failure.addSuppressed(cleanup) }
                 throw failure
             }
-            return NextBackend(shared, files, voice, system, decoder, windows)
+            return NextBackend(shared, files, voice, system, decoder, windows, mac)
         }
 
         fun patternFrames(project: Project, pattern: Pattern): Int = EditorBackend.patternFrames(project, pattern)

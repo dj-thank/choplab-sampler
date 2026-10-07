@@ -9,11 +9,14 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.choplab.desktop.provider.*
 import com.choplab.library.resources.*
@@ -66,19 +69,28 @@ internal fun SpotifyCatalogPanel(state: SpotifyDesktopState, browser: SpotifyCat
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(browser.query, { navigate { browser.setQuery(it) } },
-                label = { Text(stringResource(Res.string.music_search)) }, singleLine = true,
+                enabled = browser.canEditQuery,
+                label = { Text(stringResource(when (browser.kind) {
+                    SpotifyCatalogKind.ARTIST -> Res.string.music_search_artists
+                    SpotifyCatalogKind.ALBUM -> Res.string.music_search_albums
+                    SpotifyCatalogKind.TRACK -> Res.string.music_search_tracks
+                })) }, singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { navigate(browser::search) }),
                 modifier = Modifier.weight(1f).testTag("spotify-query"))
             Button({ navigate(browser::search) }, enabled = available && browser.query.isNotBlank(),
                 modifier = Modifier.heightIn(min = 48.dp).testTag("spotify-search")) { Text(stringResource(Res.string.music_search_button)) }
         }
+        if (browser.kind == SpotifyCatalogKind.TRACK) Text(stringResource(Res.string.music_search_tracks_hint), style = MaterialTheme.typography.bodySmall)
         if (browser.canBack || page?.request?.title?.isNotBlank() == true) Row(verticalAlignment = Alignment.CenterVertically) {
             TextButton({ navigate(browser::back) }, enabled = browser.canBack, modifier = Modifier.testTag("spotify-back")) { Text(stringResource(Res.string.music_back)) }
             Text(page?.request?.title.orEmpty(), style = MaterialTheme.typography.titleLarge)
         }
         if (state.busy) LinearProgressIndicator(Modifier.fillMaxWidth())
-        if (state.problem != null) {
-            Text(state.message)
-            TextButton({ navigate(browser::retry) }, enabled = available && browser.request != null) { Text(stringResource(Res.string.music_open)) }
+        val problem = state.problem ?: if (browser.retryWaitSeconds > 0) SpotifyProblem(SpotifyProblemKind.API_FAILED, 429) else null
+        if (problem != null) {
+            Text(spotifyProblemText(problem, browser.retryWaitSeconds), Modifier.testTag("spotify-problem"))
+            TextButton({ navigate(browser::retry) }, enabled = available && browser.request != null) { Text(stringResource(Res.string.music_retry)) }
         }
         if (notice.isNotBlank()) Text(notice)
         if (page == null && !state.busy) Text(stringResource(if (browser.kind == SpotifyCatalogKind.ARTIST)
@@ -107,6 +119,9 @@ internal fun SpotifyCatalogPanel(state: SpotifyDesktopState, browser: SpotifyCat
                             Text(entry.title, style = MaterialTheme.typography.titleMedium)
                             if (entry.artist.isNotBlank() && entry.artist != entry.title) Text(entry.artist)
                             entry.track?.album?.takeIf(String::isNotBlank)?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                            entry.track?.let { track -> Text(formatTrackDuration(track.durationSeconds)?.let {
+                                stringResource(Res.string.music_duration, it)
+                            } ?: stringResource(Res.string.music_duration_unknown), style = MaterialTheme.typography.bodySmall) }
                         }
                         if (entry.track == null) Text(stringResource(Res.string.music_open))
                         else entry.track?.let { track -> onOpenSpotify?.let { open -> TextButton({ open(track) }) { Text("Spotify") } } }
@@ -125,7 +140,8 @@ internal fun SpotifyCatalogPanel(state: SpotifyDesktopState, browser: SpotifyCat
             }
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
-            TextButton({ navigate(browser::previous) }, enabled = available && (page?.request?.offset ?: 0) > 0) { Text(stringResource(Res.string.music_previous)) }
+            TextButton({ navigate(browser::previous) }, enabled = browser.canPrevious,
+                modifier = Modifier.testTag("spotify-previous")) { Text(stringResource(Res.string.music_previous)) }
             page?.let { Text("${it.request.offset + if (it.entries.isEmpty()) 0 else 1}–${it.request.offset + it.entries.size}" + (it.total?.let { total -> " / $total" } ?: "")) }
             TextButton({ navigate(browser::next) }, enabled = available && page?.hasMore == true,
                 modifier = Modifier.testTag("spotify-next")) { Text(stringResource(Res.string.music_next)) }
@@ -133,4 +149,23 @@ internal fun SpotifyCatalogPanel(state: SpotifyDesktopState, browser: SpotifyCat
         onDisconnect?.let { TextButton(it) { Text(stringResource(com.choplab.ui.resources.Res.string.ce_spotify_disconnect)) } }
     }
     }
+}
+
+internal fun formatTrackDuration(seconds: Double): String? {
+    if (!seconds.isFinite() || seconds <= 0 || seconds >= Long.MAX_VALUE.toDouble()) return null
+    val value = seconds.toLong()
+    return if (value < 3600) "${value / 60}:${(value % 60).toString().padStart(2, '0')}"
+        else "${value / 3600}:${(value / 60 % 60).toString().padStart(2, '0')}:${(value % 60).toString().padStart(2, '0')}"
+}
+
+@Composable
+private fun spotifyProblemText(problem: SpotifyProblem, wait: Long): String = when {
+    problem.statusCode == 429 && wait > 0 -> stringResource(Res.string.music_problem_wait, wait)
+    problem.statusCode == 429 -> stringResource(Res.string.music_problem_rate)
+    problem.statusCode == 403 -> stringResource(Res.string.music_problem_forbidden)
+    problem.kind == SpotifyProblemKind.CANCELLED -> stringResource(Res.string.music_problem_cancelled)
+    problem.kind == SpotifyProblemKind.AUTH_EXPIRED || problem.statusCode == 401 -> stringResource(Res.string.music_problem_auth)
+    problem.kind == SpotifyProblemKind.NETWORK -> stringResource(Res.string.music_problem_network)
+    problem.kind == SpotifyProblemKind.INVALID_RESPONSE -> stringResource(Res.string.music_problem_response)
+    else -> stringResource(Res.string.music_problem_retry)
 }

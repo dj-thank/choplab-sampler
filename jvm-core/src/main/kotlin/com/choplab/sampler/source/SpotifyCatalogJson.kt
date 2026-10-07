@@ -31,7 +31,9 @@ object SpotifyCatalogJson {
             val album = (value["album"] as? JsonObject)?.get("name")?.jsonPrimitive?.contentOrNull.orEmpty().take(240)
                 .ifEmpty { if (request.route == SpotifyCatalogRoute.ALBUM_TRACKS) request.title else "" }
             val track = if (kind == SpotifyCatalogKind.TRACK) SourceTrack(title, artist,
-                "https://open.spotify.com/track/$id", (value["duration_ms"]?.jsonPrimitive?.doubleOrNull ?: 0.0) / 1000, album) else null
+                "https://open.spotify.com/track/$id", (value["duration_ms"]?.jsonPrimitive?.doubleOrNull ?: 0.0) / 1000, album,
+                value["track_number"]?.jsonPrimitive?.intOrNull?.takeIf { it in 1..9999 },
+                value["disc_number"]?.jsonPrimitive?.intOrNull?.takeIf { it in 1..9999 }) else null
             SpotifyCatalogEntry(id, title, artist, kind, track)
         }.getOrNull() }.distinctBy { it.kind to it.id }
         return SpotifyCatalogPage(request, entries,

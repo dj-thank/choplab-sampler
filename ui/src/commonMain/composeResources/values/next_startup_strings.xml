@@ -1,0 +1,12 @@
+<resources>
+    <string name="next_startup_title">Cannot open Earth Song NEXT</string>
+    <string name="next_startup_retry">Retry</string>
+    <string name="next_startup_folder">Show saved files</string>
+    <string name="next_startup_quit">Quit</string>
+    <string name="next_startup_recovery">The saved project could not be restored. Keep a copy of the saved files before restoring a backup. Restarting does not replace them with an empty project.</string>
+    <string name="next_startup_access">The saved files cannot be accessed. Check the folder permissions and reconnect the drive, then retry.</string>
+    <string name="next_startup_storage">The saved files could not be read or written. Check free disk space and the connected drive, then retry.</string>
+    <string name="next_startup_other">The editor could not start. Quit and reopen the app. If it still fails, keep the saved files when reinstalling the app.</string>
+    <string name="next_startup_preserved">Your existing project has not been replaced. You can open its folder below.</string>
+    <string name="next_startup_folder_failed">The folder could not be opened. You can find it at:</string>
+</resources>

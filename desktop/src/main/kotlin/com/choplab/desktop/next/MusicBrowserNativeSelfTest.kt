@@ -3,6 +3,8 @@ package com.choplab.desktop.next
 import com.choplab.desktop.provider.*
 import com.choplab.desktop.spotify.*
 import java.awt.Window
+import java.awt.KeyboardFocusManager
+import java.awt.event.KeyEvent
 import java.awt.event.WindowEvent
 import java.net.URI
 import java.nio.file.Path
@@ -27,7 +29,15 @@ object MusicBrowserNativeSelfTest {
                 val owned = Window.getWindows().filterIsInstance<JDialog>().filter { it.isShowing }
                 if (composed.get() > before || System.nanoTime() > deadline) {
                     if (composed.get() <= before) timedOut.set(true)
-                    owned.forEach { it.dispatchEvent(WindowEvent(it, WindowEvent.WINDOW_CLOSING)) }
+                    owned.forEach { dialog ->
+                        if (timedOut.get()) dialog.dispatchEvent(WindowEvent(dialog, WindowEvent.WINDOW_CLOSING))
+                        else {
+                            val manager = KeyboardFocusManager.getCurrentKeyboardFocusManager()
+                            val focused = manager.focusOwner?.takeIf { SwingUtilities.getWindowAncestor(it) == dialog } ?: dialog
+                            manager.dispatchEvent(KeyEvent(focused, KeyEvent.KEY_PRESSED, System.currentTimeMillis(),
+                                0, KeyEvent.VK_ESCAPE, KeyEvent.CHAR_UNDEFINED))
+                        }
+                    }
                 }
             }
             SwingUtilities.invokeAndWait { timer.start() }

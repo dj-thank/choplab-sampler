@@ -110,7 +110,7 @@ class DesktopLongPressUiTest {
                 assertTrue(requireNotNull(songs.config.getOrNull(SemanticsActions.OnClick)?.action).invoke())
                 settle()
                 assertEquals(0,uses)
-                val audio=nodes().first { it.config.getOrNull(SemanticsProperties.TestTag)=="library-track-fixture" }
+                val audio=nodes().first { it.config.getOrNull(SemanticsProperties.TestTag)=="library-use-fixture" }
                 assertTrue(requireNotNull(audio.config.getOrNull(SemanticsActions.OnClick)?.action).invoke())
                 assertEquals(1,uses)
                 val directory=File(requireNotNull(System.getProperty("h13.evidenceDir"))).apply{mkdirs()}

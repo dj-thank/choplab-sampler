@@ -122,6 +122,7 @@ class DesktopSamplerController(
     private val autosaveDelayMillis: Long = 900L,
     private val recoverAutosaveOnStart: Boolean = true,
     private val preserveAutosaveUntilInitialProjectReplacement: Boolean = false,
+    private val recordingDirectory: () -> File = { File(DesktopProfile.dataDirectory(), "recording-recovery") },
 ) : SamplerDeckController, AutoCloseable {
     private val mutableState = MutableStateFlow(
         SamplerUiState(
@@ -170,7 +171,13 @@ class DesktopSamplerController(
     }
     private var startupRecoveryFailureRevision: Long? = null
     private var startupRecoveryDurableRevision: Long? = null
-    private var closed = false
+    @Volatile private var closed = false
+    private val recordingStartEpoch = AtomicLong()
+    private val recordingOpening = java.util.concurrent.atomic.AtomicBoolean()
+    @Volatile private var pendingRecording: File? = null
+    @Volatile private var pendingRecordingReady = false
+    private val acceptedRecordingFiles = java.util.concurrent.ConcurrentHashMap<File, PcmAudio>()
+    @Volatile private var currentRecordingFile: File? = null
     private val sourcePlaybackLoadLock = ReentrantLock()
     @Volatile private var closePlayerAfterSourceLoad = false
     private var sourcePlayerClosed = false
@@ -185,6 +192,7 @@ class DesktopSamplerController(
     val state: StateFlow<SamplerUiState> = mutableState.asStateFlow()
 
     init {
+        ioExecutor.execute { refreshPendingRecordings() }
         if (autosaveStore != null && recoverAutosaveOnStart) {
             startupRecoveryFuture = recoverAutosave()
         } else {
@@ -446,6 +454,8 @@ class DesktopSamplerController(
             if (active.kind == kind) stopRecording(kind) else setStatus("別の録音を停止してから操作してください")
             return
         }
+        if (recordingOpening.get()) return setStatus("マイクの準備の終了を待っています")
+        if (pendingRecordingReady) { retryPendingRecording(); return }
         val before = mutableState.value
         val prepared = beginRecordingSession(before, kind)
         if (!prepared.recordingSession.isActive) {
@@ -462,11 +472,21 @@ class DesktopSamplerController(
         }
         if (vocalLoopPadIndex == null) stopAllSounds()
         val output = File(
-            DesktopProfile.recordingDirectory(),
-            "${kind.name.lowercase()}-${Instant.now().toEpochMilli()}.wav",
+            recordingDirectory(),
+            "pending-recording-${kind.name.lowercase()}-${Instant.now().toEpochMilli()}.wav",
         )
+        if (!recordingOpening.compareAndSet(false, true)) return
+        val epoch = recordingStartEpoch.incrementAndGet()
+        currentRecordingFile = output
         mutableState.value = prepared
+        Thread({
+        try {
         recorderFor(kind).start(output).onSuccess {
+            if (closed || epoch != recordingStartEpoch.get()) {
+                recorderFor(kind).stop()
+                if (!closed) runCatching { output.delete() }
+                return@onSuccess
+            }
             val loopPad = vocalLoopPadIndex?.let { index -> mutableState.value.pads[index] }
             val loopPlaybackFailure = if (loopPad != null) {
                 stopAllSounds()
@@ -483,7 +503,7 @@ class DesktopSamplerController(
                 return@onSuccess
             }
             mutableState.update {
-                observeRecordingSession(it, kind).copy(
+                com.choplab.sampler.model.confirmRecordingSessionStarted(it, kind).copy(
                     loopingPadIndex = loopPad?.globalIndex ?: it.loopingPadIndex,
                     loopPlayheadFrame = loopPad?.startFrame ?: it.loopPlayheadFrame,
                     statusMessage = if (loopPad != null) {
@@ -494,8 +514,15 @@ class DesktopSamplerController(
                 )
             }
         }.onFailure { error ->
-            mutableState.update { failRecordingSession(it, kind).copy(statusMessage = "録音開始失敗: ${error.message ?: error.javaClass.simpleName}") }
+            if (!closed && epoch == recordingStartEpoch.get()) mutableState.update {
+                failRecordingSession(it, kind).copy(statusMessage = "録音開始失敗: ${error.message ?: error.javaClass.simpleName}")
+            }
         }
+        } finally {
+            recordingOpening.set(false)
+            if (epoch != recordingStartEpoch.get()) { currentRecordingFile = null; refreshPendingRecordings() }
+        }
+        }, "ChopLab-recording-open").apply { isDaemon = true; start() }
     }
 
     private fun stopRecordingAfterPlaybackFailure(kind: RecordingKind, output: File, error: Throwable) {
@@ -516,9 +543,10 @@ class DesktopSamplerController(
             )
         }
         ioExecutor.execute {
-            val ownedFile = runCatching { recorderFor(kind).stop().getOrThrow() }.getOrNull()
-            runCatching { ownedFile?.delete() }
-            runCatching { output.delete() }
+            val ownedFile = runCatching { recorderFor(kind).stop().getOrThrow() }.getOrNull() ?: output
+            if (ownedFile.isFile) pendingRecording = ownedFile
+            currentRecordingFile = null
+            refreshPendingRecordings()
             mutableState.update {
                 endRecordingSession(it, kind).copy(
                     loopingPadIndex = null,
@@ -529,13 +557,35 @@ class DesktopSamplerController(
         }
     }
 
-    private fun stopRecording(kind: RecordingKind) {
+    private fun stopRecording(kind: RecordingKind, recoveryFile: File? = null) {
+        var cancelledOpening = false
+        if (recoveryFile == null) {
+            while (true) {
+                val before = mutableState.value
+                val active = before.recordingSession as? RecordingSession.Active ?: return
+                if (active.kind != kind || active.phase == RecordingPhase.STOPPING) return
+                if (!mutableState.compareAndSet(before, before.copy(recordingSession = active.copy(phase = RecordingPhase.STOPPING)))) continue
+                if (active.phase == RecordingPhase.STARTING) {
+                    cancelledOpening = true
+                    recordingStartEpoch.incrementAndGet()
+                    recorderFor(kind).cancelOpening()
+                }
+                break
+            }
+        }
         statusOperations.invalidate()
         val operation = projectOperations.begin()
-        mutableState.update { it.copy(recordingSession = (it.recordingSession as? RecordingSession.Active)?.copy(phase = RecordingPhase.STOPPING) ?: it.recordingSession) }
         ioExecutor.execute {
-            val stopped = recorderFor(kind).stop()
-            val ownedFile = stopped.getOrNull()
+            val stopped = if (recoveryFile != null) Result.success(recoveryFile) else recorderFor(kind).stop()
+            val ownedFile = stopped.getOrNull() ?: recorderFor(kind).retainedFile ?: currentRecordingFile
+            if (cancelledOpening) {
+                runCatching { ownedFile?.delete() }
+                projectOperations.completeIfCurrent(operation) {
+                    mutableState.update { endRecordingSession(it, kind).copy(statusMessage = "録音の準備を取り消しました") }
+                }
+                return@execute
+            }
+            var accepted = false
             stopped
                 .mapCatching { file -> file to DesktopWavDecoder.decode(file) }
                 .onSuccess { (_, audio) ->
@@ -575,6 +625,11 @@ class DesktopSamplerController(
                         }
                         val transition = productionSession.applyEdit(current, next)
                         mutableState.value = transition.state
+                        accepted = containsRecording(next, audio)
+                        if (accepted && ownedFile != null && autosaveStore != null) acceptedRecordingFiles[ownedFile] = audio
+                        recorderFor(kind).completionMessage?.let { reason ->
+                            setStatus("$reason。停止前の録音を取り込みました")
+                        }
                         val playbackFailure = if (kind == RecordingKind.VOCAL_OVERDUB) {
                             runCatching { player.loadPcm(audio) }.exceptionOrNull()
                         } else {
@@ -590,12 +645,58 @@ class DesktopSamplerController(
                     projectOperations.completeIfCurrent(operation) {
                         mutableState.update {
                             endRecordingSession(it, kind).copy(
-                                statusMessage = "録音停止または読込失敗: ${error.message ?: error.javaClass.simpleName}",
+                                statusMessage = "録音停止または読込失敗: ${error.message ?: error.javaClass.simpleName}" +
+                                    if (ownedFile?.isFile == true) "。録音は保全しています。再度録音ボタンで読込を再試行できます" else "",
                             )
                         }
                     }
                 }
-            runCatching { ownedFile?.delete() }
+            if (accepted) {
+                if (autosaveStore == null) runCatching { ownedFile?.delete() }
+                if (pendingRecording == ownedFile) pendingRecording = null
+            }
+            else if (ownedFile?.isFile == true) pendingRecording = ownedFile
+            currentRecordingFile = null
+            refreshPendingRecordings()
+        }
+    }
+
+    /** Cached by the I/O owner; menus never enumerate private recordings on the UI thread. */
+    val pendingRecordingAvailable: Boolean get() = pendingRecordingReady
+    private fun refreshPendingRecordings() {
+        pendingRecording = pendingRecording?.takeIf { it.isFile } ?: recordingDirectory().listFiles()
+            ?.filter { it.isFile && it.name.startsWith("pending-recording-") && it != currentRecordingFile && !acceptedRecordingFiles.containsKey(it) }
+            ?.minByOrNull { it.name }
+        pendingRecordingReady = pendingRecording != null
+    }
+
+    fun retryPendingRecording() {
+        if (closed || recordingOpening.get() || mutableState.value.recordingSession.isActive || mutableState.value.isLoading) return
+        mutableState.update { it.copy(recordingSession = RecordingSession.Active(RecordingKind.SOURCE_MICROPHONE, RecordingPhase.STOPPING)) }
+        ioExecutor.execute {
+            refreshPendingRecordings()
+            val file = pendingRecording
+            if (file == null) mutableState.update { endRecordingSession(it, RecordingKind.SOURCE_MICROPHONE) }
+            else if (acceptedRecordingFiles[file]?.let { containsRecording(mutableState.value, it) } == true) {
+                scheduleAutosave()
+                val work = synchronized(autosaveLifecycleLock) { autosaveWork }
+                awaitAutosave(work)
+                mutableState.update { endRecordingSession(it, RecordingKind.SOURCE_MICROPHONE).copy(statusMessage =
+                    if (work?.savedSuccessfully == true && !pendingRecordingReady) "録音を保存しました" else it.statusMessage) }
+            } else stopRecording(RecordingKind.SOURCE_MICROPHONE, recoveryFile = file)
+        }
+    }
+
+    fun discardPendingRecording() {
+        if (closed || recordingOpening.get() || mutableState.value.recordingSession.isActive) return
+        mutableState.update { it.copy(recordingSession = RecordingSession.Active(RecordingKind.SOURCE_MICROPHONE, RecordingPhase.STOPPING)) }
+        ioExecutor.execute {
+            refreshPendingRecordings()
+            val file = pendingRecording
+            val deleted = file == null || file.delete()
+            if (deleted) { if (file != null) acceptedRecordingFiles.remove(file); pendingRecording = null; refreshPendingRecordings() }
+            mutableState.update { endRecordingSession(it, RecordingKind.SOURCE_MICROPHONE).copy(statusMessage =
+                if (deleted) "保全した録音を破棄しました" else "録音を破棄できませんでした。ファイルは残しています") }
         }
     }
 
@@ -1672,11 +1773,33 @@ class DesktopSamplerController(
         if (!admitted) return
         try {
             work.savedSuccessfully = persistAutosave(store, work.snapshot.state)
+            if (work.savedSuccessfully) releaseAcceptedRecordings(work.snapshot.state)
+            else {
+                pendingRecording = acceptedRecordingFiles.keys.firstOrNull() ?: pendingRecording
+                refreshPendingRecordings()
+            }
         } finally {
             synchronized(autosaveLifecycleLock) {
                 work.phase = AutosavePhase.COMPLETED
             }
         }
+    }
+
+    private fun containsRecording(state: SamplerUiState, audio: PcmAudio) =
+        state.currentAudio === audio || state.pads.any { it.audio === audio }
+
+    /** The immutable PCM is already in the durable archive before its private recording can be released. */
+    private fun releaseAcceptedRecordings(snapshot: SamplerUiState) {
+        for ((file, audio) in acceptedRecordingFiles) {
+            if (containsRecording(snapshot, audio) && (!file.exists() || file.delete())) {
+                acceptedRecordingFiles.remove(file, audio)
+                if (pendingRecording == file) pendingRecording = null
+            } else if (containsRecording(snapshot, audio)) {
+                pendingRecording = file
+                setStatus("録音は保存済みですが、保全ファイルの整理が完了しませんでした")
+            }
+        }
+        refreshPendingRecordings()
     }
 
     private fun persistAutosave(store: AtomicProjectStore, snapshot: SamplerUiState): Boolean =
@@ -2142,7 +2265,12 @@ class DesktopSamplerController(
     }
 
     private fun observePlaybackPosition() {
+        if (closed) return
         val snapshot = mutableState.value
+        val recording = snapshot.recordingSession as? RecordingSession.Active
+        if (recording?.phase == RecordingPhase.RECORDING && !recorderFor(recording.kind).isRecording) {
+            stopRecording(recording.kind)
+        }
         if (snapshot.sourcePlaying) {
             val frame = player.sourceFramePosition().coerceIn(0, snapshot.rangeEndFrame)
             val running = player.isSourcePlaying
@@ -2184,6 +2312,8 @@ class DesktopSamplerController(
             closed = true
             startupRecoveryFuture
         }
+        recordingStartEpoch.incrementAndGet()
+        microphone.cancelOpening(); systemAudio.cancelOpening()
         invalidateSourceLoadOperations()
         closePlayerAfterSourceLoad = true
         // Recovery owns the persistence executor before any close-time save. Wait for

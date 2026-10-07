@@ -10,6 +10,25 @@ import kotlinx.coroutines.*
 import kotlin.test.*
 
 class ContinuousLyricsControllerTest {
+    @Test fun confirmedDeletionCannotApplyToAChangedLineOrRevision() = runBlocking<Unit> {
+        val h = Harness()
+        try {
+            h.files.text = "[00:01.000]first"
+            assertTrue(h.editor.dispatch(LyricAction.Import)); assertTrue(h.editor.dispatch(LyricAction.ApplyImport))
+            val before = h.studio.document.value
+            val old = before.project.lyrics.single()
+            assertTrue(h.editor.dispatch(LyricAction.Text(old.id, "changed")))
+            assertFalse(h.editor.dispatch(LyricAction.Delete(old.id, old, before.revision)))
+            assertEquals(LyricEditorNotice.STALE, h.editor.view.value.notice)
+            assertEquals("changed", h.studio.document.value.project.lyrics.single().text)
+            val now = h.studio.document.value
+            assertTrue(h.editor.dispatch(LyricAction.Delete(old.id, now.project.lyrics.single(), now.revision)))
+            assertTrue(h.studio.document.value.project.lyrics.isEmpty())
+            assertTrue(h.studio.dispatch(Action.Undo).accepted)
+            assertEquals(now.project, h.studio.document.value.project)
+        } finally { h.close() }
+    }
+
     @Test fun importPreviewIsExplicitAndEachTextOrWordTimingChangeIsOneUndo() = runBlocking<Unit> {
         val h = Harness()
         try {

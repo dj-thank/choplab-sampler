@@ -49,15 +49,16 @@ internal class JavaSoundSink(private val line: SourceDataLine, override val enco
     }
     override fun close() { try { line.stop(); line.flush() } finally { line.close() } }
     companion object {
-        fun open(): AudioSink {
+        fun open(): AudioSink = open(AudioSystem::isLineSupported) { AudioSystem.getLine(it) as SourceDataLine }
+        fun open(supported: (DataLine.Info) -> Boolean, create: (DataLine.Info) -> SourceDataLine): AudioSink {
             for (encoding in listOf(SinkEncoding.FLOAT32, SinkEncoding.PCM16)) {
                 val format = AudioFormat(if (encoding == SinkEncoding.FLOAT32) AudioFormat.Encoding.PCM_FLOAT else AudioFormat.Encoding.PCM_SIGNED,
                     48_000f, encoding.bytesPerSample * 8, 2, encoding.bytesPerSample * 2, 48_000f, false)
                 val info = DataLine.Info(SourceDataLine::class.java, format)
-                if (!AudioSystem.isLineSupported(info)) continue
+                if (!supported(info)) continue
                 var line: SourceDataLine? = null
                 try {
-                    line = AudioSystem.getLine(info) as SourceDataLine
+                    line = create(info)
                     line.open(format, 1024 * format.frameSize)
                     line.start()
                     return JavaSoundSink(line, encoding)

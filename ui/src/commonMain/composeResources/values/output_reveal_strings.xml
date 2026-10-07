@@ -1,0 +1,5 @@
+<resources>
+    <string name="ce_output_ready">Saved file: %1$s</string>
+    <string name="ce_output_reveal">Show saved file</string>
+    <string name="ce_output_unavailable">The saved file cannot be shown. It may have moved or been removed. Your project is unchanged.</string>
+</resources>

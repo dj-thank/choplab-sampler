@@ -1,0 +1,7 @@
+<resources>
+    <string name="ce_a11y_source_range">原曲の切り出し範囲</string>
+    <string name="ce_a11y_song_position">曲全体の再生位置</string>
+    <string name="ce_a11y_source_start">原曲範囲の開始</string>
+    <string name="ce_a11y_source_end">原曲範囲の終了</string>
+    <string name="ce_a11y_semitones">%1$d 半音</string>
+</resources>

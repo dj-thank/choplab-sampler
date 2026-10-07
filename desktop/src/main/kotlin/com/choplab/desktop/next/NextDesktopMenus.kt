@@ -17,9 +17,14 @@ internal fun MenuBarScope.NextDesktopMenus(
     state: ContinuousEditorState,
     closing: Boolean,
     onAction: (ContinuousEditorAction) -> Unit,
+    dialogOpen: Boolean = false,
 ) {
-    fun enabled(capability: ContinuousCapability) = !closing && canUseNextFile(state, capability)
+    fun enabled(capability: ContinuousCapability) = !closing && !dialogOpen && canUseNextFile(state, capability)
     Menu(stringResource(Res.string.next_file_menu)) {
+        Item(stringResource(Res.string.ce_new_project), enabled = enabled(ContinuousCapability.OPEN_PROJECT),
+            shortcut = KeyShortcut(Key.N, meta = isMacOsHost(), ctrl = !isMacOsHost()),
+            onClick = { onAction(ContinuousEditorAction.NewProject) })
+        Separator()
         Item(stringResource(Res.string.ce_load_audio), enabled = enabled(ContinuousCapability.IMPORT_AUDIO),
             shortcut = KeyShortcut(Key.I, meta = isMacOsHost(), ctrl = !isMacOsHost()),
             onClick = { onAction(ContinuousEditorAction.ImportAudio) })

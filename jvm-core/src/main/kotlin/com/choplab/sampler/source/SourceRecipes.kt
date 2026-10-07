@@ -77,7 +77,9 @@ object SourceRecipes {
             SourceTrack(track.getValue("name").jsonPrimitive.content.take(240),
                 track["artists"]?.jsonArray.orEmpty().joinToString(" ") { it.jsonObject["name"]?.jsonPrimitive?.content.orEmpty() }.take(240),
                 "https://open.spotify.com/track/$id", (track["duration_ms"]?.jsonPrimitive?.doubleOrNull ?: 0.0)/1000.0,
-                (track["album"] as? JsonObject)?.get("name")?.jsonPrimitive?.contentOrNull.orEmpty().take(240))
+                (track["album"] as? JsonObject)?.get("name")?.jsonPrimitive?.contentOrNull.orEmpty().take(240),
+                track["track_number"]?.jsonPrimitive?.intOrNull?.takeIf { it in 1..9999 },
+                track["disc_number"]?.jsonPrimitive?.intOrNull?.takeIf { it in 1..9999 })
         }.getOrNull()
     }
     /** Favor deterministic title/artist/duration agreement; do not silently select an unrelated recording. */

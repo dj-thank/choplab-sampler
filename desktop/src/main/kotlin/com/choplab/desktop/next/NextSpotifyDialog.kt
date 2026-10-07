@@ -45,12 +45,14 @@ internal object NextSpotifyDialog {
             val content = androidx.compose.ui.awt.ComposePanel().apply {
                 name = "next-spotify-catalog"
                 setContent {
+                    NextDisplayEnvironment {
                     val state by session.state.collectAsState()
                     androidx.compose.runtime.SideEffect(onRendered)
                     com.choplab.sampler.ui.theme.ChopLabTheme {
                         com.choplab.desktop.SpotifyCatalogPanel(state, browser, onOpenSpotify = { track ->
                             controller.openCatalogTrack(track, browser.page?.entries.orEmpty().mapNotNull { it.track })
                         })
+                    }
                     }
                 }
             }
@@ -96,7 +98,7 @@ internal object NextSpotifyDialog {
                     add(row(close), BorderLayout.SOUTH)
                 }, BorderLayout.SOUTH)
             }
-            dialog.minimumSize = Dimension(760, 640); dialog.setSize(960, 780); dialog.setLocationRelativeTo(parent)
+            configureNextDialog(dialog, Dimension(960, 820), Dimension(760, 680)) { finish() }
             refresh(); timer.start()
             try { dialog.isVisible = true } finally { finish() }
         } }

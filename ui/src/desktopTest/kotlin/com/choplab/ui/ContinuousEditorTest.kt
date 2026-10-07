@@ -29,6 +29,114 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.flow.MutableStateFlow
 
 class ContinuousEditorTest {
+    @Test fun preciseSourceRangeRejectsInvalidInputAndAppliesExactNativeFramesOnce() = runBlocking<Unit> {
+        val actions = mutableListOf<ContinuousEditorAction>()
+        val base = ContinuousEditorFixture.state(ContinuousStage.CHOP)
+        val state = base.copy(original = base.original!!.copy(frames = 30_000_000, rangeStartFrame = 0, rangeEndFrame = 30_000_000), capabilities = ContinuousCapability.entries.toSet())
+        val scene = ImageComposeScene(width = 1440, height = 1024, density = Density(1f), coroutineContext = coroutineContext) {
+            ContinuousEditor(state, actions::add, ContinuousEditorFixture::readout)
+        }
+        try {
+            scene.settle(); scene.click("ce-source-exact")
+            fun text(tag: String, value: String) = scene.tag(tag)!!.config[SemanticsActions.SetText].action!!.invoke(androidx.compose.ui.text.AnnotatedString(value))
+            text("ce-source-exact-start", "-5"); scene.settle()
+            assertTrue(scene.tag("ce-source-exact-apply")!!.config.contains(SemanticsProperties.Disabled))
+            text("ce-source-exact-start", "20000001"); text("ce-source-exact-end", "20000017"); scene.settle()
+            assertTrue(actions.isEmpty())
+            scene.click("ce-source-exact-apply")
+            assertEquals(listOf<ContinuousEditorAction>(ContinuousEditorAction.SetSourceRange(20_000_001, 20_000_017)), actions)
+        } finally { scene.close() }
+    }
+
+    @Test fun fractionalTempoAndSwingRemainExactWhileInvalidTextCannotBeApplied() = runBlocking<Unit> {
+        val actions = mutableListOf<ContinuousEditorAction>()
+        val state = ContinuousEditorFixture.state().copy(milliBpm = 123_456, bpm = 123)
+        val scene = ImageComposeScene(width = 1440, height = 1024, density = Density(1f), coroutineContext = coroutineContext) {
+            ContinuousEditor(state, actions::add, ContinuousEditorFixture::readout)
+        }
+        try {
+            scene.settle(); scene.click("ce-tempo")
+            assertEquals("123.456", scene.tag("ce-tempo-value")!!.config[SemanticsProperties.EditableText].text)
+            scene.tag("ce-tempo-value")!!.config[SemanticsActions.SetText].action!!.invoke(androidx.compose.ui.text.AnnotatedString("-92"))
+            scene.settle(); assertTrue(scene.tag("ce-tempo-apply")!!.config.contains(SemanticsProperties.Disabled))
+            scene.tag("ce-tempo-value")!!.config[SemanticsActions.SetText].action!!.invoke(androidx.compose.ui.text.AnnotatedString("123.456"))
+            scene.settle(); scene.click("ce-swing-580"); scene.click("ce-tempo-apply")
+            assertEquals(ContinuousEditorAction.SetTempoExact(123_456, 580), actions.single())
+            assertNull(ceParseTempo("92x")); assertNull(ceParseTempo("123.4567")); assertEquals(40_001, ceParseTempo("40.001"))
+        } finally { scene.close() }
+    }
+
+    @Test fun shortClipBodyMovesAndRightEdgeCanShortenAClipAtTimelineZero() = runBlocking<Unit> {
+        for (short in listOf(false, true)) {
+            val actions = mutableListOf<ContinuousEditorAction>()
+            val base = ContinuousEditorFixture.state()
+            val clip = base.selectedClip!!.copy(timelineStartFrame = 0, timelineDurationFrames = if (short) 2400 else 96_000,
+                sourceStartFrame = 0, sourceEndFrame = if (short) 2400 else 96_000, sourceTotalFrames = 96_000, sourceRate = 48_000)
+            val state = base.copy(clips = listOf(clip), pixelsPerSecond = 80f, selectedClipId = clip.id)
+            val scene = ImageComposeScene(width = 1440, height = 1024, density = Density(1f), coroutineContext = coroutineContext) {
+                ContinuousEditor(state, actions::add, ContinuousEditorFixture::readout)
+            }
+            try {
+                scene.settle()
+                val bounds = scene.tag("ce-clip-${clip.id}")!!.boundsInRoot
+                if (short) {
+                    scene.drag(bounds.center, Offset(50f, 0f))
+                    assertTrue(actions.any { it is ContinuousEditorAction.MoveClip })
+                    assertTrue(actions.none { it is ContinuousEditorAction.TrimClip })
+                    scene.click("ce-clip-exact")
+                    assertNotNull(scene.tag("ce-clip-exact-start"), "Exact trim remains available for a short clip")
+                } else {
+                    scene.drag(Offset(bounds.right - 3, bounds.center.y), Offset(-40f, 0f))
+                    val trim = actions.filterIsInstance<ContinuousEditorAction.TrimClip>().single()
+                    assertEquals(0L, trim.timelineStartFrame)
+                    assertTrue(trim.sourceEndFrame < 96_000 && trim.sourceEndFrame > 0)
+                }
+            } finally { scene.close() }
+        }
+    }
+
+    @Test fun splitRequiresAnInteriorPlayheadAndFitReceivesTheMeasuredViewport() = runBlocking<Unit> {
+        val actions = mutableListOf<ContinuousEditorAction>()
+        val state = ContinuousEditorFixture.state()
+        val clock = mutableStateOf(ContinuousEditorReadout(songFrame = state.selectedClip!!.timelineStartFrame))
+        val refresh = mutableStateOf(0L)
+        val scene = ImageComposeScene(width = 1200, height = 1000, density = Density(1f), coroutineContext = coroutineContext) {
+            ContinuousEditor(state, actions::add, { clock.value }, refresh.value)
+        }
+        try {
+            scene.settle(); assertTrue(scene.tag("ce-split")!!.config.contains(SemanticsProperties.Disabled))
+            clock.value = clock.value.copy(songFrame = clock.value.songFrame + 1); refresh.value++; scene.settle()
+            assertFalse(scene.tag("ce-split")!!.config.contains(SemanticsProperties.Disabled))
+            scene.click("ce-split")
+            assertEquals(ContinuousEditorAction.SplitClip(state.selectedClip!!.id, clock.value.songFrame), actions.last())
+            scene.click("ce-fit")
+            val fit = actions.last() as ContinuousEditorAction.FitTimelineWidth
+            assertTrue(fit.widthDp in 100f..700f, "Fit uses the actual visible grid, not a 720 px constant")
+            assertFalse(ceCanSplit(0, 60, 0, 10, 8000, 1))
+            assertTrue(ceCanSplit(0, 60, 0, 10, 8000, 6))
+        } finally { scene.close() }
+    }
+
+    @Test fun recordingReadoutAndPendingRecoveryExposeMeasuredInputAndExplicitDiscard() = runBlocking<Unit> {
+        val actions = mutableListOf<ContinuousEditorAction>()
+        val state = mutableStateOf(ContinuousEditorFixture.state().copy(recordingVoice = true))
+        val scene = ImageComposeScene(width = 1440, height = 1024, density = Density(1f), coroutineContext = coroutineContext) {
+            ContinuousEditor(state.value, actions::add, { ContinuousEditorReadout(input = RecordingInputReadout(1500, 31_000, .7f)) })
+        }
+        try {
+            scene.settle()
+            assertEquals(.7f, scene.tag("ce-input-level")!!.config[SemanticsProperties.ProgressBarRangeInfo].current)
+            assertTrue(scene.tag("ce-recording-remaining")!!.config[SemanticsProperties.Text].single().text.contains("0:29"))
+            scene.click("ce-discard-recording"); assertTrue(actions.isEmpty())
+            scene.click("ce-cancel-discard-recording"); assertTrue(actions.isEmpty())
+            state.value = state.value.copy(recordingVoice = false, pendingRecording = true); scene.settle()
+            scene.click("ce-retry-recording"); assertEquals(ContinuousEditorAction.RetryRecordingSave, actions.single())
+            actions.clear(); scene.click("ce-discard-pending"); scene.click("ce-confirm-discard-recording")
+            assertEquals(ContinuousEditorAction.DiscardPendingRecording, actions.single())
+        } finally { scene.close() }
+    }
+
+
     private val output = File(System.getProperty("choplab.ui.evidenceDir")).resolve("linked-ui").apply { mkdirs() }
 
     @Test fun pcmMissReadoutPreservesTheInstrumentAndExposesReloadStopAndCloseAtLargeText() = runBlocking<Unit> {
@@ -63,6 +171,7 @@ class ContinuousEditorTest {
                     scene.click("ce-stop-all")
                     assertEquals(ContinuousEditorAction.StopAll, actions.last())
                     scene.reach("ce-song-monitor")
+                    full("ce-song-monitor")
                     full("ce-song-stop")
                     scene.click("ce-pcm-status")
                     for (tag in listOf("ce-pcm-reload", "ce-pcm-stop", "ce-pcm-close")) full(tag)
@@ -563,7 +672,11 @@ class ContinuousEditorTest {
     }
 
     @Test fun recordingStopIsReachableFromBothPanesAtActualCompactWindowHeights() = runBlocking<Unit> {
-        for ((width, height) in listOf(390 to 844, 844 to 390)) for (voice in listOf(false, true)) {
+        val previous = Locale.getDefault()
+        try {
+        for (locale in listOf(Locale.JAPANESE, Locale.ENGLISH))
+        for ((width, height) in listOf(390 to 844, 844 to 390, 844 to 368)) for (voice in listOf(false, true)) {
+            Locale.setDefault(locale)
             val actions = mutableListOf<ContinuousEditorAction>()
             val state = mutableStateOf(ContinuousEditorFixture.state().copy(compactPane = ContinuousPane.TIMELINE,
                 recordingVoice = voice, recordingHits = !voice,
@@ -576,6 +689,7 @@ class ContinuousEditorTest {
             }
             try {
                 scene.settle()
+                println("RECORD_CONTROLS locale=${locale.language} width=$width height=$height voice=$voice viewport=${scene.tag("ce-beat-viewport")!!.boundsInRoot}")
                 for (tag in listOf("ce-stop-all", "ce-song-stop")) {
                     val bounds = requireNotNull(scene.tag(tag)).boundsInRoot
                     assertTrue(bounds.width >= 48 && bounds.height >= 48 && bounds.bottom <= height, "$tag remains visible while recording")
@@ -584,12 +698,13 @@ class ContinuousEditorTest {
                 val stopTag = if (voice) "ce-record-voice" else "ce-record-hits"
                 scene.click(stopTag)
                 assertEquals(if (voice) ContinuousEditorAction.StopVoice else ContinuousEditorAction.StopHits, actions.last())
-                scene.capture("recording-stop-${if (voice) "voice" else "hits"}-${width}x$height-font200.png")
+                scene.capture("recording-stop-${locale.language}-${if (voice) "voice" else "hits"}-${width}x$height-font200.png")
                 scene.click("ce-stop-all")
                 scene.click("ce-song-stop")
                 assertEquals(listOf(ContinuousEditorAction.StopAll, ContinuousEditorAction.StopSong), actions.takeLast(2))
             } finally { scene.close() }
         }
+        } finally { Locale.setDefault(previous) }
     }
 
     @Test fun originalIdentityAndMonitoringRemainSeparateAcrossStagesAndPadSelection() = runBlocking<Unit> {

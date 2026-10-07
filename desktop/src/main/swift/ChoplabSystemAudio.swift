@@ -7,12 +7,28 @@ import ScreenCaptureKit
 @main
 struct ChoplabSystemAudio {
     static func main() async {
+        if CommandLine.arguments.contains("--microphone-permission") {
+            if AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined {
+                _ = await AVCaptureDevice.requestAccess(for: .audio)
+            }
+            let code: String
+            switch AVCaptureDevice.authorizationStatus(for: .audio) {
+            case .authorized: code = "AUTHORIZED"
+            case .denied: code = "DENIED"
+            case .restricted: code = "RESTRICTED"
+            default: code = "UNKNOWN"
+            }
+            FileHandle.standardOutput.write(Data("CHOPLAB-MIC \(code)\n".utf8))
+            return
+        }
         do {
             try await capture()
         } catch {
             let detail = error.localizedDescription.replacingOccurrences(of: "\n", with: " ")
-            let code = (error as? CaptureFailure).map { "\($0.code) " } ?? ""
-            FileHandle.standardOutput.write(Data("CHOPLAB-ERROR \(code)\(detail)\n".utf8))
+            let native = error as NSError
+            let code = (error as? CaptureFailure)?.code ??
+                (native.domain == SCStreamErrorDomain && native.code == SCStreamError.Code.userDeclined.rawValue ? "DENIED" : "UNAVAILABLE")
+            FileHandle.standardOutput.write(Data("CHOPLAB-ERROR \(code) \(detail)\n".utf8))
             exit(1)
         }
     }

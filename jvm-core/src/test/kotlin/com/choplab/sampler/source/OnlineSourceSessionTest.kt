@@ -17,7 +17,7 @@ class OnlineSourceSessionTest {
     private val format = YoutubeAudioFormat("format", "webm", "opus", 48_000, 2, 128_000, false,
         audio.size.toLong(), "ja", null, null, false)
     private val candidate = YoutubeSource("abcdefghijk", "Synthetic original", "Uploader", 1.0,
-        YoutubeMetadata(formats = listOf(format, format.copy(id = "alternate"))))
+        YoutubeMetadata(artist = "Observed artist", album = "Observed album", formats = listOf(format, format.copy(id = "alternate"))))
 
     private open inner class Backend : DetailedYoutubeBackend, AutoCloseable {
         val downloads = AtomicInteger()
@@ -70,6 +70,9 @@ class OnlineSourceSessionTest {
                 assertEquals(OnlineSourcePhase.SAVED, session.state.value.phase)
                 val saved = session.state.value.saved!!
                 assertArrayEquals(audio, Files.readAllBytes(saved.path)); assertEquals(candidate.title, saved.title)
+                val item = LocalAudioLibrary(root.toFile()) {}.list().single()
+                assertEquals("Observed artist", item.artist); assertEquals("Observed album", item.album)
+                assertNull(item.trackNumber); assertNull(item.discNumber)
                 assertEquals(1, backend.downloads.get())
                 // SAVED is only a library receipt. A new format invalidates that receipt for explicit use.
                 assertTrue(session.selectFormat("alternate")); assertNull(session.state.value.saved)

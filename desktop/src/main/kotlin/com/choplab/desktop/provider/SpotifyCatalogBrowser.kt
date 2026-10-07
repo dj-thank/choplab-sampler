@@ -22,6 +22,12 @@ internal class SpotifyCatalogBrowser(private val session: SpotifyDesktopSession)
         return !closed && session.connected && !session.state.value.busy && session.retryWaitSeconds() == 0L
     }
     val retryWaitSeconds get() = session.retryWaitSeconds()
+    val canEditQuery get() = !closed && session.state.value.phase != SpotifyConnectionPhase.AUTHENTICATING
+    val canPrevious get(): Boolean {
+        ensureAccount()
+        val previous = previousRequest() ?: return false
+        return !closed && session.connected && (previous in cache || canFetch)
+    }
     val canBack get(): Boolean { ensureAccount(); return history.isNotEmpty() }
     val query get() = session.state.value.searchQuery
     val page: SpotifyCatalogPage? get() {
@@ -48,7 +54,7 @@ internal class SpotifyCatalogBrowser(private val session: SpotifyDesktopSession)
         }
     }
     fun setQuery(value: String) {
-        if (closed) return
+        if (!canEditQuery) return
         if (query != value) {
             session.cancelPendingOperations(); session.setSearchQuery(value)
             selection.clear()
@@ -71,10 +77,19 @@ internal class SpotifyCatalogBrowser(private val session: SpotifyDesktopSession)
         if (closed || history.isEmpty()) return
         session.cancelPendingOperations(); selection.clear()
         request = history.removeLast()
+        session.clearCatalogProblem()
         request?.takeIf { it !in cache }?.let(::load)
     }
     fun next() { if (canFetch) page?.takeIf { it.hasMore }?.request?.let { load(it.copy(offset = it.offset + it.pageSize)) } }
-    fun previous() { if (canFetch) request?.takeIf { it.offset > 0 }?.let { load(it.copy(offset = (it.offset - it.pageSize).coerceAtLeast(0))) } }
+    fun previous() {
+        if (!canPrevious) return
+        val previous = previousRequest() ?: return
+        if (previous in cache) {
+            session.cancelPendingOperations(); selection.clear(); request = previous
+            session.clearCatalogProblem()
+        } else load(previous)
+    }
+    private fun previousRequest() = request?.takeIf { it.offset > 0 }?.let { it.copy(offset = (it.offset - it.pageSize).coerceAtLeast(0)) }
     fun toggle(track: SourceTrack) {
         if (!canFetch || page?.entries.orEmpty().none { it.track == track }) return
         if (!selection.add(track.spotifyUrl)) selection.remove(track.spotifyUrl)

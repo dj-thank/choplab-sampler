@@ -74,6 +74,7 @@ internal class JavaSoundMicInput private constructor(private val line: TargetDat
                     transferred = true
                     return input
                 } catch (cancel: kotlinx.coroutines.CancellationException) { throw cancel }
+                catch (denied: SecurityException) { throw denied }
                 catch (_: Exception) { }
                 finally { if (!transferred) { line?.close(); reserved.close() } }
             }

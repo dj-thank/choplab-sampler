@@ -1,0 +1,12 @@
+<resources>
+    <string name="next_startup_title">おとひろい NEXTを開けません</string>
+    <string name="next_startup_retry">再試行</string>
+    <string name="next_startup_folder">保存先を開く</string>
+    <string name="next_startup_quit">終了</string>
+    <string name="next_startup_recovery">保存した制作を復元できませんでした。保存先のファイルをコピーして保全し、バックアップを確認してください。再起動しても空の制作に置き換わることはありません。</string>
+    <string name="next_startup_access">保存先にアクセスできません。フォルダーへのアクセス権とドライブの接続を確認して、再試行してください。</string>
+    <string name="next_startup_storage">保存先の読み書きができませんでした。ディスクの空き容量とドライブの接続を確認して、再試行してください。</string>
+    <string name="next_startup_other">編集画面を起動できませんでした。一度終了して開き直してください。改善しない場合も、保存先のファイルを残したままアプリを入れ直してください。</string>
+    <string name="next_startup_preserved">既存の制作は置き換えていません。下のボタンから保存先を確認できます。</string>
+    <string name="next_startup_folder_failed">フォルダーを開けませんでした。保存先はこちらです。</string>
+</resources>

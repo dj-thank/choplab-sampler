@@ -231,7 +231,7 @@ class EditorBackend private constructor(
             val autosave = AutosaveStore(directory.toRealPath().resolve("autosave"), assets)
             val recovered = autosave.recover()
             val hadSavedDocument = (0..2).any { Files.exists(autosave.directory.resolve("autosave.$it.json")) }
-            check(recovered != null || !hadSavedDocument) { "Autosave recovery failed; existing files were preserved" }
+            if (recovered == null && hadSavedDocument) throw AutosaveRecoveryException()
             val pcm = WavPcmPort(assets, decoder = decoder)
             var output: StreamingEnginePort? = null
             var scope: CoroutineScope? = null

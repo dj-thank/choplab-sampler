@@ -55,7 +55,7 @@ class MacSystemInputTest {
     }
 
     @Test fun permissionDisplayTimeoutAndCancellationAreDistinctAndKillOnlyTheOwnedHelper() = runBlocking<Unit> {
-        for ((mode, reason) in listOf("refused" to MacSystemInput.Failure.DENIED, "no-display" to MacSystemInput.Failure.NO_DISPLAY,
+        for ((mode, reason) in listOf("unavailable" to MacSystemInput.Failure.UNAVAILABLE, "refused" to MacSystemInput.Failure.DENIED, "no-display" to MacSystemInput.Failure.NO_DISPLAY,
                 "normal" to MacSystemInput.Failure.INVALID, "late" to MacSystemInput.Failure.TIMEOUT)) {
             val child = AtomicReference<Process>()
             val factory = MacSystemInput({ File("synthetic") }, { FakeSystemAudioHelper.launcher(mode, "10000")(it).also(child::set) },

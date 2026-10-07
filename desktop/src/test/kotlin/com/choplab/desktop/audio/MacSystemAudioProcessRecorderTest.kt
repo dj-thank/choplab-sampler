@@ -37,15 +37,17 @@ class MacSystemAudioProcessRecorderTest {
         } finally { recorder.close(); file.delete() }
     }
 
-    @Test fun captureThatEndsBeforeStopIsReportedInsteadOfSaved() {
+    @Test fun interruptedCaptureKeepsPartialAudioAndReportsItsReason() {
         val recorder = MacSystemAudioProcessRecorder(helper, FakeSystemAudioHelper.launcher("dies"))
         val file = output()
         try {
             assertTrue(recorder.start(file).isSuccess)
             waitUntil { !recorder.isRecording }
             val stopped = recorder.stop()
-            assertTrue(stopped.isFailure)
-            assertTrue("途中で止まりました" in stopped.exceptionOrNull()?.message.orEmpty(), stopped.exceptionOrNull()?.message)
+            assertTrue(stopped.isSuccess)
+            assertTrue("途中で止まりました" in recorder.completionMessage.orEmpty())
+            assertTrue(file.length() > 44)
+            assertTrue(file.inputStream().use { com.choplab.jvm.WavCodec.inspect(it).frames } > 0)
         } finally { recorder.close(); file.delete() }
     }
 

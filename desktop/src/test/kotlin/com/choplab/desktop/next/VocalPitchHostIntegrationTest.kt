@@ -20,6 +20,7 @@ import com.choplab.core.vocal.VocalPitchDraft
 import com.choplab.engine.PitchCorrectionPhase
 import com.choplab.engine.Tempo
 import kotlinx.coroutines.*
+import kotlinx.coroutines.selects.select
 import java.nio.file.Files
 import java.util.Locale
 import java.util.concurrent.locks.LockSupport
@@ -219,9 +220,20 @@ class VocalPitchHostIntegrationTest {
                 assertTrue(presenter.dispatch(ContinuousEditorAction.Navigate(ContinuousStage.BEAT)))
                 assertTrue(presenter.dispatch(ContinuousEditorAction.OpenVocalPitch))
                 val editor = requireNotNull(presenter.vocalPitch.value)
+                // Import completion precedes the combined host availability reaching the editor.
+                // Match the real pitch controls' editable boundary before sending the fixture's Apply.
+                until { editor.state.value.editable }
                 val before = backend.studio.document.value
+                val beforeApply = editor.state.value
                 val pending = async { editor.dispatch(PitchAction.Apply) }
-                withTimeout(10_000) { rendered.await() }
+                withTimeout(10_000) {
+                    select<Unit> {
+                        rendered.onAwait { }
+                        pending.onAwait { result -> fail("$case: Apply completed ($result) before render: " +
+                            "before=${beforeApply.phase}/${beforeApply.availability}/${beforeApply.problem}, " +
+                            "after=${editor.state.value.phase}/${editor.state.value.availability}/${editor.state.value.problem}") }
+                    }
+                }
                 var saveJob: Deferred<Boolean>? = null
                 when (case) {
                     "cancel" -> assertTrue(editor.dispatch(PitchAction.Cancel))

@@ -10,6 +10,9 @@ import javax.sound.sampled.TargetDataLine
 
 interface DesktopAudioRecorder : AutoCloseable {
     val isRecording: Boolean
+    val completionMessage: String? get() = null
+    val retainedFile: File? get() = null
+    fun cancelOpening() {}
     fun start(file: File): Result<Unit>
     fun stop(): Result<File>
 }
@@ -26,15 +29,20 @@ internal class DesktopTargetLineRecorder(
     private var startingLine: TargetDataLine? = null
     @Volatile private var line: TargetDataLine? = null
     @Volatile private var worker: Thread? = null
+    @Volatile private var stopper: Thread? = null
     @Volatile private var outputFile: File? = null
     @Volatile private var failure: Throwable? = null
+    @Volatile private var limitReached = false
+    override val completionMessage get() = failure?.message ?: if (limitReached) "録音時間の上限で停止しました" else null
+    override val retainedFile get() = outputFile
+    override fun cancelOpening() { synchronized(lifecycleLock) { stopRequested = true } }
 
     override val isRecording: Boolean
         get() = running.get()
 
     override fun start(file: File): Result<Unit> {
         synchronized(lifecycleLock) {
-            if (starting || running.get() || worker?.isAlive == true) {
+            if (starting || running.get() || worker?.isAlive == true || stopper?.isAlive == true) {
                 return Result.failure(IllegalStateException("録音の停止処理中です"))
             }
             starting = true
@@ -66,6 +74,7 @@ internal class DesktopTargetLineRecorder(
                 line = target
                 outputFile = file
                 failure = null
+                limitReached = false
                 running.set(true)
                 worker = recordingWorker
                 try {
@@ -111,25 +120,32 @@ internal class DesktopTargetLineRecorder(
             pending to (line to worker)
         }
         val (activeLine, activeWorker) = activeResources
-        pendingLine?.let { runCatching { it.close() } }
-        activeLine?.takeUnless { it === pendingLine }?.let {
-            runCatching { it.stop() }
-            runCatching { it.close() }
+        val closer = synchronized(lifecycleLock) {
+            stopper?.takeIf { it.isAlive } ?: Thread({
+                pendingLine?.let { runCatching { it.close() } }
+                activeLine?.takeUnless { it === pendingLine }?.let {
+                    runCatching { it.stop() }
+                    runCatching { it.close() }
+                }
+            }, "$threadName-stop").apply { isDaemon = true; stopper = this; start() }
         }
+        val deadline = System.nanoTime() + STOP_TIMEOUT_MS * 1_000_000
+        runCatching { closer.join(STOP_TIMEOUT_MS) }
         if (activeWorker != null && activeWorker !== Thread.currentThread()) {
-            runCatching { activeWorker.join(STOP_TIMEOUT_MS) }
+            val left = ((deadline - System.nanoTime()) / 1_000_000).coerceAtLeast(1)
+            runCatching { activeWorker.join(left) }
         }
-        val timedOut = activeWorker?.isAlive == true
+        val timedOut = activeWorker?.isAlive == true || closer.isAlive
         synchronized(lifecycleLock) {
             if (!timedOut && worker === activeWorker) worker = null
-            if (line === activeLine) line = null
+            if (!timedOut && line === activeLine) line = null
         }
         val file = outputFile
         val error = failure
         return when {
             timedOut -> Result.failure(IllegalStateException("録音の停止に時間がかかっています"))
-            error != null -> Result.failure(error)
             file != null && file.isFile && file.length() > WAV_HEADER_BYTES -> Result.success(file)
+            error != null -> Result.failure(error)
             else -> Result.failure(IllegalStateException("録音された音声がありません"))
         }
     }
@@ -160,6 +176,7 @@ internal class DesktopTargetLineRecorder(
                     }
                     when (decision.stopAfterWrite) {
                         RecordingStopReason.DURATION_LIMIT -> {
+                            limitReached = true
                             running.set(false)
                             break
                         }
@@ -171,7 +188,6 @@ internal class DesktopTargetLineRecorder(
         } catch (throwable: Throwable) {
             if (running.get()) {
                 failure = throwable
-                runCatching { file.delete() }
             }
         } finally {
             running.set(false)

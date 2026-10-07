@@ -93,6 +93,27 @@ class FileAssetStore(directory: Path, val maxStoredBytes: Long = ProjectLimits.M
             } finally { Files.deleteIfExists(pending) }
         } finally { Files.deleteIfExists(file) }
     }
+    /** A recorded original stays owned by its recovery session until the document acknowledges it. */
+    fun adoptRetaining(asset: Asset, file: Path) = synchronized(lock) {
+        val target = path(asset)
+        require(Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) && Files.size(file) == asset.byteCount)
+        require(Files.newInputStream(file).use { digest(it, asset.byteCount) } == asset.hash)
+        validateAudio(asset, file) { false }
+        if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
+            require(verified(asset)) { "Existing asset is corrupt" }
+            return@synchronized
+        }
+        require(storedBytes() + asset.byteCount <= maxStoredBytes) { "Asset store quota exceeded" }
+        val pending = directory.resolve(".pending-${UUID.randomUUID()}")
+        try {
+            // Both names refer to immutable bytes. A different filesystem needs a bounded streaming copy.
+            try { Files.createLink(pending, file) }
+            catch (_: UnsupportedOperationException) { Files.copy(file, pending) }
+            catch (_: IOException) { Files.copy(file, pending) }
+            FileChannel.open(pending, StandardOpenOption.WRITE).use { it.force(true) }
+            Files.move(pending, target, StandardCopyOption.ATOMIC_MOVE)
+        } finally { Files.deleteIfExists(pending) }
+    }
     fun verified(asset: Asset, cancelled: () -> Boolean = { false }): Boolean = synchronized(lock) {
         val target = path(asset)
         if (!Files.isRegularFile(target, LinkOption.NOFOLLOW_LINKS) || Files.size(target) != asset.byteCount) return@synchronized false

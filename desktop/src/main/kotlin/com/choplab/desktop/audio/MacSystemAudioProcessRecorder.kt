@@ -19,6 +19,9 @@ internal fun parseSystemAudioHeader(line: String): SystemAudioStreamHeader {
         if (error.substringBefore(' ') == "NO_DISPLAY") {
             error("システムの音声を録音できません。Macの画面ロックを解除してデスクトップを表示し、もう一度録音を開始してください。外部ディスプレイを使っている場合は接続も確認してください")
         }
+        if (error.substringBefore(' ') != "DENIED") {
+            error("システムの音声を開始できません。音声の接続状態を確認し、もう一度開始してください")
+        }
         error(
             "システムの音声を録音できません。システム設定の「プライバシーとセキュリティ」で画面収録とシステムオーディオ録音を許可してください" +
                 if (error.isEmpty()) "" else "（$error）",
@@ -61,6 +64,7 @@ internal class MacSystemAudioProcessRecorder(
         val running = AtomicBoolean(true)
         val header = CompletableFuture<SystemAudioStreamHeader>()
         @Volatile var failure: Throwable? = null
+        @Volatile var limitReached = false
         @Volatile var worker: Thread? = null
     }
     private val lifecycleLock = Any()
@@ -69,6 +73,9 @@ internal class MacSystemAudioProcessRecorder(
     override val isRecording: Boolean
         get() = session?.running?.get() == true
 
+    override val retainedFile get() = session?.file
+    override val completionMessage get() = session?.let { it.failure?.message ?: if (it.limitReached) "録音時間の上限で停止しました" else null }
+    override fun cancelOpening() { session?.let { it.running.set(false); it.process.destroyForcibly() } }
     override fun start(file: File): Result<Unit> {
         synchronized(lifecycleLock) {
             val previous = session
@@ -121,9 +128,9 @@ internal class MacSystemAudioProcessRecorder(
         val error = current.failure
         return when {
             worker?.isAlive == true -> Result.failure(IllegalStateException("録音の停止に時間がかかっています"))
-            error != null -> Result.failure(error)
             !current.header.isDone || current.header.isCompletedExceptionally -> Result.failure(IllegalStateException(NOT_STARTED))
             current.file.isFile && current.file.length() > WAV_HEADER_BYTES -> Result.success(current.file)
+            error != null -> Result.failure(error)
             else -> Result.failure(IllegalStateException("録音された音声がありません"))
         }
     }
@@ -163,6 +170,7 @@ internal class MacSystemAudioProcessRecorder(
                     filled -= complete
                     when (decision.stopAfterWrite) {
                         RecordingStopReason.DURATION_LIMIT -> {
+                            current.limitReached = true
                             current.running.set(false)
                             break
                         }
@@ -175,7 +183,6 @@ internal class MacSystemAudioProcessRecorder(
             current.header.completeExceptionally(throwable)
             if (current.running.get()) {
                 current.failure = throwable
-                runCatching { current.file.delete() }
             }
         } finally {
             current.running.set(false)
@@ -219,7 +226,7 @@ internal class MacSystemAudioProcessRecorder(
         const val WAV_HEADER_BYTES = 44L
         const val QUICK_START_MS = 1_500L
         const val HEADER_TIMEOUT_MS = 60_000L
-        const val NOT_STARTED = "システムの音声録音を開始できませんでした。画面収録とシステムオーディオ録音の許可を確認してください"
-        const val STOPPED_EARLY = "システムの音声録音が途中で止まりました。画面収録とシステムオーディオ録音の許可を確認して、もう一度録音してください"
+        const val NOT_STARTED = "システムの音声録音を開始できませんでした。もう一度開始してください"
+        const val STOPPED_EARLY = "システムの音声録音が途中で止まりました。入力の接続状態を確認してください"
     }
 }

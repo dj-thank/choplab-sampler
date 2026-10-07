@@ -11,8 +11,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.*
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -78,7 +80,7 @@ import kotlin.math.roundToLong
             stringResource(Res.string.ce_original_wave, source?.title.orEmpty()), position = { fraction },
             onSeek = if (source != null && state.permits(ContinuousCapability.ORIGINAL_SEEK))
                 ({ onAction(ContinuousEditorAction.SeekOriginal((it * source.frames).roundToLong())) }) else null,
-            tag = "ce-scratch-source-wave")
+            tag = "ce-scratch-source-wave", positionText = { ceOriginalPosition(source, live.originalFrame) })
         Text(if (source == null) "–" else "${ceTime(live.originalFrame, source.sampleRate, true)} / ${ceTime(source.frames, source.sampleRate, true)}",
             color = CEColor.Green, modifier = Modifier.testTag("ce-scratch-source-position"))
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -102,7 +104,9 @@ import kotlin.math.roundToLong
     val latestAction by rememberUpdatedState(onAction)
     val pad = state.selectedPad
     val source = state.original
-    val ready = if (sheet.target == ContinuousScratchTarget.PAD) sheet.padAvailable else sheet.originalAvailable
+    val ready = (if (sheet.target == ContinuousScratchTarget.PAD) sheet.padAvailable else sheet.originalAvailable) && state.permits(ContinuousCapability.SCRATCH)
+    var keyboardFocus by remember { mutableStateOf(false) }
+    var pressedDirection by remember { mutableStateOf<Key?>(null) }
     val label = stringResource(Res.string.ce_scratch_platter)
     val status = stringResource(if (sheet.holding) Res.string.ce_scratch_holding else Res.string.ce_scratch_resting)
     val back = stringResource(Res.string.ce_scratch_back)
@@ -129,7 +133,20 @@ import kotlin.math.roundToLong
                 enabled = sheet.originalAvailable && !sheet.holding, primary = sheet.target == ContinuousScratchTarget.ORIGINAL, tag = "ce-scratch-target-original")
         }
         CERecordFace(live.scratchFraction, ready, sheet.holding, CEColor.Orange, stringResource(Res.string.ce_scratch_hand_disc),
-            Modifier.testTag("ce-scratch-platter").pointerInput(ready) {
+            Modifier.testTag("ce-scratch-platter")
+                .then(if (keyboardFocus) Modifier.border(3.dp, CEColor.Ink, CircleShape) else Modifier)
+                .onFocusChanged { keyboardFocus = it.isFocused; if (!it.isFocused) pressedDirection = null }
+                .onKeyEvent { event ->
+                    if (!ready || event.isCtrlPressed || event.isMetaPressed || event.isAltPressed ||
+                        (event.key != Key.DirectionLeft && event.key != Key.DirectionRight)) false
+                    else {
+                        if (event.type == KeyEventType.KeyDown && pressedDirection == null) {
+                            pressedDirection = event.key
+                            latestAction(ContinuousEditorAction.ScratchNudge(event.key == Key.DirectionRight))
+                        } else if (event.type == KeyEventType.KeyUp && pressedDirection == event.key) pressedDirection = null
+                        true
+                    }
+                }.focusable(enabled = ready).pointerInput(ready) {
                 if (!ready) return@pointerInput
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
