@@ -6,7 +6,7 @@ import com.choplab.ui.SystemAudioCapture
 import java.nio.file.Path
 
 /** ScreenCaptureKit capture shares float WAV storage and quotas with voice takes, preserving stereo. */
-internal class NextSystemAudioCapture(assets: FileAssetStore, scratch: Path) : SystemAudioCapture {
+internal class NextSystemAudioCapture(assets: FileAssetStore, scratch: Path, private val persistAccepted: suspend () -> Unit = {}) : SystemAudioCapture {
     private val input = MacSystemInput()
     private val takes = VoiceTakes(assets, scratch, captureChannels = 2, durableTakes = true, microphone = input::open)
     override suspend fun start(maxSeconds: Int) = when (takes.start(maxSeconds)) {
@@ -22,7 +22,7 @@ internal class NextSystemAudioCapture(assets: FileAssetStore, scratch: Path) : S
     }
     override fun cancelOpening() { input.cancelOpening(); takes.cancelOpening() }
     override val inputReadout get() = takes.inputReadout()
-    override suspend fun acknowledgeTake() = takes.acknowledge()
+    override suspend fun acknowledgeTake() { persistAccepted(); takes.acknowledge() }
     val inputBusy get() = takes.inputBusy
     override val full get() = takes.full
     override val interrupted get() = takes.interrupted

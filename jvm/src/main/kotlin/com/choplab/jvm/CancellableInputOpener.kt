@@ -17,14 +17,15 @@ internal class CancellableInputOpener(private val factory: suspend () -> MicInpu
     private var current: Opening? = null
     val busy get() = synchronized(lock) { current != null }
 
-    suspend fun open(): MicInput? {
+    suspend fun open(stillRequested: () -> Boolean = { true }): MicInput? {
         val session = synchronized(lock) {
-            if (current != null) return null
+            if (current != null || !stillRequested()) return null
             Opening().also { current = it }
         }
         Thread({
             var input: MicInput? = null
             try {
+                if (synchronized(lock) { session.cancelled }) return@Thread
                 input = runBlocking { factory() }
                 session.answer.complete(input)
                 session.handoff.await()

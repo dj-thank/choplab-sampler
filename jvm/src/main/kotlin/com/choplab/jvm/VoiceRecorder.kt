@@ -114,6 +114,12 @@ class VoiceRecorder(private val input: MicInput, scratch: Path, maxSeconds: Int,
                 if (count < 0) { ended = running; if (running) interruption = InputInterruption.DEVICE_LOST; break }
                 if (count == 0) continue
                 require(count <= buffer.size && count % channels == 0)
+                var peak = 0f
+                for (i in 0 until count) {
+                    val sample = buffer[i]
+                    if (sample.isFinite()) peak = maxOf(peak, kotlin.math.abs(sample))
+                }
+                peakLevel = peak
                 val now = nanoTime()
                 val frames = count / channels
                 if (captureFirstNanos == UNSET) captureFirstNanos = now - frames * 1_000_000_000L / rate
@@ -140,12 +146,6 @@ class VoiceRecorder(private val input: MicInput, scratch: Path, maxSeconds: Int,
                     val at = captureFirstNanos + (capturedFrames + skip) * 1_000_000_000L / rate
                     if (firstFrameNanos == UNSET) firstFrameNanos = at
                     if (passFirst == UNSET) passFirst = at
-                    var peak = 0f
-                    for (i in skip * channels until (skip + kept) * channels) {
-                        val sample = buffer[i]
-                        if (sample.isFinite()) peak = maxOf(peak, kotlin.math.abs(sample))
-                    }
-                    peakLevel = peak
                     try { take.write(buffer, kept * channels, skip * channels) }
                     catch (failure: Exception) { interruption = InputInterruption.STORAGE_FAILED; throw failure }
                 }

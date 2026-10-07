@@ -170,7 +170,7 @@ internal class DesktopEditorPorts(
     }
     override fun cancelVoiceOpening() { backend.macAudio?.cancelOpening(); backend.voice.cancelOpening() }
     override fun voiceInputReadout() = backend.voice.inputReadout()
-    override suspend fun acknowledgeVoiceTake() = backend.voice.acknowledge()
+    override suspend fun acknowledgeVoiceTake() { backend.flushAutosave(); backend.voice.acknowledge() }
     override fun cueVoice() = backend.voice.cue()
     override val recordingCue: RecordingCuePort = object : RecordingCuePort {
         override suspend fun startArmedVoice(maxSeconds: Int) = when (backend.voice.start(maxSeconds, waitForCue = true)) {

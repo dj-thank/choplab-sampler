@@ -102,6 +102,24 @@ class DurableVoiceTakesTest {
         takes.close()
     }
 
+    @Test fun preRollReportsSignalWithoutAddingItToTheRecordedTake() = runBlocking<Unit> {
+        val mic = ScriptedMic().also { it.buffers.put(FloatArray(4800) { -.75f }) }
+        val takes = VoiceTakes(FileAssetStore(Files.createTempDirectory("armed-meter-store-")),
+            Files.createTempDirectory("armed-meter-take-"), durableTakes = true) { mic }
+        assertEquals(VoiceTakes.Start.STARTED, takes.start(10, waitForCue = true))
+        withinSeconds(5) { takes.peakLevel == .75f }
+        assertEquals(0, takes.recordedMillis)
+        takes.discard(); takes.close()
+    }
+
+    @Test fun cancellationBeforeNativeWorkerAdmissionDoesNotOpenHardware() = runBlocking<Unit> {
+        var opened = 0
+        val opener = CancellableInputOpener({ opened++; ScriptedMic() })
+        assertNull(opener.open { false })
+        assertEquals(0, opened)
+        assertFalse(opener.busy)
+    }
+
     @Test fun availableDiskShortensTheAdvertisedLimitBeforeCapture() = runBlocking<Unit> {
         val store = FileAssetStore(Files.createTempDirectory("limited-store-"))
         val takes = VoiceTakes(store, Files.createTempDirectory("limited-take-"), diskReserveBytes = 0,

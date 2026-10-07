@@ -36,7 +36,7 @@ internal class MacMicrophonePermission(
                 if (byte < 0 || line.length >= 80) return Status.UNKNOWN
                 line.append(byte.toChar())
             }
-            parse(line.toString())
+            if (generation.get() != token) Status.CANCELLED else parse(line.toString())
         } catch (_: Exception) { if (generation.get() != token) Status.CANCELLED else Status.UNKNOWN }
         finally { process?.let { opening.compareAndSet(it, null); if (it.isAlive) it.destroyForcibly() } }
     }

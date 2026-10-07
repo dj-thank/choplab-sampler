@@ -41,7 +41,7 @@ class VoiceTakes(
     private val recovered = ArrayDeque<Path>()
     private val opener = CancellableInputOpener(microphone)
     private var closed = false
-    private var openingEpoch = 0L
+    private val openingEpoch = java.util.concurrent.atomic.AtomicLong()
 
     init {
         require(captureChannels in 1..2)
@@ -64,13 +64,13 @@ class VoiceTakes(
     suspend fun start(maxSeconds: Int, waitForCue: Boolean = false, window: VoiceCaptureWindow? = null, passes: Int = 1): Start {
         var owned: VoiceRecorder? = null
         var published = false
-        val epoch = synchronized(lock) { openingEpoch }
+        val epoch = openingEpoch.get()
         return try { withContext(Dispatchers.IO) {
         require(maxSeconds in 1..300)
         require(passes in 1..8 && (passes == 1 || window != null))
         require(window == null || (waitForCue && window.frames48k * passes <= maxSeconds * 48_000L))
         synchronized(lock) {
-            if (closed) return@withContext Start.NO_INPUT
+            if (closed || epoch != openingEpoch.get()) return@withContext Start.NO_INPUT
             if (retiring?.terminated == true) retiring = null
             if (retiring != null) return@withContext Start.NO_INPUT
             check(recorder == null) { "A take is already recording" }
@@ -81,7 +81,7 @@ class VoiceTakes(
         val reserved = try { memory.reserve(VoiceRecorder.MEMORY_BYTES) } catch (_: PcmMemoryLimit) { return@withContext Start.NO_ROOM }
         var transferred = false
         try {
-            val input = try { opener.open() }
+            val input = try { opener.open { epoch == openingEpoch.get() } }
                 catch (cancel: CancellationException) { throw cancel }
                 catch (_: PcmMemoryLimit) { return@withContext Start.NO_ROOM }
                 catch (_: Exception) { null } ?: return@withContext Start.NO_INPUT
@@ -94,7 +94,7 @@ class VoiceTakes(
                 throw failure
             }
             currentCoroutineContext().ensureActive()
-            val kept = synchronized(lock) { (!closed && epoch == openingEpoch && recorder == null && retiring == null).also { if (it) recorder = created } }
+            val kept = synchronized(lock) { (!closed && epoch == openingEpoch.get() && recorder == null && retiring == null).also { if (it) recorder = created } }
             published = kept
             if (!kept) { owned = null; created.discard(); return@withContext Start.NO_INPUT }
             Start.STARTED
@@ -133,7 +133,7 @@ class VoiceTakes(
     val interruption: InputInterruption? get() = synchronized(lock) { recorder ?: pending }?.interruption
     val pendingSave: Boolean get() = synchronized(lock) { pending != null || recovered.isNotEmpty() }
     val inputBusy: Boolean get() = synchronized(lock) { recorder != null || pending != null || retiring != null } || opener.busy
-    fun cancelOpening() { synchronized(lock) { openingEpoch++ }; opener.cancel() }
+    fun cancelOpening() { openingEpoch.incrementAndGet(); opener.cancel() }
 
     /** The running take stopped by itself: the input went away or it could not be written. */
     val interrupted: Boolean get() = synchronized(lock) { recorder }?.interrupted == true

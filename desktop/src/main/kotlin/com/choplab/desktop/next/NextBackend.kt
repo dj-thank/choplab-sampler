@@ -177,8 +177,8 @@ class NextBackend private constructor(private val shared: EditorBackend, val fil
                     throw failure
                 }
             val system = try { when {
-                windows != null -> NextWasapiSystemAudioCapture(shared.assets, directory.resolve("system-scratch"), windows)
-                com.choplab.desktop.isMacOsHost() -> NextSystemAudioCapture(shared.assets, directory.resolve("system-scratch"))
+                windows != null -> NextWasapiSystemAudioCapture(shared.assets, directory.resolve("system-scratch"), windows, shared::flushAutosave)
+                com.choplab.desktop.isMacOsHost() -> NextSystemAudioCapture(shared.assets, directory.resolve("system-scratch"), shared::flushAutosave)
                 else -> null
             } } catch (failure: Throwable) {
                 try { runBlocking { voice.close() } } catch (cleanup: Throwable) { failure.addSuppressed(cleanup) }

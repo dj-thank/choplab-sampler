@@ -310,7 +310,20 @@ class NextBackendTest {
             // The real compiler loads the float take for its PAD and the song.
             assertTrue(first.voice.pendingSave, "Publication alone keeps the unaccepted original")
             assertTrue(first.studio.dispatch(Action.Edit(Intent.AddVoiceTake(take.asset, pad, clip, track))).accepted)
-            first.voice.acknowledge()
+            val ports = DesktopEditorPorts(first) { null }
+            val autosave = profile.resolve("autosave")
+            val heldAutosave = profile.resolve("held-autosave")
+            Files.move(autosave, heldAutosave)
+            Files.writeString(autosave, "synthetic save obstruction")
+            val applied = first.studio.document.value
+            try {
+                assertFails { ports.acknowledgeVoiceTake() }
+                assertTrue(first.voice.pendingSave, "Failed durable save retains the original")
+                assertTrue(first.persistenceFailure.value)
+            } finally { Files.delete(autosave); Files.move(heldAutosave, autosave) }
+            ports.acknowledgeVoiceTake()
+            assertEquals(applied, first.studio.document.value, "Cleanup retry does not add a second take")
+            ports.close()
             assertFalse(first.voice.pendingSave)
             assertTrue(first.studio.dispatch(Action.SelectPlaybackTarget(PlaybackTarget.Arrangement())).accepted)
             val song = dir.resolve("song.wav")
