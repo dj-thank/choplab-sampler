@@ -120,6 +120,25 @@ class DurableVoiceTakesTest {
         assertFalse(opener.busy)
     }
 
+    @Test fun preflightReportsConservativeMonoStereoAndFullDiskWithoutOpeningInput() = runBlocking<Unit> {
+        var opens = 0
+        val store = FileAssetStore(Files.createTempDirectory("estimate-store-"), maxStoredBytes = 44L + 48_000 * 4 * 4)
+        for ((channels, expected) in listOf(1 to 4000L, 2 to 2000L)) {
+            val takes = VoiceTakes(store, Files.createTempDirectory("estimate-take-"), captureChannels = channels,
+                usableDiskBytes = { Long.MAX_VALUE }) { opens++; ScriptedMic() }
+            assertEquals(expected, takes.estimateMillis(300))
+            assertEquals(1000, takes.estimateMillis(1))
+            takes.close()
+        }
+        val full = VoiceTakes(store, Files.createTempDirectory("full-take-"), usableDiskBytes = { 0 }) { opens++; ScriptedMic() }
+        assertEquals(0, full.estimateMillis(300))
+        full.close()
+        val unknown = VoiceTakes(store, Files.createTempDirectory("unknown-take-"), usableDiskBytes = { error("unavailable") }) { opens++; ScriptedMic() }
+        assertNull(unknown.estimateMillis(300))
+        unknown.close()
+        assertEquals(0, opens)
+    }
+
     @Test fun availableDiskShortensTheAdvertisedLimitBeforeCapture() = runBlocking<Unit> {
         val store = FileAssetStore(Files.createTempDirectory("limited-store-"))
         val takes = VoiceTakes(store, Files.createTempDirectory("limited-take-"), diskReserveBytes = 0,

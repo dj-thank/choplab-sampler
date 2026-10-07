@@ -147,6 +147,7 @@ internal class NextWasapiSystemAudioCapture(assets: com.choplab.jvm.FileAssetSto
     }
     override fun cancelOpening() { takes.cancelOpening(); opening?.cancel() }
     override val inputReadout get() = takes.inputReadout()
+    override suspend fun recordingEstimateMillis(maxSeconds: Int) = takes.estimateMillis(maxSeconds)
     override suspend fun acknowledgeTake() { persistAccepted(); takes.acknowledge() }
     override val full get() = takes.full
     override val interrupted get() = takes.interrupted

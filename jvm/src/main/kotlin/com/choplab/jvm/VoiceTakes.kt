@@ -59,7 +59,7 @@ class VoiceTakes(
 
     /**
      * Opens the microphone for at most [maxSeconds], fewer when the asset store or the disk has room for less: a take
-     * is written once, as a 32-bit WAV, and then moved into the store.
+     * is written once, as a 32-bit WAV, and published into the store. Durable hosts retain a recovery name until acknowledgement.
      */
     suspend fun start(maxSeconds: Int, waitForCue: Boolean = false, window: VoiceCaptureWindow? = null, passes: Int = 1): Start {
         var owned: VoiceRecorder? = null
@@ -192,13 +192,21 @@ class VoiceTakes(
         }
     }
 
-    /** No take starts after this; one still running is dropped. */
+    /** No take starts after this. Durable hosts seal the original for recovery; other hosts drop it. */
     suspend fun close() {
         cancelOpening()
         withContext(Dispatchers.IO + NonCancellable) {
             val current = synchronized(lock) { closed = true; (pending ?: recorder).also { recorder = null; pending = null } }
             if (current != null) { if (durableTakes) current.preserve() else current.discard() }
         }
+    }
+
+    /** Conservative preflight only: no permission request, microphone open or PCM reservation. */
+    suspend fun estimateMillis(maxSeconds: Int): Long? = withContext(Dispatchers.IO) {
+        require(maxSeconds in 1..300)
+        try { minOf(maxSeconds.toLong(), roomSeconds()) * 1_000 }
+        catch (cancel: CancellationException) { throw cancel }
+        catch (_: Exception) { null }
     }
 
     /** Whole seconds of 48 kHz capture-channel float the store's quota and the disk still take. */

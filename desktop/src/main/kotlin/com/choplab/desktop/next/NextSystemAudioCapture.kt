@@ -22,6 +22,7 @@ internal class NextSystemAudioCapture(assets: FileAssetStore, scratch: Path, pri
     }
     override fun cancelOpening() { input.cancelOpening(); takes.cancelOpening() }
     override val inputReadout get() = takes.inputReadout()
+    override suspend fun recordingEstimateMillis(maxSeconds: Int) = takes.estimateMillis(maxSeconds)
     override suspend fun acknowledgeTake() { persistAccepted(); takes.acknowledge() }
     val inputBusy get() = takes.inputBusy
     override val full get() = takes.full

@@ -484,7 +484,7 @@ class DesktopSamplerController(
         recorderFor(kind).start(output).onSuccess {
             if (closed || epoch != recordingStartEpoch.get()) {
                 recorderFor(kind).stop()
-                runCatching { output.delete() }
+                if (!closed) runCatching { output.delete() }
                 return@onSuccess
             }
             val loopPad = vocalLoopPadIndex?.let { index -> mutableState.value.pads[index] }

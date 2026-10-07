@@ -136,7 +136,7 @@ class NextBackend private constructor(private val shared: EditorBackend, val fil
         initialDownloadBytes = if (com.choplab.desktop.separation.defaultSeparatorModelStore().isInstalled()) 0
             else com.choplab.sampler.separation.SeparatorSpec.MODEL_BYTES)
 
-    /** [flush] is false only after the user chose to close without the final autosave. A take still recording is dropped. */
+    /** [flush] is false only after the user chose to close without the final autosave. A take still recording is sealed for explicit recovery. */
     suspend fun shutdown(flush: Boolean = true) {
         macAudio?.cancelOpening()
         try { systemAudio?.close() } finally { try { voice.close() } finally {
