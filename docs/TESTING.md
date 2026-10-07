@@ -34,6 +34,14 @@ checkoutのJDK/SDKを設定してrepository rootから実行します。Windows�
 
 関連するUI suiteと公開surface/配布検査も選びます。新module/Preview variantを追加したPRで実在するtask名をROADMAP/CIへ反映し、全体 `check`だけで全module実行とみなしません。文書だけならリンク、契約の整合、機密/個人path、必須CIを確認し、fresh buildと報告しません。
 
+### ローカルGradleの反復
+
+JVM coreの反復は `./gradlew --daemon --build-cache --configuration-cache :jvm-core:test` を使えます。configuration cacheはtask graphの設定を再利用します。`verifyNewPipeDependencies`は設定再利用後も毎回実行し、NewPipeの推移依存集合・各JARのbytes数・SHA-256を読み直します。`UP-TO-DATE`や`FROM-CACHE`のテストを新しい実行結果とは扱いません。コンパイル済みの同じテストを毎回実行して計測する場合は `:jvm-core:test --rerun` とします。
+
+`python3 scripts/check_gradle_configuration_cache.py --offline` は、依存取得済みの環境で実Gradleの保存・再利用と検証処理の継続を確認します。一時コピーだけを使ってpinのhash不一致、推移pinの欠落、JAR bytesの変更をそれぞれ拒否し、復元後に成功することを要求します。repoのpinや共有Gradle cacheは変更しません。依存未取得なら`--offline`を外します。この検査はLinux CIでも通常ビルドの後に実行します。
+
+configuration cacheをrepo全体の既定にはせず、他のtask、配布・source-bound手順では個別の互換性と既存の検証条件を優先します。`--configuration-cache-problems=warn`で問題を隠して高速化成功とはしません。
+
 Android NEXTの縮小候補は[RELEASE](RELEASE.md)の `choplabNextSizeProbe=true` で、本体と `:app:assemblePreviewAndroidTest` を同じtree・property・runtime AARで作ります。[AGPのtestBuildType](https://developer.android.com/studio/test/advanced-test-setup#change-test-build-type) を `preview` に設定し、本体のR8 mappingでtest APKも縮小・参照変換します。DebugAndroidTestをR8本体へ組み合わせると、Kotlin等の難読化済みclassへ到達できません。probeだけは `src/nextRuntimeTest`、明示実行専用の `src/nextAndroidTest` と既存codec testを対象にし、Compose内部APIへ直接入る通常Debug UI suiteと分けます。runnerはEspressoの間接依存にせずtestへ明示依存します。本体だけの最適化で `Trace` / `LazyKt` のholderやcodec入口が消えるため、probe専用規則はAGPの縮小前classfile入力に対してR8 `TraceReferences --keep-rules` で抽出したtest→本体の共有APIを保持します。名前付きholderと実際の参照memberだけが対象で、package wildcardや広いCompose/制作class保持、本体の欠落class警告抑制は加えません。annotationにしか現れずtestのmethod/field参照がない型は除外し、`kotlin.Metadata` による本体全体のmetadata保持を避けます。fixture・共有依存を変えたらこの境界も再抽出し、実APKとmatching testを実行し直します。
 
 境界抽出では `minifyPreviewWithR8.classes` をtarget、`minifyPreviewAndroidTestWithR8.classes` をsource、AGPの `bootClasspath` をlibraryにします。directory入力はclassfile JARへ束ね、AGP同梱R8の `TraceReferences --keep-rules` を使います。Android SDK stubが持たないrunnerの `ExposedInstrumentationApi.execStartActivity` 継承先はframework側の診断として確認し、共有APIの未解決参照と混同しません。
