@@ -27,3 +27,7 @@ include(":jvm-core")
 include(":engine")
 include(":core", ":jvm")
 include(":ui")
+// The iPadOS app host exists only in the opt-in native preview build; the default graph is unchanged.
+if (providers.gradleProperty("choplabIosPreview").map(String::toBooleanStrict).orElse(false).get()) {
+    include(":apple")
+}
