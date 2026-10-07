@@ -107,6 +107,13 @@ def verify(app, java_home, manifest_path=None):
         if library_receipt['status'] != 'LOCAL_PASS':
             raise RuntimeError('Packaged library source production self-test did not pass')
         print(library_result.stdout.strip())
+        browser_result = run(java, '-cp', libs / '*',
+                             'com.choplab.desktop.next.MusicBrowserNativeSelfTest', directory / 'music-browser',
+                             environment=environment, timeout=60)
+        browser_receipt = json.loads(browser_result.stdout.strip().splitlines()[-1])
+        if browser_receipt['status'] != 'LOCAL_PASS' or browser_receipt['initialRequests'] != 0:
+            raise RuntimeError('Packaged music browsers did not compose and close without an automatic request')
+        print(browser_result.stdout.strip())
         online_result = run(java, '-Dchoplab.mediaTools=' + str(libs / 'tools'), '-cp', libs / '*',
                             'com.choplab.desktop.next.NextOnlineSelfTest', directory / 'online', environment=environment)
         if json.loads(online_result.stdout.strip().splitlines()[-1])['status'] != 'LOCAL_PASS':

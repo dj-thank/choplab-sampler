@@ -251,11 +251,12 @@ class MainActivity : ComponentActivity() {
                             busy=spotifyState.busy,importBusy=importState.busy,
                             onQuery=sourceViewModel.spotify::setSearchQuery,onSearch=sourceViewModel.spotify::search,
                             onAdd=sourceViewModel.spotifySync::addTrack,onLibrary={sourceViewModel.hub.section(SourceSection.LIBRARY)},
-                            onSync=sourceViewModel.spotifySync::syncAgain,onDisconnect=sourceViewModel::disconnectSpotify,
+                            onSync=sourceViewModel.spotify::loadMore,onDisconnect=sourceViewModel::disconnectSpotify,
+                            favorites=spotifyState.tracks,
                         ) else SpotifySourcePicker(spotifyState,importState.busy,SourceImportViewModel.REDIRECT_URI,
-                            sourceViewModel.spotify::login,sourceViewModel::disconnectSpotify,sourceViewModel.spotifySync::syncAgain,
+                            sourceViewModel.spotify::login,sourceViewModel::disconnectSpotify,sourceViewModel.spotify::loadMore,
                             sourceViewModel.hub::importFavorite,{link->startActivity(Intent(Intent.ACTION_VIEW,android.net.Uri.parse(link)))},
-                            automaticSync=true,onLibrary={sourceViewModel.hub.section(SourceSection.LIBRARY)})
+                            automaticSync=false,onLibrary={sourceViewModel.hub.section(SourceSection.LIBRARY)})
                     },
                 )
             }

@@ -15,7 +15,7 @@ class SpotifyAutoImportTest {
         while(!condition() && System.nanoTime()<deadline)Thread.sleep(10)
         assertTrue(condition())
     }
-    @Test fun connectingAutomaticallyFetchesAndImportsOnceThenExplicitSyncIsAllowed() {
+    @Test fun connectingDoesNotFetchOrImportAndOnlyExplicitSyncIsAllowed() {
         val root=Files.createTempDirectory("spotify-automatic-flow").toFile()
         val state=MutableStateFlow(SpotifyDesktopState())
         val requests=AtomicInteger()
@@ -34,6 +34,10 @@ class SpotifyAutoImportTest {
                         sourceTracks=listOf(SourceTrack("song","artist","https://open.spotify.com/track/0000000000000000000001",120.0)))
                 }.use { sync ->
                     state.value=state.value.copy(phase=SpotifyConnectionPhase.CONNECTED)
+                    Thread.sleep(150)
+                    assertEquals(0,requests.get())
+                    assertEquals(0,searches.get())
+                    sync.syncAgain()
                     await { sources.state.value.spotifySync?.completed==1 && !sources.state.value.busy }
                     assertEquals(1,requests.get())
                     assertNull(sources.state.value.pendingUseId)
@@ -70,6 +74,9 @@ class SpotifyAutoImportTest {
                     requests.incrementAndGet()
                     state.value=state.value.copy(busy=true)
                 }.use { sync ->
+                    Thread.sleep(100)
+                    assertEquals(0,requests.get())
+                    sync.syncAgain()
                     await { requests.get()==1 }
                     state.value=state.value.copy(busy=false,message="429: retry later")
                     Thread.sleep(100)

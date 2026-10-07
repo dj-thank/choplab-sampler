@@ -95,7 +95,7 @@ dependencies {
 tasks.test {
     useJUnitPlatform()
     // The offscreen input fixture has its own bounded, explicitly headless target.
-    exclude("**/ui/DesktopLongPressUiTest*", "**/ui/DesktopUiQualityTest*")
+    exclude("**/ui/DesktopLongPressUiTest*", "**/ui/DesktopUiQualityTest*", "**/ui/MusicBrowserUiTest*")
 }
 
 tasks.register<Test>("desktopLongPressUiTest") {
@@ -317,7 +317,10 @@ tasks.register<Test>("desktopUiQualityTest") {
     testClassesDirs = sourceSets["test"].output.classesDirs
     classpath = sourceSets["test"].runtimeClasspath
     useJUnitPlatform()
-    filter { includeTestsMatching("com.choplab.desktop.ui.DesktopUiQualityTest") }
+    filter {
+        includeTestsMatching("com.choplab.desktop.ui.DesktopUiQualityTest")
+        includeTestsMatching("com.choplab.desktop.ui.MusicBrowserUiTest")
+    }
     maxParallelForks = 1
     outputs.upToDateWhen { false }
     systemProperty("java.awt.headless", "true")

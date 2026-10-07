@@ -24,7 +24,7 @@ class SpotifyFavoritesAutoImportTest {
             libraryRevision = { it.libraryRevision }, libraryTracks = { it.tracks })
 
     @Test
-    fun connectingImportsLikedTracksOnceAndSearchAdditionsDoNotRefetch() {
+    fun connectionIsIdleUntilAnExplicitRequestAndSearchAdditionsDoNotRefetch() {
         val root = Files.createTempDirectory("android-spotify-sync").toFile()
         val state = MutableStateFlow(SpotifyImportState())
         val loads = AtomicInteger()
@@ -43,6 +43,10 @@ class SpotifyFavoritesAutoImportTest {
                         tracks = listOf(SourceTrack("song", "artist", "https://open.spotify.com/track/0000000000000000000001", 120.0)))
                 }.use { sync ->
                     state.value = state.value.copy(connected = true)
+                    Thread.sleep(150)
+                    assertEquals(0, loads.get())
+                    assertEquals(0, searches.get())
+                    sync.syncAgain()
                     await { sources.state.value.spotifySync?.completed == 1 && !sources.state.value.busy }
                     assertEquals(1, loads.get())
                     assertNull(sources.state.value.pendingUseId)
@@ -81,7 +85,8 @@ class SpotifyFavoritesAutoImportTest {
                 coordinator(state, sources) {
                     state.value = state.value.copy(libraryRevision = state.value.libraryRevision + 1,
                         tracks = listOf(SourceTrack("song", "artist", "https://open.spotify.com/track/0000000000000000000001", 120.0)))
-                }.use {
+                }.use { sync ->
+                    sync.syncAgain()
                     assertTrue(entered.await(5, TimeUnit.SECONDS))
                     assertTrue(sources.state.value.busy)
                     state.value = state.value.copy(connected = false)

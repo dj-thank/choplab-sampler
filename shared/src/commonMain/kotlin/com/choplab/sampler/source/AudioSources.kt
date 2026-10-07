@@ -1,8 +1,10 @@
 package com.choplab.sampler.source
 
 /** Source identity is distinct from Spotify metadata used to find it. */
-data class AudioLibraryItem(val id: String, val title: String, val origin: String, val bytes: Long)
-data class SourceTrack(val title: String, val artist: String, val spotifyUrl: String, val durationSeconds: Double = 0.0) {
+data class AudioLibraryItem(val id: String, val title: String, val origin: String, val bytes: Long,
+                            val artist: String = "", val album: String = "")
+data class SourceTrack(val title: String, val artist: String, val spotifyUrl: String, val durationSeconds: Double = 0.0,
+                       val album: String = "") {
     val query: String get() = "$artist $title".trim()
 }
 data class YoutubeSource(val id: String, val title: String, val author: String, val durationSeconds: Double = 0.0,

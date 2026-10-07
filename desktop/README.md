@@ -18,6 +18,12 @@ app-imageは `desktop/build/windows-app-image/ChopLab/ChopLab.exe`。`app` / `ru
 
 ローカルchooserの基準はWAVです。オンライン取込で使う外部取得/decode経路とは別であり、新しいpackaged decoderのfixtureが通る前に全形式対応と表示しません。NEXTのWindows既定はWASAPI shared event出力です。「音声出力」メニューでJava Soundへの切替・再接続を明示できます。入力は録音操作まで開かず、マイクはmono、通常endpoint mixのシステム音はstereoで保持します。録音中や旧route未解放は切替を拒否し、自動fallbackは行いません。endpoint probe・合成host試験と、対象Windows実機の長時間・実音・Human受入は別です。
 
+## 音楽を選んで取り込む
+
+PreviewのSpotifyは接続だけで全お気に入りをダウンロードしません。アーティストを検索→アルバムを開く→曲を選択、またはお気に入り/保存したアルバムを開き、「選んだN曲をダウンロード」で追加します。次のページは手動です。取得済みの音源は再利用します。Libraryはアーティスト/アルバム/曲と検索で探せ、40件ずつ表示します。古い音源にartist/albumがない場合は情報なしのまとまりに残します。
+
+NEXTのSpotify窓は同じmetadata一覧を使い、従来どおり情報の閲覧とSpotifyで開く操作を扱います。NEXTへの音源取込はオンライン候補・ファイル・Libraryから行います。
+
 ## Macでの起動と取り込み
 
 JDK21とXcode Command Line Toolsを用意し、repository rootで `./scripts/run_mac_next.sh` を実行すると、最新の4工程NEXTをソースから起動します。従来画面は `./gradlew :desktop:run` です。`run`、`runLinkedPreview`、`installDist` はMacでScreenCaptureKit helperをbuildします。圧縮音声・YouTube取込にはffmpeg、ffprobe、yt-dlp、nodeが必要です。同梱directory、PATH、Homebrewの順で解決します。Homebrewを使う場合は `brew install ffmpeg yt-dlp node`、既存版がある場合は互換性を確認して使います。

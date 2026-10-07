@@ -1,0 +1,28 @@
+<resources>
+    <string name="music_artists">Artists</string>
+    <string name="music_albums">Albums</string>
+    <string name="music_tracks">Songs</string>
+    <string name="music_downloaded">Downloaded</string>
+    <string name="music_favorites">Liked songs</string>
+    <string name="music_saved_albums">Saved albums</string>
+    <string name="music_search">Search songs, artists or albums</string>
+    <string name="music_unknown_artist">Artist not recorded</string>
+    <string name="music_unknown_album">Album not recorded</string>
+    <string name="music_back">Back</string>
+    <string name="music_next">Next page</string>
+    <string name="music_previous">Previous page</string>
+    <string name="music_count">%1$d songs</string>
+    <string name="music_page">%1$d–%2$d of %3$d</string>
+    <string name="music_empty">No items match this selection.</string>
+    <string name="music_start">Choose an artist, album or liked songs to browse. Nothing downloads until you select a song.</string>
+    <string name="music_artist_search">Search for an artist, then open their albums.</string>
+    <string name="music_open">Open</string>
+    <string name="music_add">Download this song</string>
+    <string name="music_selected_add">Download %1$d selected songs</string>
+    <string name="music_select_page">Select this page</string>
+    <string name="music_clear_selection">Clear selection</string>
+    <string name="music_queued">Selected songs are queued. Existing downloads are reused.</string>
+    <string name="music_queue_full">The queue is full or disconnected. Try again after the current download.</string>
+    <string name="music_search_button">Search</string>
+    <string name="music_home">Browse</string>
+</resources>

@@ -60,6 +60,27 @@ class SpotifyAutomaticImportTest {
         } finally {root.deleteRecursively()}
     }
 
+    @Test fun selectedCachedSongGainsArtistAndAlbumWithoutChangingBytesOrDownloadingAgain() {
+        val root=Files.createTempDirectory("spotify-library-metadata").toFile()
+        try {
+            val backend=Backend()
+            AudioSourceController(library(root),backend).use { hub ->
+                hub.syncSpotifyFavorites(listOf(track(1)));await(hub)
+                val item=hub.state.value.library.single()
+                val file=hub.library.resolve(item.id)
+                val original=file.readBytes()
+                hub.syncSpotifyFavorites(listOf(track(1).copy(artist="Recorded Artist",album="Recorded Album")));await(hub)
+                assertEquals(1,backend.downloads)
+                assertEquals(1,backend.searches)
+                assertArrayEquals(original,file.readBytes())
+                val reopened=library(root).list().single()
+                assertEquals("Recorded Artist",reopened.artist)
+                assertEquals("Recorded Album",reopened.album)
+                assertEquals(item.id,reopened.id)
+            }
+        } finally {root.deleteRecursively()}
+    }
+
     @Test fun multipleCompatibleCandidatesUseClosestDurationWithoutASelectionPrompt() {
         val exact=source(1)
         val alternate=exact.copy(id="abcdefghijk",durationSeconds=125.0)

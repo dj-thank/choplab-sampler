@@ -43,13 +43,15 @@ private const val H13_UI_TIMEOUT_MILLIS = 30_000L
 
 /** Component evidence on the JVM/Skiko input stack, not OS pointer or physical audio evidence. */
 class DesktopLongPressUiTest {
-    @Test fun spotifySearchResultCanBeAddedWhileFavoritesAreImporting() = runBlocking {
+    @Test fun sharedSpotifySearchResultCanBeAddedWhileSelectedSongsAreImporting() = runBlocking {
         var added=0
         val scene=ImageComposeScene(width=390,height=720,density=Density(1f),coroutineContext=coroutineContext) {
-            ChopLabTheme { com.choplab.desktop.SpotifySearchPanel(
-                com.choplab.desktop.provider.SpotifyDesktopState(searchQuery="Song",searchResults=listOf(
-                    com.choplab.sampler.source.SourceTrack("Song","Artist","test"))),true,{},{},{added++;true},{},{},{},
+            ChopLabTheme { com.choplab.sampler.ui.SpotifySearchPanel(
+                query="Song", results=listOf(com.choplab.sampler.source.SourceTrack("Song","Artist","test")),
+                message="", busy=false, importBusy=true, onQuery={}, onSearch={}, onAdd={added++;true},
+                onLibrary={}, onSync={}, onDisconnect={},
             ) }
+
         }
         try {
             repeat(10){scene.render(System.nanoTime()).close();delay(15)}
@@ -66,7 +68,7 @@ class DesktopLongPressUiTest {
     }
 
     @Test
-    fun automaticSpotifyFlowHasNoTrackPickerAndCompletedAudioIsUsableDuringSync() = runBlocking {
+    fun selectedSpotifyFlowKeepsTrackPickingAndCompletedAudioUsableDuringImport() = runBlocking {
         for(width in listOf(390,960)) {
             val source=androidx.compose.runtime.mutableStateOf(com.choplab.sampler.source.AudioSourceState(
                 section=com.choplab.sampler.source.SourceSection.SPOTIFY,busy=true,
@@ -81,8 +83,8 @@ class DesktopLongPressUiTest {
                         onPickFiles={},onUse={uses++},onCancel={},onClose={},spotifyContent={
                             com.choplab.sampler.ui.SpotifySourcePicker(
                                 com.choplab.sampler.source.SpotifyImportState(connected=true,configured=true,
-                                    tracks=listOf(com.choplab.sampler.source.SourceTrack("曲を選ばない","Artist","test"))),
-                                true,"http://127.0.0.1/callback",{},{},{},{},{},automaticSync=true,
+                                    tracks=listOf(com.choplab.sampler.source.SourceTrack("選んで取り込む曲","Artist","test"))),
+                                true,"http://127.0.0.1/callback",{},{},{},{},{},automaticSync=false,
                                 onLibrary={source.value=source.value.copy(section=com.choplab.sampler.source.SourceSection.LIBRARY)},
                             )
                         })
@@ -96,17 +98,23 @@ class DesktopLongPressUiTest {
             try {
                 settle()
                 val texts=nodes().flatMap { it.config.getOrNull(SemanticsProperties.Text).orEmpty() }.map { it.text }
-                assertFalse(texts.any { it=="タップで取り込む" || it=="さらに読み込む" || it=="曲を選ばない" })
-                val library=nodes().first { it.config.getOrNull(SemanticsProperties.Text)?.any { text->text.text=="ライブラリを開く" }==true }
+                assertTrue(texts.any { it=="タップで取り込む" })
+                assertTrue(texts.any { it=="選んで取り込む曲" })
+                assertFalse(texts.any { it=="同期する" })
+                val library=nodes().first { it.config.getOrNull(SemanticsProperties.Text)?.any { text->text.text=="ライブラリ" }==true }
                 val clickable=generateSequence(library){it.parent}.first { it.config.getOrNull(SemanticsActions.OnClick)?.action!=null }
                 assertTrue(clickable.boundsInRoot.bottom<=720)
                 assertTrue(requireNotNull(clickable.config.getOrNull(SemanticsActions.OnClick)?.action).invoke())
                 settle()
-                val audio=nodes().first { it.config.getOrNull(SemanticsProperties.ContentDescription)?.contains("ライブラリ音源 追加された曲を使う")==true }
+                val songs=nodes().first { it.config.getOrNull(SemanticsProperties.TestTag)=="library-tracks" }
+                assertTrue(requireNotNull(songs.config.getOrNull(SemanticsActions.OnClick)?.action).invoke())
+                settle()
+                assertEquals(0,uses)
+                val audio=nodes().first { it.config.getOrNull(SemanticsProperties.TestTag)=="library-track-fixture" }
                 assertTrue(requireNotNull(audio.config.getOrNull(SemanticsActions.OnClick)?.action).invoke())
                 assertEquals(1,uses)
                 val directory=File(requireNotNull(System.getProperty("h13.evidenceDir"))).apply{mkdirs()}
-                scene.render(System.nanoTime()).use { image->requireNotNull(image.encodeToData()).use { data->File(directory,"spotify-auto-library-$width.png").writeBytes(data.bytes) } }
+                scene.render(System.nanoTime()).use { image->requireNotNull(image.encodeToData()).use { data->File(directory,"spotify-selected-library-$width.png").writeBytes(data.bytes) } }
             } finally {scene.close()}
         }
     }

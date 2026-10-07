@@ -1,7 +1,11 @@
+@file:OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+
 package com.choplab.desktop.next
 
 import com.choplab.desktop.provider.*
 import com.choplab.sampler.source.SourceTrack
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import com.choplab.ui.resources.*
 import kotlinx.coroutines.suspendCancellableCoroutine
 import org.jetbrains.compose.resources.StringResource
@@ -17,7 +21,7 @@ import kotlin.coroutines.resume
 
 /** Owns its window/timer; the host owns the memory-only account session. */
 internal object NextSpotifyDialog {
-    suspend fun show(parent: Window?, session: SpotifyDesktopSession) {
+    suspend fun show(parent: Window?, session: SpotifyDesktopSession, onRendered: () -> Unit = {}) {
         val labels = NextSpotifyMetadataController.resources.associateWith { getString(it) }
         fun text(key: StringResource, vararg values: Any) = labels.getValue(key).let {
             if (values.isEmpty()) it else String.format(it, *values)
@@ -25,9 +29,9 @@ internal object NextSpotifyDialog {
         suspendCancellableCoroutine<Unit> { answer -> SwingUtilities.invokeLater {
             if (!answer.isActive) return@invokeLater
             val controller = NextSpotifyMetadataController(session)
+            val browser = SpotifyCatalogBrowser(session)
             val dialog = JDialog(parent, text(Res.string.ce_spotify_metadata), Dialog.ModalityType.DOCUMENT_MODAL)
             val client = JTextField().apply { name = "next-spotify-client"; accessibleContext.accessibleName = text(Res.string.ce_spotify_client) }
-            val query = JTextField(session.state.value.searchQuery).apply { name = "next-spotify-query"; accessibleContext.accessibleName = text(Res.string.ce_spotify_search) }
             fun button(key: StringResource, id: String) = JButton(text(key)).apply {
                 name = "next-spotify-$id"; preferredSize = Dimension(preferredSize.width.coerceAtLeast(110), 48)
             }
@@ -35,70 +39,42 @@ internal object NextSpotifyDialog {
             val login = button(Res.string.ce_spotify_login, "login")
             val cancel = button(Res.string.ce_library_cancel, "cancel")
             val disconnect = button(Res.string.ce_spotify_disconnect, "disconnect")
-            val favorites = button(Res.string.ce_spotify_favorites, "favorites")
-            val more = button(Res.string.ce_spotify_more, "more")
-            val search = button(Res.string.ce_spotify_search, "search")
-            val open = button(Res.string.ce_spotify_open, "open")
             val close = button(Res.string.ce_library_close, "close")
-            val model = DefaultListModel<SourceTrack>()
-            val list = JList(model).apply {
-                name = "next-spotify-tracks"; fixedCellHeight = 48
-                accessibleContext.accessibleName = text(Res.string.ce_spotify_metadata)
-                selectionMode = ListSelectionModel.SINGLE_SELECTION
-                cellRenderer = object : DefaultListCellRenderer() {
-                    init { putClientProperty("html.disable", true) }
-                    override fun getListCellRendererComponent(list: JList<*>?, value: Any?, index: Int, selected: Boolean, focus: Boolean): Component {
-                        val track = value as SourceTrack
-                        val label = super.getListCellRendererComponent(list, "${track.artist} — ${track.title}", index, selected, focus) as JLabel
-                        // Provider strings are text, never Swing HTML (including image/network markup).
-                        label.putClientProperty("html.disable", true)
-                        return label
+            fun wrapped(value: String) = JTextArea(value).apply { isEditable = false; lineWrap = true; wrapStyleWord = true; isOpaque = false }
+            val status = wrapped("").apply { rows = 2; name = "next-spotify-status" }
+            val content = androidx.compose.ui.awt.ComposePanel().apply {
+                name = "next-spotify-catalog"
+                setContent {
+                    val state by session.state.collectAsState()
+                    androidx.compose.runtime.SideEffect(onRendered)
+                    com.choplab.sampler.ui.theme.ChopLabTheme {
+                        com.choplab.desktop.SpotifyCatalogPanel(state, browser, onOpenSpotify = { track ->
+                            controller.openCatalogTrack(track, browser.page?.entries.orEmpty().mapNotNull { it.track })
+                        })
                     }
                 }
             }
-            fun wrapped(value: String) = JTextArea(value).apply { isEditable = false; lineWrap = true; wrapStyleWord = true; isOpaque = false }
-            val status = wrapped("").apply { rows = 3; name = "next-spotify-status" }
-            var shown = emptyList<SourceTrack>()
             var finished = false
             fun refresh() {
                 if (finished) return
                 val view = controller.view()
-                if (view.tracks != shown) {
-                    val selected = list.selectedValue?.spotifyUrl
-                    shown = view.tracks; model.clear(); shown.forEach(model::addElement)
-                    list.selectedIndex = shown.indexOfFirst { it.spotifyUrl == selected }
-                }
                 configure.isEnabled = view.canConfigure; client.isEnabled = view.canConfigure
                 login.isEnabled = view.canLogin; cancel.isEnabled = view.canCancel
                 disconnect.isEnabled = view.canDisconnect
-                favorites.isEnabled = view.canFetch; search.isEnabled = view.canSearch
-                more.isEnabled = view.canMore
-                open.isEnabled = list.selectedValue != null
                 status.text = text(view.status, *view.statusArguments.toTypedArray())
             }
             val timer = Timer(100) { refresh() }
             fun finish() {
                 if (finished) return
-                finished = true
-                timer.stop(); controller.close(); client.text = ""; model.clear(); dialog.dispose()
+                finished = true; timer.stop(); browser.close(); controller.close()
+                client.text = ""; content.dispose(); dialog.dispose()
                 if (answer.isActive) answer.resume(Unit)
             }
-            configure.addActionListener { controller.configure(client.text); client.text = ""; query.text = ""; refresh() }
-            login.addActionListener { controller.setQuery(query.text); controller.login(); refresh() }
+            configure.addActionListener { controller.configure(client.text); client.text = ""; browser.home(); refresh() }
+            login.addActionListener { controller.login(); refresh() }
             cancel.addActionListener { controller.cancel(); refresh() }
-            disconnect.addActionListener { controller.disconnect(); query.text = ""; refresh() }
-            favorites.addActionListener { controller.favorites(); refresh() }
-            more.addActionListener { controller.more(); refresh() }
-            search.addActionListener { controller.search(); refresh() }
-            query.addActionListener { if (search.isEnabled) search.doClick() }
-            query.document.addDocumentListener(object : DocumentListener {
-                override fun insertUpdate(e: DocumentEvent) { controller.setQuery(query.text); refresh() }
-                override fun removeUpdate(e: DocumentEvent) { controller.setQuery(query.text); refresh() }
-                override fun changedUpdate(e: DocumentEvent) { controller.setQuery(query.text); refresh() }
-            })
-            open.addActionListener { controller.open(list.selectedValue); refresh() }
+            disconnect.addActionListener { controller.disconnect(); browser.home(); refresh() }
             close.addActionListener { finish() }
-            list.addListSelectionListener { if (!it.valueIsAdjusting) refresh() }
             dialog.defaultCloseOperation = WindowConstants.DO_NOTHING_ON_CLOSE
             dialog.addWindowListener(object : WindowAdapter() {
                 override fun windowClosing(e: WindowEvent) = finish()
@@ -108,20 +84,19 @@ internal object NextSpotifyDialog {
             fun row(vararg components: Component) = JPanel(GridLayout(1, components.size, 8, 8)).apply { components.forEach { add(it) } }
             dialog.contentPane = JPanel(BorderLayout(8, 8)).apply {
                 border = BorderFactory.createEmptyBorder(12, 12, 12, 12)
-                add(JPanel(GridLayout(4, 1, 8, 8)).apply {
+                add(JPanel(GridLayout(3, 1, 4, 4)).apply {
                     add(row(JLabel(text(Res.string.ce_spotify_client)), client, configure))
                     add(wrapped(text(Res.string.ce_spotify_redirect, "http://127.0.0.1/callback")))
-                    add(row(login, cancel, disconnect, favorites, more))
-                    add(row(query, search))
+                    add(row(login, cancel, disconnect))
                 }, BorderLayout.NORTH)
-                add(JScrollPane(list), BorderLayout.CENTER)
+                add(content, BorderLayout.CENTER)
                 add(JPanel(BorderLayout(8, 8)).apply {
                     add(status, BorderLayout.NORTH)
                     add(wrapped(text(Res.string.ce_spotify_boundary)).apply { rows = 2 }, BorderLayout.CENTER)
-                    add(row(open, close), BorderLayout.SOUTH)
+                    add(row(close), BorderLayout.SOUTH)
                 }, BorderLayout.SOUTH)
             }
-            dialog.minimumSize = Dimension(820, 520); dialog.setSize(900, 600); dialog.setLocationRelativeTo(parent)
+            dialog.minimumSize = Dimension(760, 640); dialog.setSize(960, 780); dialog.setLocationRelativeTo(parent)
             refresh(); timer.start()
             try { dialog.isVisible = true } finally { finish() }
         } }
@@ -157,6 +132,14 @@ internal class NextSpotifyMetadataController(
 
     fun open(track: SourceTrack?) {
         if (closed || track == null || track !in view().tracks) return
+        val uri = runCatching { URI(track.spotifyUrl) }.getOrNull() ?: return
+        if (uri.scheme != "https" || uri.host != "open.spotify.com" || uri.userInfo != null || uri.port != -1 ||
+            uri.query != null || uri.fragment != null || !Regex("/track/[A-Za-z0-9]{22}").matches(uri.path)) return
+        browserFailed = runCatching { browser.open(uri) }.isFailure
+    }
+
+    fun openCatalogTrack(track: SourceTrack, allowed: List<SourceTrack>) {
+        if (closed || !session.connected || track !in allowed) return
         val uri = runCatching { URI(track.spotifyUrl) }.getOrNull() ?: return
         if (uri.scheme != "https" || uri.host != "open.spotify.com" || uri.userInfo != null || uri.port != -1 ||
             uri.query != null || uri.fragment != null || !Regex("/track/[A-Za-z0-9]{22}").matches(uri.path)) return

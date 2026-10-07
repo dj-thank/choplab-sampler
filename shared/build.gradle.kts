@@ -10,6 +10,7 @@ kotlin {
     android {
         namespace = "com.choplab.shared"
         compileSdk = 37
+        androidResources.enable = true
         compilerOptions {
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
         }
@@ -27,11 +28,17 @@ kotlin {
             implementation(libs.compose.foundation)
             implementation(libs.compose.material3)
             implementation(libs.compose.ui)
+            implementation(libs.compose.resources)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
         }
     }
+}
+
+compose.resources {
+    packageOfResClass = "com.choplab.library.resources"
+    publicResClass = true
 }
 
 tasks.withType<JavaCompile>().configureEach {

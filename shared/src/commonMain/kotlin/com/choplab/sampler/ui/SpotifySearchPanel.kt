@@ -26,20 +26,22 @@ fun SpotifySearchPanel(
     onLibrary: () -> Unit,
     onSync: () -> Unit,
     onDisconnect: () -> Unit,
+    favorites: List<SourceTrack> = emptyList(),
 ) {
     var notice by remember(query) { mutableStateOf("") }
+    var showingFavorites by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         OutlinedTextField(query, onQuery, modifier = Modifier.fillMaxWidth(), singleLine = true,
             enabled = !busy, label = { Text("曲名・アーティストで検索") })
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onSearch, enabled = !busy && query.isNotBlank()) { Text("検索") }
+            Button({ showingFavorites = false; onSearch() }, enabled = !busy && query.isNotBlank()) { Text("検索") }
             TextButton(onLibrary) { Text("ライブラリを開く") }
         }
         Text("検索した曲の対応YouTube音源をライブラリに追加します。")
         if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
         Text(if (notice.isNotEmpty()) notice else message)
         LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(results, key = { it.spotifyUrl }) { track ->
+            items(if (showingFavorites) favorites else results, key = { it.spotifyUrl }) { track ->
                 OutlinedCard(Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(12.dp)) {
                         Text(track.title, style = MaterialTheme.typography.titleSmall)
@@ -54,7 +56,7 @@ fun SpotifySearchPanel(
             }
         }
         Row {
-            TextButton(onSync, enabled = !busy && !importBusy) { Text("お気に入りを同期") }
+            TextButton({ showingFavorites = true; onSync() }, enabled = !busy && !importBusy) { Text("お気に入りを表示・追加読込み") }
             TextButton(onDisconnect) { Text("連携解除") }
         }
     }
