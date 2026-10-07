@@ -123,7 +123,7 @@ class AudioSourceController(val library: LocalAudioLibrary, private val backend:
             try {
                 val cached = library.spotifyItem(track.spotifyUrl)
                 if (cached != null) {
-                    library.rememberSpotify(track.spotifyUrl, cached, track.artist, track.album)
+                    library.rememberSpotify(track.spotifyUrl, cached, track.artist, track.album, track.trackNumber, track.discNumber)
                     progress = progress.copy(existing=progress.existing+1)
                 } else {
                     val found = backend.search(track.query.take(240),id)
@@ -139,7 +139,7 @@ class AudioSourceController(val library: LocalAudioLibrary, private val backend:
                     require(prior != null || library.directory.usableSpace >= LocalAudioLibrary.MAX_FILE_BYTES * 2) { "空き容量が不足しています" }
                     val item = prior ?: download(lease,id,checked,selectForUse=false)
                     current(lease)
-                    library.rememberSpotify(track.spotifyUrl,item,track.artist,track.album)
+                    library.rememberSpotify(track.spotifyUrl,item,track.artist,track.album,track.trackNumber,track.discNumber)
                     progress = if(prior == null) progress.copy(added=progress.added+1) else progress.copy(existing=progress.existing+1)
                 }
             } catch (error: Exception) {
@@ -170,7 +170,8 @@ class AudioSourceController(val library: LocalAudioLibrary, private val backend:
             }
             current(lease)
             require(output.canonicalFile.parentFile==folder && output.isFile)
-            val item=library.importFile(output,source.title,source.url)
+            val item=library.importFileResult(output,source.title,source.url,
+                AudioLibraryMetadata(source.metadata?.artist.orEmpty(), source.metadata?.album.orEmpty())) { current(lease) }.item
             current(lease)
             publish(lease) { it.copy(library=library.list(),section=SourceSection.LIBRARY,message="${item.title} を追加しました",pendingUseId=if(selectForUse)item.id else null) }
             return item

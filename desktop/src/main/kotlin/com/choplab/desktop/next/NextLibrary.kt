@@ -12,12 +12,23 @@ import java.util.concurrent.Executors
 import java.util.concurrent.Future
 import java.util.concurrent.atomic.AtomicLong
 
-/** One library job, independent from the editor document. Only an explicit selection opens an original. */
+/** One library job, independent from the editor document. Only explicit Use opens an original. */
 internal class NextLibrary(directory: Path, validate: (java.io.File) -> Unit) : AutoCloseable {
-    enum class Status { READY, LOADING, IMPORTING, ADDED, PARTLY_ADDED, FAILED, CANCELLED, EXPORTING, EXPORTED, SELECTING, SELECTED, BUNDLE_LIMIT }
+    enum class Status { READY, LOADING, LOAD_FAILED, IMPORTING, ADDED, PARTLY_ADDED, FAILED, CANCELLED, EXPORTING, EXPORTED, SELECTING, SELECTED, BUNDLE_LIMIT }
+    enum class FailureReason { MISSING, ACCESS, EMPTY, TOO_LARGE, INVALID_AUDIO, CAPACITY }
+    data class Failure(val path: Path, val reason: FailureReason) {
+        val name get() = path.fileName.toString().filter { it.code >= 32 }.take(240)
+    }
     data class Selection(val path: Path, val title: String, val hash: String)
     data class State(val items: List<AudioLibraryItem> = emptyList(), val status: Status = Status.LOADING,
-        val busy: Boolean = false, val selection: Selection? = null, val completed: Int = 0, val total: Int = 0, val position: Int = 0, val failed: Int = 0)
+        val busy: Boolean = false, val selection: Selection? = null, val completed: Int = 0, val reused: Int = 0,
+        val total: Int = 0, val position: Int = 0, val failures: List<Failure> = emptyList(),
+        val readFailed: Boolean = false, val unreadable: Int = 0, val catalogTotal: Int = 0, val catalogOffset: Int = 0,
+        val exportItems: List<AudioLibraryItem> = emptyList()) {
+        val failed get() = failures.size
+        val hasOlder get() = catalogOffset + LocalAudioLibrary.MAX_ITEMS < catalogTotal
+        val hasNewer get() = catalogOffset > 0
+    }
     private val library by lazy { LocalAudioLibrary(directory.toFile(), validate) }
     private val mutable = MutableStateFlow(State())
     val state = mutable.asStateFlow()
@@ -26,9 +37,24 @@ internal class NextLibrary(directory: Path, validate: (java.io.File) -> Unit) : 
     private var future: Future<*>? = null
     private var closed = false
 
-    init { start(Status.LOADING) { lease -> publish(lease) { it.copy(status = Status.READY) } } }
+    init { refresh() }
 
-    /** The returned file is consumed through the editor's normal bounded, original-byte import. */
+    fun refresh(offset: Int = state.value.catalogOffset): Boolean = start(Status.LOADING, resetResults = false) { lease ->
+        if (readListing(lease, offset)) publish(lease) { it.copy(status = Status.READY) }
+    }
+    private fun readListing(lease: Long, offset: Int): Boolean = try {
+        current(lease)
+        val listing = library.listing(offset)
+        current(lease)
+        publish(lease) { it.copy(items = listing.items, catalogTotal = listing.total, catalogOffset = listing.offset,
+            unreadable = listing.unreadable, readFailed = false) }
+        true
+    } catch (_: Exception) {
+        publish(lease) { it.copy(readFailed = true, status = if (it.status == Status.LOADING) Status.LOAD_FAILED else it.status) }
+        false
+    }
+
+    /** Consumed through the editor's normal bounded, original-byte import. */
     fun select(id: String): Boolean = start(Status.SELECTING) { lease ->
         val path = library.resolve(id).toPath()
         val digest = java.security.MessageDigest.getInstance("SHA-256")
@@ -42,21 +68,24 @@ internal class NextLibrary(directory: Path, validate: (java.io.File) -> Unit) : 
             }
         }
         require(digest.digest().joinToString("") { "%02x".format(it.toInt() and 255) } == id)
-        val item = library.list().first { it.id == id }
+        val item = library.get(id)
         current(lease)
         publish(lease) { it.copy(status = Status.SELECTED, selection = Selection(path, item.title, id)) }
     }
 
-    @Synchronized private fun start(status: Status, action: (Long) -> Unit): Boolean {
+    @Synchronized private fun start(status: Status, resetResults: Boolean = true, action: (Long) -> Unit): Boolean {
         if (closed || mutable.value.busy) return false
         val lease = generation.incrementAndGet()
-        mutable.update { it.copy(status = status, busy = true, selection = null, completed = 0, total = 0, position = 0, failed = 0) }
+        mutable.update { previous ->
+            val next = previous.copy(status = status, busy = true, selection = null)
+            if (resetResults) next.copy(completed = 0, reused = 0, total = 0, position = 0, failures = emptyList()) else next
+        }
         future = executor.submit {
             try { action(lease) }
             catch (_: Exception) { publish(lease) { it.copy(status = Status.FAILED) } }
             finally {
-                val items = try { library.list() } catch (_: Exception) { emptyList() }
-                publish(lease) { it.copy(items = items, busy = false) }
+                if (status != Status.LOADING) readListing(lease, mutable.value.catalogOffset)
+                publish(lease) { it.copy(busy = false) }
             }
         }
         return true
@@ -67,40 +96,72 @@ internal class NextLibrary(directory: Path, validate: (java.io.File) -> Unit) : 
     private fun publish(lease: Long, transform: (State) -> State) {
         mutable.update { if (generation.get() == lease) transform(it) else it }
     }
+    fun retryFailures(): Boolean = state.value.failures.map { it.path }.takeIf { it.isNotEmpty() }?.let(::add) ?: false
     fun add(paths: List<Path>): Boolean {
         require(paths.isNotEmpty() && paths.size <= 128)
         return start(Status.IMPORTING) { lease ->
             publish(lease) { it.copy(total = paths.size) }
-            var added = 0; var failed = 0
+            var added = 0; var reused = 0
+            val failures = mutableListOf<Failure>()
             for ((index, path) in paths.withIndex()) {
                 current(lease)
                 publish(lease) { it.copy(position = index + 1) }
                 try {
-                    if (path.fileName.toString().substringAfterLast('.').lowercase() in setOf("zip", "choplib"))
-                        added += library.importBundle(path.toFile()).size
-                    else { library.importFile(path.toFile()); added++ }
-                } catch (_: Exception) { current(lease); failed++ }
-                publish(lease) { it.copy(completed = added, failed = failed) }
+                    val results = if (path.fileName.toString().substringAfterLast('.').lowercase() in setOf("zip", "choplib"))
+                        library.importBundleResults(path.toFile())
+                    else listOf(library.importFileResult(path.toFile(), checkCancelled = { current(lease) }))
+                    added += results.count { it.added }; reused += results.count { !it.added }
+                } catch (error: Exception) {
+                    current(lease)
+                    val size = runCatching { Files.size(path) }.getOrDefault(-1)
+                    failures += Failure(path, when {
+                        error is LocalAudioLibrary.CapacityExceeded -> FailureReason.CAPACITY
+                        !Files.exists(path) -> FailureReason.MISSING
+                        !Files.isReadable(path) || error is java.io.IOException -> FailureReason.ACCESS
+                        Files.isRegularFile(path) && size == 0L -> FailureReason.EMPTY
+                        Files.isRegularFile(path) && size > LocalAudioLibrary.MAX_FILE_BYTES && path.toFile().extension.lowercase() !in setOf("zip", "choplib") -> FailureReason.TOO_LARGE
+                        else -> FailureReason.INVALID_AUDIO
+                    })
+                }
+                publish(lease) { it.copy(completed = added, reused = reused, failures = failures.toList()) }
             }
             current(lease)
-            publish(lease) { it.copy(status = when { failed == 0 -> Status.ADDED; added > 0 -> Status.PARTLY_ADDED; else -> Status.FAILED }) }
+            publish(lease) { it.copy(status = when { failures.isEmpty() -> Status.ADDED; added + reused > 0 -> Status.PARTLY_ADDED; else -> Status.FAILED }) }
         }
     }
-    /** Replace only after the entire bundle is written; cancellation leaves an existing destination untouched. */
-    fun export(target: Path): Boolean = start(Status.EXPORTING) { lease ->
-        val items = library.list()
+
+    @Synchronized fun toggleExport(item: AudioLibraryItem): Boolean {
+        if (closed || state.value.busy) return false
+        val selected = state.value.exportItems
+        return if (selected.any { it.id == item.id }) setExportItems(selected.filterNot { it.id == item.id })
+            else addExportItems(listOf(item))
+    }
+    @Synchronized fun addExportItems(items: List<AudioLibraryItem>): Boolean {
+        if (closed || state.value.busy || items.any { it !in state.value.items }) return false
+        return setExportItems((state.value.exportItems + items).distinctBy { it.id })
+    }
+    private fun setExportItems(items: List<AudioLibraryItem>): Boolean {
         if (items.size > 32 || items.sumOf { it.bytes } > 1024L * 1024 * 1024) {
-            publish(lease) { it.copy(status = Status.BUNDLE_LIMIT) }
-            return@start
+            mutable.update { it.copy(status = Status.BUNDLE_LIMIT) }; return false
+        }
+        mutable.update { it.copy(exportItems = items, status = if (it.status == Status.BUNDLE_LIMIT) Status.READY else it.status) }; return true
+    }
+    @Synchronized fun clearExportSelection() { if (!closed && !state.value.busy) setExportItems(emptyList()) }
+
+    /** Replace only after the whole selected bundle is verified; cancellation preserves the destination. */
+    fun export(target: Path, selectedIds: List<String>? = null): Boolean = start(Status.EXPORTING) { lease ->
+        val items = if (selectedIds == null) library.list() else selectedIds.map(library::get)
+        if (items.isEmpty() || items.size > 32 || items.sumOf { it.bytes } > 1024L * 1024 * 1024) {
+            publish(lease) { it.copy(status = Status.BUNDLE_LIMIT) }; return@start
         }
         val absolute = target.toAbsolutePath()
         val temporary = Files.createTempFile(absolute.parent, ".choplab-library-", ".pending")
         try {
-            library.exportBundle(temporary.toFile())
+            library.exportBundle(temporary.toFile(), selectedIds)
             synchronized(this) {
                 current(lease)
                 Files.move(temporary, absolute, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
-                publish(lease) { it.copy(status = Status.EXPORTED, busy = false) }
+                publish(lease) { it.copy(status = Status.EXPORTED, exportItems = emptyList()) }
             }
         } finally { Files.deleteIfExists(temporary) }
     }
@@ -109,10 +170,10 @@ internal class NextLibrary(directory: Path, validate: (java.io.File) -> Unit) : 
         generation.incrementAndGet(); future?.cancel(true)
         mutable.update { it.copy(status = Status.CANCELLED, busy = true, selection = null) }
         val lease = generation.get()
-        // The same worker refreshes after the interrupted job has released its files; no competing writer starts.
+        // Wait on the same worker before accepting another writer.
         future = executor.submit {
-            val items = try { library.list() } catch (_: Exception) { emptyList() }
-            publish(lease) { it.copy(items = items, busy = false) }
+            readListing(lease, mutable.value.catalogOffset)
+            publish(lease) { it.copy(busy = false) }
         }
     }
     @Synchronized override fun close() { closed = true; generation.incrementAndGet(); future?.cancel(true); executor.shutdownNow() }

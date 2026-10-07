@@ -254,6 +254,11 @@ class SpotifyDesktopSession(
         callback?.cancel()
     }
 
+    /** Returning to an already fetched page clears its unrelated failure, but retains Retry-After. */
+    internal fun clearCatalogProblem() = synchronized(lock) {
+        if (!closed.get() && connected && !mutableState.value.busy) setStateLocked(mutableState.value)
+    }
+
     fun showCurrentPlayback() = withLegacyAccessToken("Spotify現在再生") { token, lease ->
         val response = api.currentPlayback(token)
         generation.requireCurrent(lease)
@@ -539,7 +544,7 @@ class SpotifyDesktopSession(
     private fun refreshIfNeeded(current: Credentials, clientId: String): Credentials {
         val refreshAt = current.acquiredAt.plusSeconds((current.tokens.expiresInSeconds - 60L).coerceAtLeast(0L))
         if (now().isBefore(refreshAt)) return current
-        val refreshToken = current.tokens.refreshToken ?: error("Spotifyログインの有効期限が切れました。再ログインしてください")
+        val refreshToken = current.tokens.refreshToken ?: throw SpotifyRefreshUnavailableException()
         val refreshed = tokenClient.refresh(clientId, refreshToken)
         return Credentials(
             tokens = refreshed.copy(refreshToken = refreshed.refreshToken ?: refreshToken),
@@ -553,7 +558,7 @@ class SpotifyDesktopSession(
         }
         activeSearchQuery = null
         if ((error is SpotifyApiException && error.response.statusCode == 401) ||
-            (error is SpotifyTokenRequestException && error.statusCode in 400..401)
+            (error is SpotifyTokenRequestException && error.statusCode in 400..401) || error is SpotifyRefreshUnavailableException
         ) {
             credentials = null
             setStateLocked(errorState("$label: 認証期限が切れたか更新できませんでした。もう一度ログインしてください"),
@@ -678,6 +683,7 @@ class SpotifyDesktopSession(
 }
 
 private class SpotifyMetadataResponseException : IllegalStateException("Unrecognized Spotify metadata")
+private class SpotifyRefreshUnavailableException : IllegalStateException("Spotify authorization expired")
 
 private fun isValidSpotifyClientId(value: String): Boolean = value.matches(Regex("[A-Za-z0-9]{16,128}"))
 

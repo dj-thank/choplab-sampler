@@ -134,7 +134,8 @@ class OnlineSourceSession(directory: Path, validate: (File) -> Unit,
                 current(lease)
                 require(file.toPath().toRealPath().startsWith(temporary.toRealPath()))
                 publish(lease) { it.copy(phase = OnlineSourcePhase.SAVING) }
-                val item = try { library.importFile(file, checked.title, checked.url) { current(lease) } }
+                val item = try { library.importFileResult(file, checked.title, checked.url,
+                    AudioLibraryMetadata(checked.metadata?.artist.orEmpty(), checked.metadata?.album.orEmpty())) { current(lease) }.item }
                     catch (error: InterruptedException) { throw error }
                     catch (error: OnlineSourceException) { throw error }
                     catch (_: IllegalArgumentException) { throw OnlineSourceException(OnlineSourceProblem.INVALID_AUDIO) }

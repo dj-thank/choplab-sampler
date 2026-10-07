@@ -8,6 +8,82 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.*
 
 class NextLibraryTest {
+    @Test fun unreadableLibraryIsRecoverableAndDoesNotReplaceTheLastReadableList() = runBlocking<Unit> {
+        val root = Files.createTempDirectory("next-library-unreadable-")
+        val directory = root.resolve("library")
+        Files.writeString(directory, "not a directory")
+        NextLibrary(directory) {}.use { library ->
+            idle(library)
+            assertEquals(NextLibrary.Status.LOAD_FAILED, library.state.value.status)
+            assertTrue(library.state.value.readFailed)
+            Files.delete(directory); Files.createDirectory(directory)
+            assertTrue(library.refresh()); idle(library)
+            assertEquals(NextLibrary.Status.READY, library.state.value.status)
+            assertFalse(library.state.value.readFailed)
+            val source = root.resolve("sample.wav").also { Files.writeString(it, "synthetic bytes") }
+            library.add(listOf(source)); idle(library)
+            val items = library.state.value.items
+            val moved = root.resolve("preserved")
+            Files.move(directory, moved); Files.writeString(directory, "read unavailable")
+            library.refresh(); idle(library)
+            assertEquals(NextLibrary.Status.LOAD_FAILED, library.state.value.status)
+            assertEquals(items, library.state.value.items)
+            Files.delete(directory); Files.move(moved, directory)
+            library.refresh(); idle(library)
+            assertEquals(items, library.state.value.items); assertFalse(library.state.value.readFailed)
+        }
+        root.toFile().deleteRecursively()
+    }
+
+    @Test fun partialFailureReportsTheFileAndRetryOnlyReadsFailedPaths() = runBlocking<Unit> {
+        val root = Files.createTempDirectory("next-library-partial-")
+        val good = root.resolve("good.wav").also { Files.writeString(it, "good") }
+        val bad = root.resolve("empty.wav").also { Files.write(it, byteArrayOf()) }
+        val missing = root.resolve("moved.wav")
+        val validations = AtomicInteger()
+        NextLibrary(root.resolve("library")) { validations.incrementAndGet() }.use { library ->
+            idle(library); library.add(listOf(good, bad, missing)); idle(library)
+            assertEquals(NextLibrary.Status.PARTLY_ADDED, library.state.value.status)
+            assertEquals(1, library.state.value.completed); assertEquals(0, library.state.value.reused)
+            assertEquals(listOf("empty.wav", "moved.wav"), library.state.value.failures.map { it.name })
+            assertEquals(listOf(NextLibrary.FailureReason.EMPTY, NextLibrary.FailureReason.MISSING), library.state.value.failures.map { it.reason })
+            val original = library.state.value.items.single()
+            // A successful path is no longer available: retry must not attempt it.
+            Files.delete(good); Files.writeString(bad, "repaired"); Files.writeString(missing, "found")
+            assertTrue(library.retryFailures()); idle(library)
+            assertEquals(NextLibrary.Status.ADDED, library.state.value.status)
+            assertEquals(2, library.state.value.completed); assertEquals(3, validations.get())
+            assertTrue(library.state.value.failures.isEmpty()); assertTrue(original in library.state.value.items)
+            library.add(listOf(bad)); idle(library)
+            assertEquals(0, library.state.value.completed); assertEquals(1, library.state.value.reused)
+            assertEquals(3, validations.get()); assertNull(library.state.value.selection)
+        }
+        root.toFile().deleteRecursively()
+    }
+
+    @Test fun selectedBundleRemainsBoundedAcrossListsAndAnOversizedSelectionPreservesTheExistingChoice() = runBlocking<Unit> {
+        val root = Files.createTempDirectory("next-library-selection-")
+        val sources = (0 until 40).map { n -> root.resolve("$n.wav").also { Files.writeString(it, "bytes $n") } }
+        NextLibrary(root.resolve("library")) {}.use { library ->
+            idle(library); library.add(sources); idle(library)
+            val chosen = library.state.value.items.take(20)
+            assertTrue(library.addExportItems(chosen)); assertEquals(chosen, library.state.value.exportItems)
+            assertFalse(library.addExportItems(library.state.value.items)); assertEquals(chosen, library.state.value.exportItems)
+            assertEquals(NextLibrary.Status.BUNDLE_LIMIT, library.state.value.status)
+            assertTrue(library.toggleExport(chosen.last())); assertEquals(NextLibrary.Status.READY, library.state.value.status)
+            assertTrue(library.addExportItems(chosen)); assertEquals(chosen.map { it.id }.toSet(), library.state.value.exportItems.map { it.id }.toSet())
+            val target = root.resolve("selected.choplib")
+            library.export(target, chosen.map { it.id }); idle(library)
+            assertEquals(NextLibrary.Status.EXPORTED, library.state.value.status)
+            assertTrue(library.state.value.exportItems.isEmpty()); assertNull(library.state.value.selection)
+            NextLibrary(root.resolve("restored")) {}.use { restored ->
+                idle(restored); restored.add(listOf(target)); idle(restored)
+                assertEquals(chosen.map { it.id }.toSet(), restored.state.value.items.map { it.id }.toSet())
+            }
+        }
+        root.toFile().deleteRecursively()
+    }
+
     @Test fun actualLibraryValidationThroughProductionAndArchiveReopen() = runBlocking<Unit> {
         NextLibrarySelfTest.run(Files.createTempDirectory("next-library-self-test-"))
     }

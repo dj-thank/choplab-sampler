@@ -11,18 +11,30 @@ class LibraryBrowser {
     var album: String? = null; private set
     var query = ""; private set
     private var offset = 0
+    data class Location(val section: Section, val artist: String?, val album: String?, val query: String, val offset: Int)
+    data class Viewport(val index: Int = 0, val scrollOffset: Int = 0)
+    val location get() = Location(section, artist, album, query, offset)
+    private val history = ArrayDeque<Location>()
+    private val viewports = linkedMapOf<Location, Viewport>()
+    fun viewport(location: Location) = viewports[location] ?: Viewport()
+    fun rememberViewport(location: Location, index: Int, scrollOffset: Int) {
+        viewports[location] = Viewport(index.coerceAtLeast(0), scrollOffset.coerceAtLeast(0))
+        while (viewports.size > 64) viewports.remove(viewports.keys.first())
+    }
 
-    fun section(value: Section) { section = value; artist = null; album = null; offset = 0 }
+    fun section(value: Section) { section = value; artist = null; album = null; offset = 0; history.clear() }
     fun search(value: String) { query = value.take(240); offset = 0 }
     fun open(group: Group) {
+        history.addLast(location)
+        while (history.size > 20) history.removeFirst()
         artist = group.artist; album = group.album
         section = if (group.album == null) Section.ALBUMS else Section.TRACKS
         offset = 0
     }
     fun back() {
-        if (album != null) { album = null; section = Section.ALBUMS }
-        else { artist = null; section = Section.ARTISTS }
-        offset = 0
+        val previous = history.removeLastOrNull() ?: return
+        section = previous.section; artist = previous.artist; album = previous.album
+        query = previous.query; offset = previous.offset
     }
     fun next(items: List<AudioLibraryItem>) { if (page(items).hasNext) offset += PAGE_SIZE }
     fun previous() { offset = (offset - PAGE_SIZE).coerceAtLeast(0) }
@@ -39,12 +51,15 @@ class LibraryBrowser {
             Section.ALBUMS -> filtered.groupBy { it.artist to it.album }.map { (key, tracks) -> Group(key.first, key.second, tracks.size) }
             Section.TRACKS -> emptyList()
         }.sortedWith(compareBy<Group> { it.album?.lowercase() ?: it.artist.lowercase() }.thenBy { it.artist.lowercase() })
-        val total = if (section == Section.TRACKS) filtered.size else groups.size
+        val tracks = if (album != null) filtered.sortedWith(compareBy<AudioLibraryItem> {
+            it.discNumber ?: if (it.trackNumber != null) 1 else Int.MAX_VALUE
+        }.thenBy { it.trackNumber ?: Int.MAX_VALUE }.thenBy { it.title.lowercase() }.thenBy { it.id }) else filtered
+        val total = if (section == Section.TRACKS) tracks.size else groups.size
         // A refresh or deletion can reduce the current collection; retain a valid last page.
         val start = offset.coerceAtMost(((total - 1).coerceAtLeast(0) / PAGE_SIZE) * PAGE_SIZE)
         offset = start
         return Page(groups.drop(start).take(PAGE_SIZE),
-            if (section == Section.TRACKS) filtered.drop(start).take(PAGE_SIZE) else emptyList(),
+            if (section == Section.TRACKS) tracks.drop(start).take(PAGE_SIZE) else emptyList(),
             total, start, start > 0, start + PAGE_SIZE < total)
     }
     companion object { const val PAGE_SIZE = 40; private val NUMBER_SEPARATOR = Regex("\\D+") }
