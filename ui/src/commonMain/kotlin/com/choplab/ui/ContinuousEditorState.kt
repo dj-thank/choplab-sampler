@@ -323,6 +323,8 @@ sealed interface ContinuousEditorAction {
     data class BankPadEdit(val action: BankPadEditAction) : ContinuousEditorAction
     data class Navigate(val stage: ContinuousStage) : ContinuousEditorAction
     data object ImportAudio : ContinuousEditorAction
+    /** A file explicitly selected by a platform drop/open event; uses the same import transaction. */
+    data class ImportAudioFile(val location: com.choplab.core.Location) : ContinuousEditorAction
     data object ImportLibrary : ContinuousEditorAction
     data object OpenSpotifyMetadata : ContinuousEditorAction
     data object SeparateSource : ContinuousEditorAction
@@ -333,6 +335,7 @@ sealed interface ContinuousEditorAction {
     data object StopSourceRecording : ContinuousEditorAction
     data object DiscardSourceRecording : ContinuousEditorAction
     data object OpenProject : ContinuousEditorAction
+    data class OpenProjectFile(val location: com.choplab.core.Location) : ContinuousEditorAction
     data object SaveProject : ContinuousEditorAction
     data class Mixer(val action: com.choplab.ui.mixer.MixerAction) : ContinuousEditorAction
     data class ExportBits(val bits: Int) : ContinuousEditorAction { init { require(bits == 16 || bits == 24) } }

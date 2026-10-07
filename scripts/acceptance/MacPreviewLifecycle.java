@@ -33,6 +33,19 @@ public final class MacPreviewLifecycle {
         EventQueue.invokeAndWait(() -> {
           if (!owned.isShowing())
             throw new IllegalStateException("Preview disappeared");
+          if (Boolean.getBoolean("choplab.expectNextMenus")) {
+            var awt = owned.getMenuBar();
+            var swing = owned instanceof javax.swing.JFrame
+                ? ((javax.swing.JFrame) owned).getJMenuBar() : null;
+            int count = awt != null ? awt.getMenuCount() : swing != null ? swing.getMenuCount() : 0;
+            if (count < 3 || owned.getDropTarget() == null || !owned.getDropTarget().isActive())
+              throw new IllegalStateException("NEXT native menus or file drop are not installed");
+            boolean importEnabled = awt != null ? awt.getMenu(0).getItem(0).isEnabled()
+                : swing.getMenu(0).getItem(0).isEnabled();
+            if (!importEnabled)
+              throw new IllegalStateException("Idle NEXT window must enable file import");
+            System.out.println("NATIVE_NEXT_MENUS_AND_FILE_DROP_READY");
+          }
           System.out.println(
               "NATIVE_WINDOW_RESPONSIVE " + owned.getWidth() + "x" + owned.getHeight());
         });

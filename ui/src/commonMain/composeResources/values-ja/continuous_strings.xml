@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="next_file_menu">ファイル</string>
+    <string name="next_edit_menu">編集</string>
+    <string name="next_transport_menu">再生</string>
+    <string name="next_export_stems">パート別WAVを書き出す…</string>
+    <string name="next_drop_help">録音・処理を終えてから、音源または.choplab制作ファイルを1つドロップしてください。複数の音源は、音源ライブラリの「ファイルを追加」から選べます。</string>
     <string name="ce_brand">OTOHIROI</string>
     <string name="ce_stop_all">全停止</string>
     <string name="ce_stage_capture">1  入れる</string>

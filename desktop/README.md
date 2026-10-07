@@ -38,6 +38,10 @@ JDK21とXcode Command Line Toolsを用意し、repository rootで `./scripts/run
 
 Macの配布・OS/CPU別の受入と、開発起動の成功は区別します。最新結果はROADMAPで確認してください。
 
+NEXTもMacの「ファイル」「編集」「再生」メニューから操作できます。Command-Iで音源、Command-Oでライブラリ、Command-Shift-Oで制作を開き、Command-Sで保存、Command-EでWAV書き出し、Command-Z / Command-Shift-Zで制作のUndo / Redo、Command-.で全停止します。録音中や処理中は、対応する編集・保存操作を無効にします。ダイアログを操作中はメイン画面のショートカットを止めます。Windowsは既存と同じControlキー、RedoはControl-Yです。
+
+NEXTのウィンドウへ音源または `.choplab` 制作ファイルを1つドロップして開けます。音源の追加は1回のUndoで戻せ、元の音声bytesは保持します。複数の音源はライブラリの「ファイルを追加」から選びます。フォルダ・URL・複数ファイルをドロップしても、勝手に一覧取得したり先頭の音源へ置き換えたりしません。
+
 ## Mac同梱Preview
 
 `./gradlew :desktop:packageMacPreview` は `desktop/build/mac-preview-app-image/ChopLab Preview.app` を生成します。Java、録音helper、取得/decodeツール、分離モデルを含み、起動folderやHomebrew PATHに依存しません。Previewの保存先は正式版と分離します。初回準備はHomebrewのffmpeg/nodeとXcode CLI、Python3.11以降が必要です。yt-dlpはupstreamの固定version/hashで取得し、native依存の一覧変更は `config/mac-media-tool-files.txt` のreviewが必要です。検証用Ogg fixtureには `brew install vorbis-tools` を使います。
@@ -52,7 +56,7 @@ python3 scripts/run_mac_acceptance.py \
   --java-home "$JAVA_HOME"
 ```
 
-`--system-audio` は短い確認音を鳴らし、他process音の取得と自分の音の除外を測ります。無関係な再生を止め、画面収録/システム音声の許可がある表示sessionで実行します。raw録音はメモリだけ、codec fixtureは一時領域に作成し最後に削除します。聴感を自動認定しません。
+`--system-audio` は短い確認音を鳴らし、PCM16とNEXT用float32の両経路で、他process音の取得・自分の音の除外・左右の分離を測ります。無関係な再生を止め、画面収録/システム音声の許可がある表示sessionで実行します。raw録音はメモリだけ、codec fixtureは一時領域に作成し最後に削除します。聴感を自動認定しません。
 
 ## Macの4工程NEXT
 
@@ -74,6 +78,8 @@ python3 scripts/run_mac_next_acceptance.py \
 ```
 
 ## データ・接続・検証
+
+Mac NEXTの受入scriptへ `--microphone` を付けると、実マイクを約2秒だけ開き、素材化・Undo/Redo・自動保存からの再開・入力解放を確認します。録音は隔離した一時profileに置き、終了時に削除します。標準の検証やCIでは実マイクを開きません。マイク許可と入力デバイスが必要で、聴感や往復遅延の検査とは別です。
 
 制作autosaveとlibraryはapp専用領域にあり、実行ファイルの更新と分けます。既存install scriptはversion/hashに結び付いたapp-imageを保持し、利用者の制作を上書きしません。Previewの専用設定/autosave/library/cache/lock分離は段階1Cで検証します。
 

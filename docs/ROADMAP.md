@@ -1,6 +1,6 @@
 # 再構築 ROADMAP — 唯一の進捗・受入索引
 
-更新: 2026-10-07。対象はおとひろい / Earth SongのAndroid 10+・Windows、全制作機能を使うMac（[ADR8](adr/ADR-0008-mac-function-parity.md)）、および対応を再開するiPadOS（[ADR10](adr/ADR-0010-ipad-native-support.md)）。**段階0〜11の実装、必要な検証、PR統合、仕上げまで承認済み**です。レビュー案にあった「レビューのみ」「各PRで再承認」は [ADR7](adr/ADR-0007-concise-development-governance.md) で置き換えます。device/providerの実観測と人間の音質・操作感の受入は、実施結果が得られるまで未確認のままです。
+更新: 2026-10-08。対象はおとひろい / Earth SongのAndroid 10+・Windows、全制作機能を使うMac（[ADR8](adr/ADR-0008-mac-function-parity.md)）、および対応を再開するiPadOS（[ADR10](adr/ADR-0010-ipad-native-support.md)）。**段階0〜11の実装、必要な検証、PR統合、仕上げまで承認済み**です。レビュー案にあった「レビューのみ」「各PRで再承認」は [ADR7](adr/ADR-0007-concise-development-governance.md) で置き換えます。device/providerの実観測と人間の音質・操作感の受入は、実施結果が得られるまで未確認のままです。
 
 ## 最初に読む現状とSSOT（2026-10-01照合）
 
@@ -23,6 +23,8 @@
 開始時・大きな判断時・完了時にこの順で関係する契約を確認する。mainの文書が共有の正本、未統合branch/PRは候補、インストール済みartifactは別revisionとして扱う。新しいユーザー訂正は該当契約と本書へ反映し、古いセッション要約やZIPを新しい正本にしない。会話全文・認証情報・個人パス・端末識別子は公開しない。参照画像はDESIGNからGitHubだけで読める。
 
 ### 現在の修正対象と再開点
+
+2026-10-08のMac継続依頼はrootがmain `45581a68`から担当する。対象はNEXTのnative menu/shortcut・明示ファイルdropを共有Presenterの取込/開く/Undoへつなぐ経路、Mac実録音の受入、build32の配布。4工程・音声bytes・保存schemaと他端末の作業を保持する。完了条件は、録音/処理中の置換拒否、音源1件の取込と1Undo/Redo、制作の保存/再開、日英native menuと梱包後の通し検証、PCM16/float32のシステム音・左右分離・自音除外、統合mainからのDMG照合。着手時の旧build31の同一helperで表示sessionから実録音でき、自音997Hzの混入は他process1703Hz比-90.51dBだった。これは実行したシステム音経路だけの結果で、物理マイク/遅延・実provider・人間の試聴・Developer ID/公証は別。rollbackは本限定PRのrevertと保全した旧appへの復帰。候補のMac/JDK21は関連109件（desktop11/UI98、failure/error/skip0）・Android Preview compile・policy414件が成功。日英native menu各18確認、同梱候補275fileのhash/署名、11codec・実分離model・全制作9工程/15Undo・保存再開・終了PCM0・通常終了/再開2回、実main窓のmenu/drop接続を確認した。PCM16/float32の実システム音は左右の漏れ1%未満、自音除外はそれぞれ-79.34/-75.20dBで成功。JDK21から本番Presenter/入力で実マイク48kHz mono98,816frame・非無音・1Undo/Redo・autosave再開も成功した（私有一時録音は削除）。マイクprobeは明示flagだけで動き、CI/通常起動では開かない。これらは候補/明記した入力経路の証拠であり、最終統合sourceのDMGと同梱Javaの受入はrootが必須CI成功後に照合し、配布receiptへsource/bytes/hashを束縛する。Developer ID証明書は本Macに未登録。
 
 2026-10-07のローカルビルド反復改善: rootがmain `0a94993b` 起点で `jvm-core/build.gradle.kts` のNewPipe検証task、実Gradle回帰script、Linux CI、TESTINGの限定変更を担当する。`--configuration-cache :jvm-core:test` は従来script参照のserialize失敗で設定を再利用できなかった。検証taskを宣言した入力と遅延解決のproviderへ移し、設定再利用後も推移集合とJAR bytes/hashを毎回確認する。実Gradleでcache保存・再利用、誤hash・推移pin欠落・一時JAR bytes変更の拒否、復元後成功を確認。pinと共有cacheは変更しない。JVMの218件を毎回実行する比較と変更なし比較は同一候補sourceで行う。必須CI・統合の結果は当該PRへ束縛し、配布・実機の受入には転用しない。rollbackはこの限定PRのrevert。日常の使用方法と回帰コマンドは[TESTING](TESTING.md#ローカルgradleの反復)を正本にする。
 

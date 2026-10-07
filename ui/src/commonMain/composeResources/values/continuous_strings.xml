@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="next_file_menu">File</string>
+    <string name="next_edit_menu">Edit</string>
+    <string name="next_transport_menu">Playback</string>
+    <string name="next_export_stems">Export part WAVs…</string>
+    <string name="next_drop_help">Drop one audio file or .choplab project while the editor is idle. To add several audio files, use Add files in the Audio library.</string>
     <string name="ce_brand">OTOHIROI</string>
     <string name="ce_stop_all">Stop all</string>
     <string name="ce_stage_capture">1  Source</string>
