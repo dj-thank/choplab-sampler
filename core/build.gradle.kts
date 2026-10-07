@@ -24,6 +24,7 @@ kotlin {
         commonMain.dependencies {
             api(project(":engine"))
             api(libs.kotlinx.coroutines.core)
+            api(libs.kotlinx.serialization.json)
         }
         commonTest.dependencies {
             implementation(kotlin("test"))
