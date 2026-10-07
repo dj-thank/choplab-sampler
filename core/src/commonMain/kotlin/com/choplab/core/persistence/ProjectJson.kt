@@ -1,28 +1,31 @@
-package com.choplab.jvm
+package com.choplab.core.persistence
 
 import com.choplab.core.model.*
 import com.choplab.engine.PlayMode
 import com.choplab.engine.Tempo
 import kotlinx.serialization.json.*
-import java.nio.ByteBuffer
-import java.nio.charset.CodingErrorAction
 
-/** Explicit schema: deterministic keys, strict types, duplicate-key and unknown-field rejection. */
+/**
+ * Explicit schema: deterministic keys, strict types, duplicate-key and unknown-field rejection.
+ * Shared by every host, so a document a JVM host writes is read the same way on iPadOS and back.
+ */
 object ProjectJson {
     const val MAX_BYTES = 8 * 1024 * 1024
     private val json = Json { isLenient = false; allowSpecialFloatingPointValues = false }
 
     fun encode(project: Project): ByteArray = encodeElement(toJson(project))
     fun decode(bytes: ByteArray): Project = fromJson(parse(bytes).obj())
-    internal fun encodeElement(element: JsonElement): ByteArray = element.toString().toByteArray(Charsets.UTF_8).also { require(it.size <= MAX_BYTES) }
-    internal fun parse(bytes: ByteArray): JsonElement {
+    fun encodeElement(element: JsonElement): ByteArray =
+        replaceUnpairedSurrogates(element.toString()).encodeToByteArray().also { require(it.size <= MAX_BYTES) }
+    /** Malformed UTF-8 throws [CharacterCodingException]; it is never decoded with replacement characters. */
+    fun parse(bytes: ByteArray): JsonElement {
         require(bytes.isNotEmpty() && bytes.size <= MAX_BYTES)
-        val text = Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT).onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(bytes)).toString()
+        val text = bytes.decodeToString(throwOnInvalidSequence = true)
         StrictJson(text).validate()
         return json.parseToJsonElement(text)
     }
 
-    internal fun toJson(p: Project): JsonObject = obj(
+    fun toJson(p: Project): JsonObject = obj(
         "schemaVersion" to num(p.schemaVersion), "id" to str(p.id), "title" to str(p.title),
         "tempo" to obj("milliBpm" to num(p.tempo.milliBpm), "swingPermille" to num(p.tempo.swingPermille)),
         "assets" to arr(p.assets.map { a -> obj("hash" to str(a.hash), "extension" to str(a.extension), "byteCount" to num(a.byteCount),
@@ -55,7 +58,7 @@ object ProjectJson {
             *(if (s.pitchSemitones == 0.0) emptyArray() else arrayOf("pitchSemitones" to num(s.pitchSemitones)))) } ?: JsonNull),
     )
 
-    internal fun fromJson(p: JsonObject): Project {
+    fun fromJson(p: JsonObject): Project {
         val schema = p.int("schemaVersion")
         require(schema in 10..ProjectLimits.SCHEMA) { "Unsupported project schema" }
         p.fields("schemaVersion", "id", "title", "tempo", "assets", "banks", "pads", "patterns", "song", "tracks", "clips", "lyrics", "takes", "source",
@@ -131,29 +134,48 @@ object ProjectJson {
     private fun readRange(e: JsonElement): FrameRange = e.obj().fields("start", "end").let { FrameRange(it.long("start"), it.long("end")) }
 }
 
-internal fun obj(vararg fields: Pair<String, JsonElement>) = JsonObject(linkedMapOf(*fields))
-internal fun arr(values: List<JsonElement>) = JsonArray(values)
-internal fun str(value: String) = JsonPrimitive(value)
-internal fun num(value: Number) = JsonPrimitive(value)
-internal fun bool(value: Boolean) = JsonPrimitive(value)
-internal fun nullable(value: String?): JsonElement = value?.let(::str) ?: JsonNull
-internal fun JsonElement.obj(): JsonObject = this as? JsonObject ?: throw IllegalArgumentException("Expected object")
-internal fun JsonObject.fields(vararg names: String): JsonObject { require(keys == names.toSet()) { "Missing or unknown JSON field" }; return this }
+/**
+ * Every host writes an unpaired UTF-16 surrogate as '?', as the JVM UTF-8 encoder always has; Kotlin/Native would
+ * otherwise write U+FFFD, so the same document would encode to different bytes on iPadOS.
+ */
+internal fun replaceUnpairedSurrogates(text: String): String {
+    var index = text.indexOfFirst { it.isSurrogate() }
+    if (index < 0) return text
+    val result = StringBuilder(text.length).append(text, 0, index)
+    while (index < text.length) {
+        val ch = text[index]
+        if (ch.isHighSurrogate() && index + 1 < text.length && text[index + 1].isLowSurrogate()) {
+            result.append(ch).append(text[index + 1]); index += 2
+        } else {
+            result.append(if (ch.isSurrogate()) '?' else ch); index++
+        }
+    }
+    return result.toString()
+}
+
+fun obj(vararg fields: Pair<String, JsonElement>) = JsonObject(linkedMapOf(*fields))
+fun arr(values: List<JsonElement>) = JsonArray(values)
+fun str(value: String) = JsonPrimitive(value)
+fun num(value: Number) = JsonPrimitive(value)
+fun bool(value: Boolean) = JsonPrimitive(value)
+fun nullable(value: String?): JsonElement = value?.let(::str) ?: JsonNull
+fun JsonElement.obj(): JsonObject = this as? JsonObject ?: throw IllegalArgumentException("Expected object")
+fun JsonObject.fields(vararg names: String): JsonObject { require(keys == names.toSet()) { "Missing or unknown JSON field" }; return this }
 /** Like [fields], and also accepts the [optional] fields a later build may write. */
-internal fun JsonObject.fields(vararg names: String, optional: Set<String>): JsonObject {
+fun JsonObject.fields(vararg names: String, optional: Set<String>): JsonObject {
     require(keys.containsAll(names.toSet()) && (keys - names.toSet()).all { it in optional }) { "Missing or unknown JSON field" }
     return this
 }
 private fun JsonElement.primitive(): JsonPrimitive = this as? JsonPrimitive ?: throw IllegalArgumentException("Expected primitive")
-internal fun JsonObject.string(key: String): String = getValue(key).primitive().let { require(it.isString); it.content }
-internal fun JsonObject.optionalString(key: String): String? = if (getValue(key) == JsonNull) null else string(key)
-internal fun JsonElement.strictLong(): Long = primitive().let { require(!it.isString); requireNotNull(it.longOrNull) }
-internal fun JsonObject.long(key: String): Long = getValue(key).strictLong()
-internal fun JsonObject.int(key: String): Int = long(key).also { require(it in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong()) }.toInt()
-internal fun JsonObject.double(key: String): Double = getValue(key).primitive().let { require(!it.isString); requireNotNull(it.doubleOrNull).also { n -> require(n.isFinite()) } }
-internal fun JsonObject.float(key: String): Float = double(key).toFloat().also { require(it.isFinite()) }
-internal fun JsonObject.boolean(key: String): Boolean = getValue(key).primitive().let { require(!it.isString); requireNotNull(it.booleanOrNull) }
-internal fun <T> JsonObject.list(key: String, maximum: Int, read: (JsonElement) -> T): FrozenList<T> {
+fun JsonObject.string(key: String): String = getValue(key).primitive().let { require(it.isString); it.content }
+fun JsonObject.optionalString(key: String): String? = if (getValue(key) == JsonNull) null else string(key)
+fun JsonElement.strictLong(): Long = primitive().let { require(!it.isString); requireNotNull(it.longOrNull) }
+fun JsonObject.long(key: String): Long = getValue(key).strictLong()
+fun JsonObject.int(key: String): Int = long(key).also { require(it in Int.MIN_VALUE.toLong()..Int.MAX_VALUE.toLong()) }.toInt()
+fun JsonObject.double(key: String): Double = getValue(key).primitive().let { require(!it.isString); requireNotNull(it.doubleOrNull).also { n -> require(n.isFinite()) } }
+fun JsonObject.float(key: String): Float = double(key).toFloat().also { require(it.isFinite()) }
+fun JsonObject.boolean(key: String): Boolean = getValue(key).primitive().let { require(!it.isString); requireNotNull(it.booleanOrNull) }
+fun <T> JsonObject.list(key: String, maximum: Int, read: (JsonElement) -> T): FrozenList<T> {
     val array = getValue(key) as? JsonArray ?: throw IllegalArgumentException("Expected array")
     require(array.size <= maximum)
     return array.map(read).frozen()

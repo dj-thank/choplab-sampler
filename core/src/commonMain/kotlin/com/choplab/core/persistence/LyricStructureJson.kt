@@ -1,18 +1,18 @@
-package com.choplab.jvm
+package com.choplab.core.persistence
 
 import com.choplab.core.ai.LyricLanguage
 import com.choplab.core.ai.LyricSectionKind
 import com.choplab.core.model.*
 import kotlinx.serialization.json.*
 
-internal fun lyricStructureJson(value: LyricStructure?): JsonElement = value?.let { structure ->
+fun lyricStructureJson(value: LyricStructure?): JsonElement = value?.let { structure ->
     obj("title" to str(structure.title), "language" to str(structure.language.name),
         "sections" to arr(structure.sections.map { section -> obj("name" to str(section.name), "kind" to str(section.kind.name), "bars" to num(section.bars),
             "lines" to arr(section.lines.map { line -> obj("lineId" to str(line.lineId), "text" to str(line.text), "reading" to str(line.reading),
                 "mora" to (line.mora?.let(::num) ?: JsonNull), "rhymeVowels" to nullable(line.rhymeVowels)) })) }))
 } ?: JsonNull
 
-internal fun readLyricStructure(value: JsonElement): LyricStructure? {
+fun readLyricStructure(value: JsonElement): LyricStructure? {
     if (value == JsonNull) return null
     val structure = value.obj().fields("title", "language", "sections")
     return LyricStructure(structure.string("title"), LyricLanguage.valueOf(structure.string("language")), structure.list("sections", 8) { item ->

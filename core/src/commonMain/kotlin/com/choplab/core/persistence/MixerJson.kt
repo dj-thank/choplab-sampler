@@ -1,23 +1,23 @@
-package com.choplab.jvm
+package com.choplab.core.persistence
 
 import com.choplab.engine.*
 import kotlinx.serialization.json.JsonElement
 
-internal fun trackFxJson(fx: TrackFx) = obj("insert" to mixInsertJson(fx.insert),
+fun trackFxJson(fx: TrackFx) = obj("insert" to mixInsertJson(fx.insert),
     "delaySend" to num(fx.delaySend), "reverbSend" to num(fx.reverbSend))
 
-internal fun readTrackFx(value: JsonElement): TrackFx = value.obj().fields("insert", "delaySend", "reverbSend").let {
+fun readTrackFx(value: JsonElement): TrackFx = value.obj().fields("insert", "delaySend", "reverbSend").let {
     TrackFx(readMixInsert(it.getValue("insert")), it.float("delaySend"), it.float("reverbSend"))
 }
 
-internal fun mixSettingsJson(mix: MixSettings) = obj(
+fun mixSettingsJson(mix: MixSettings) = obj(
     "delay" to obj("enabled" to bool(mix.delay.enabled), "frames" to num(mix.delay.frames),
         "feedback" to num(mix.delay.feedback), "returnGain" to num(mix.delay.returnGain)),
     "reverb" to obj("enabled" to bool(mix.reverb.enabled), "decaySeconds" to num(mix.reverb.decaySeconds),
         "damping" to num(mix.reverb.damping), "returnGain" to num(mix.reverb.returnGain)),
     "master" to mixInsertJson(mix.master), "masterGain" to num(mix.masterGain))
 
-internal fun readMixSettings(value: JsonElement): MixSettings {
+fun readMixSettings(value: JsonElement): MixSettings {
     val mix = value.obj().fields("delay", "reverb", "master", "masterGain")
     val delay = mix.getValue("delay").obj().fields("enabled", "frames", "feedback", "returnGain")
     val reverb = mix.getValue("reverb").obj().fields("enabled", "decaySeconds", "damping", "returnGain")

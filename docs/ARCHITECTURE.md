@@ -20,13 +20,13 @@
 | Module | 責務と依存 |
 |---|---|
 | `engine` | 純Kotlin DSP、EngineCore、voice/sequence/mix/scratch。標準library以外のruntime依存なしを目標 |
-| `core` | engine＋coroutines/serialization。Project、Intent/Reducer/EditSession、Studio、ports、取込・歌詞timing |
+| `core` | engine＋coroutines/serialization。Project、Intent/Reducer/EditSession、Studio、ports、取込・歌詞timing、全hostが共有するstrict制作JSON（`persistence.ProjectJson`） |
 | `ui` | 共通Compose画面・部品・ja/en resources。coreのstateを描画しintentを送る |
 | `jvm` | core portsの保存、asset、network、AI、ONNX、WAV実装 |
 | `app` | AndroidHostがcore/ui/jvmとOS driverを組み立てる |
 | `desktop` | DesktopHostがcore/ui/jvmとWindows driverを組み立てる |
 
-依存は `ui → core → engine` と `jvm → core`。OS参照をengineへ入れず、DI frameworkは導入せずhostで組み立てます。旧moduleは移植が合格するまで残します。既定のKMP対象はAndroid/JVMです。[ADR10](adr/ADR-0010-ipad-native-support.md)のiPadOS再開では、共有3moduleにNative targetを追加し、Apple hostがcore portsを実装します。JVMのFileAssetStore/ProjectJson/ArchiveCodec/StreamingEnginePortの移植と、Nativeの同期・lease・音声callbackの検証は別途必要です。
+依存は `ui → core → engine` と `jvm → core`。OS参照をengineへ入れず、DI frameworkは導入せずhostで組み立てます。旧moduleは移植が合格するまで残します。既定のKMP対象はAndroid/JVMです。[ADR10](adr/ADR-0010-ipad-native-support.md)のiPadOS再開では、共有3moduleにNative targetを追加し、Apple hostがcore portsを実装します。制作JSON（`ProjectJson`）はcore commonでJVMと共有し、JVMのFileAssetStore/ArchiveCodec/StreamingEnginePortに相当するApple実装と、Nativeの同期・lease・音声出力の検証は別途必要です。
 
 ## 状態・時刻・仕事の所有
 

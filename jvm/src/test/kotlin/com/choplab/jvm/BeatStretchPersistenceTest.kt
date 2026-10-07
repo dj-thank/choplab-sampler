@@ -1,5 +1,6 @@
 package com.choplab.jvm
 
+import com.choplab.core.persistence.*
 import com.choplab.core.DocumentState
 import com.choplab.core.edit.*
 import com.choplab.core.model.*
