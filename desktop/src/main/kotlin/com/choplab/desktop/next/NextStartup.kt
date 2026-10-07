@@ -10,6 +10,8 @@ import java.nio.file.FileSystemException
 import java.nio.file.Files
 import java.nio.file.Path
 import javax.swing.JOptionPane
+import javax.swing.JTextArea
+import javax.swing.UIManager
 import javax.swing.SwingUtilities
 
 internal enum class NextStartupFailure { RECOVERY, ACCESS, STORAGE, OTHER }
@@ -61,8 +63,14 @@ internal fun <T> startNextWithRecovery(directory: Path, create: () -> T): T? {
             NextStartupFailure.OTHER -> Res.string.next_startup_other
         }
         val message = runBlocking { getString(resource) + "\n\n" + getString(Res.string.next_startup_preserved) }
-        when (onUi { JOptionPane.showOptionDialog(null, message, title, JOptionPane.DEFAULT_OPTION,
-            JOptionPane.ERROR_MESSAGE, null, choices, choices.last()) }) {
+        when (onUi {
+            val explanation = JTextArea(message).apply {
+                isEditable = false; lineWrap = true; wrapStyleWord = true; columns = 42
+                font = UIManager.getFont("Label.font"); isOpaque = false
+            }
+            JOptionPane.showOptionDialog(null, explanation, title, JOptionPane.DEFAULT_OPTION,
+                JOptionPane.ERROR_MESSAGE, null, choices, choices.last())
+        }) {
             0 -> NextStartupChoice.RETRY
             1 -> NextStartupChoice.SHOW_FOLDER
             else -> NextStartupChoice.QUIT
