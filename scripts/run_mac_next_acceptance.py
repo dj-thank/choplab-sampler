@@ -1,7 +1,8 @@
 """Verify the packaged NEXT editor's files, production roundtrip and normal native close/reopen.
 
 Uses synthetic audio and a temporary profile. The silent endpoint is for lifecycle
-verification; this does not certify audible output, microphone, dialogs or human UX.
+verification. --microphone separately opts into a two-second native microphone
+capture; its temporary audio is deleted on exit. Neither mode certifies listening or latency.
 """
 import argparse
 import hashlib
@@ -62,7 +63,7 @@ def verify_package(app, manifest_path=None):
     return manifest
 
 
-def verify(app, java_home, manifest_path=None):
+def verify(app, java_home, manifest_path=None, microphone=False):
     manifest = verify_package(app, manifest_path)
     libs = app / 'Contents/app'
     java = app / 'Contents/runtime/Contents' / 'Home/bin/java'
@@ -101,12 +102,29 @@ def verify(app, java_home, manifest_path=None):
         if microphone_receipt['status'] != 'LOCAL_PASS':
             raise RuntimeError('Packaged microphone source production self-test did not pass')
         print(microphone_result.stdout.strip())
+        if microphone:
+            device_result = run(java, '-cp', libs / '*', 'com.choplab.desktop.next.NextMicrophoneDeviceSelfTest',
+                                '--record-microphone', directory / 'native-microphone', environment=environment, timeout=30)
+            if json.loads(device_result.stdout.strip().splitlines()[-1])['status'] != 'DEVICE_CAPTURE_PASS':
+                raise RuntimeError('Native microphone source and recovery probe did not pass')
+            print(device_result.stdout.strip())
         library_result = run(java, '-Dchoplab.mediaTools=' + str(libs / 'tools'), '-cp', libs / '*',
                              'com.choplab.desktop.next.NextLibrarySelfTest', directory / 'library', environment=environment)
         library_receipt = json.loads(library_result.stdout.strip().splitlines()[-1])
         if library_receipt['status'] != 'LOCAL_PASS':
             raise RuntimeError('Packaged library source production self-test did not pass')
         print(library_result.stdout.strip())
+        file_result = run(java, '-cp', libs / '*', 'com.choplab.desktop.next.NextDesktopFileSelfTest',
+                          directory / 'desktop-files', environment=environment)
+        if json.loads(file_result.stdout.strip().splitlines()[-1])['status'] != 'LOCAL_PASS':
+            raise RuntimeError('Packaged desktop file workflow did not pass')
+        print(file_result.stdout.strip())
+        for locale in ('ja', 'en'):
+            menu_result = run(java, '-cp', libs / '*', 'com.choplab.desktop.next.NextDesktopMenuSelfTest',
+                              locale, environment=environment, timeout=45)
+            if json.loads(menu_result.stdout.strip().splitlines()[-1])['status'] != 'LOCAL_PASS':
+                raise RuntimeError('Packaged native desktop menus did not pass')
+            print(menu_result.stdout.strip())
         browser_result = run(java, '-cp', libs / '*',
                              'com.choplab.desktop.next.MusicBrowserNativeSelfTest', directory / 'music-browser',
                              environment=environment, timeout=60)
@@ -152,11 +170,13 @@ def verify(app, java_home, manifest_path=None):
         for iteration in range(2):
             marker = directory / f'window-{iteration}.txt'
             # JAVA_TOOL_OPTIONS supports quoted option values, including temp roots containing spaces.
-            options = [f'-Duser.home={profile}', '-Dchoplab.silentSmoke=true', f'-javaagent:{agent}={marker}']
+            options = [f'-Duser.home={profile}', '-Dchoplab.silentSmoke=true', '-Dchoplab.expectNextMenus=true', f'-javaagent:{agent}={marker}']
             launch_environment = dict(environment, JAVA_TOOL_OPTIONS=' '.join('"' + option + '"' for option in options))
             result = run(app / 'Contents/MacOS/ChopLab NEXT', environment=launch_environment)
             if not marker.is_file() or 'NATIVE_WINDOW_RESPONSIVE' not in result.stdout:
                 raise RuntimeError('Packaged window did not respond and request normal close')
+            if 'NATIVE_NEXT_MENUS_AND_FILE_DROP_READY' not in result.stdout:
+                raise RuntimeError('Packaged editor did not connect native menus and file drop')
             if 'Exception in thread' in result.stdout + result.stderr:
                 raise RuntimeError('Uncaught exception during native lifecycle')
             verify_document(target, expected)
@@ -165,7 +185,8 @@ def verify(app, java_home, manifest_path=None):
                           'packageBytes': sum(item['bytes'] for item in manifest['files'].values()),
                           'exportFrames': receipt['exportFrames'], 'normalCloseReopenCycles': 2,
                           'wholeCreation': whole_receipt, 'originalCodecFormats': codec_receipt['formats'],
-                          'restoredProjectAndAudioMatch': True, 'nativeAudio': False, 'humanAcceptance': False}))
+                          'restoredProjectAndAudioMatch': True, 'nativeAudio': False,
+                          'nativeMicrophoneProbed': microphone, 'humanAcceptance': False}))
 
 
 if __name__ == '__main__':
@@ -173,5 +194,6 @@ if __name__ == '__main__':
     parser.add_argument('--app', type=Path, required=True)
     parser.add_argument('--manifest', type=Path, help='Exact package manifest, including the saved manifest for an installed app')
     parser.add_argument('--java-home', type=Path, required=True, help='Build JDK for the lifecycle test agent only')
+    parser.add_argument('--microphone', action='store_true', help='Explicitly record two seconds from the native microphone into a temporary profile')
     args = parser.parse_args()
-    verify(args.app.resolve(), args.java_home.resolve(), args.manifest.resolve() if args.manifest is not None else None)
+    verify(args.app.resolve(), args.java_home.resolve(), args.manifest.resolve() if args.manifest is not None else None, args.microphone)

@@ -109,10 +109,16 @@ fun main() {
                 state = rememberWindowState(width = 1440.dp, height = 1024.dp),
                 onCloseRequest = requestClose) {
                 SideEffect { parent.set(window) }
+                var editorDialogOpen by remember { mutableStateOf(false) }
                 DisposableEffect(window) {
                     // Java Sound reports no device changes: coming back to the window tries a lost output once more.
                     val focus = object : WindowAdapter() {
-                        override fun windowGainedFocus(event: WindowEvent) { recovery?.retry() }
+                        override fun windowGainedFocus(event: WindowEvent) { editorDialogOpen = false; recovery?.retry() }
+                        override fun windowLostFocus(event: WindowEvent) {
+                            // A background launch can have no focus event at all. Only an owned dialog
+                            // suppresses the editor's commands; switching apps does not change readiness.
+                            editorDialogOpen = window.ownedWindows.filterIsInstance<java.awt.Dialog>().any { it.isVisible }
+                        }
                     }
                     window.addWindowFocusListener(focus)
                     onDispose { window.removeWindowFocusListener(focus) }
@@ -133,28 +139,44 @@ fun main() {
                 val vocalTakes by presenter.vocalTakes.collectAsState()
                 val vocalPunch by presenter.vocalPunch.collectAsState()
                 val failed by backend.persistenceFailure.collectAsState()
-                backend.windowsAudio?.let { audio ->
-                    val route by audio.route.collectAsState()
-                    var changing by remember { mutableStateOf(false) }
-                    val menu = stringResource(Res.string.next_audio_menu)
-                    val wasapi = stringResource(Res.string.next_audio_wasapi)
-                    val javaSound = stringResource(Res.string.next_audio_java_sound)
-                    val retry = stringResource(Res.string.next_audio_retry)
-                    val refusal = stringResource(Res.string.next_audio_refused)
-                    val allowed = !changing && !state.recordingVoice && !state.startingVoiceRecording && !state.recordingSource &&
-                        !state.startingSourceRecording && !state.recordingSystemAudio && !state.recordingHits && !state.liveChopping && !state.vocalPreview
-                    fun choose(next: NextAudioRoute) {
-                        if (!allowed) return
-                        changing = true
-                        scope.launch {
-                            try {
-                                if (!backend.chooseAudioRoute(next)) SwingUtilities.invokeLater {
-                                    JOptionPane.showMessageDialog(window, refusal, menu, JOptionPane.INFORMATION_MESSAGE)
-                                }
-                            } finally { changing = false }
-                        }
+                val currentState by rememberUpdatedState(state)
+                val currentClosing by rememberUpdatedState(closing)
+                val dropHelp = stringResource(Res.string.next_drop_help)
+                val dropTitle = stringResource(Res.string.ce_load_audio)
+                DisposableEffect(window, dropHelp, dropTitle) {
+                    val drop = installNextFileDrop(window, { if (currentClosing) currentState.copy(capabilities = emptySet()) else currentState }, backend.files, {
+                        if (!currentClosing) presenter.onAction(it)
+                    }, {
+                        SwingUtilities.invokeLater { JOptionPane.showMessageDialog(window, dropHelp, dropTitle, JOptionPane.INFORMATION_MESSAGE) }
+                    })
+                    onDispose { drop.close() }
+                }
+                MenuBar {
+                    NextDesktopMenus(state, closing || editorDialogOpen) { action ->
+                        // A text editor/dialog keeps its own shortcuts and pending edits.
+                        if (window.ownedWindows.filterIsInstance<java.awt.Dialog>().none { it.isVisible }) presenter.onAction(action)
                     }
-                    MenuBar {
+                    backend.windowsAudio?.let { audio ->
+                        val route by audio.route.collectAsState()
+                        var changing by remember { mutableStateOf(false) }
+                        val menu = stringResource(Res.string.next_audio_menu)
+                        val wasapi = stringResource(Res.string.next_audio_wasapi)
+                        val javaSound = stringResource(Res.string.next_audio_java_sound)
+                        val retry = stringResource(Res.string.next_audio_retry)
+                        val refusal = stringResource(Res.string.next_audio_refused)
+                        val allowed = !changing && !state.recordingVoice && !state.startingVoiceRecording && !state.recordingSource &&
+                            !state.startingSourceRecording && !state.recordingSystemAudio && !state.recordingHits && !state.liveChopping && !state.vocalPreview
+                        fun choose(next: NextAudioRoute) {
+                            if (!allowed) return
+                            changing = true
+                            scope.launch {
+                                try {
+                                    if (!backend.chooseAudioRoute(next)) SwingUtilities.invokeLater {
+                                        JOptionPane.showMessageDialog(window, refusal, menu, JOptionPane.INFORMATION_MESSAGE)
+                                    }
+                                } finally { changing = false }
+                            }
+                        }
                         Menu(menu) {
                             CheckboxItem(wasapi, checked = route == NextAudioRoute.WASAPI, enabled = allowed, onCheckedChange = { choose(NextAudioRoute.WASAPI) })
                             CheckboxItem(javaSound, checked = route == NextAudioRoute.JAVA_SOUND, enabled = allowed, onCheckedChange = { choose(NextAudioRoute.JAVA_SOUND) })

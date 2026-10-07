@@ -682,6 +682,8 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                     else { ports.openSpotifyMetadata(); true }
                 }
                 ContinuousEditorAction.ImportAudio -> ports.chooseAudio()?.let { releaseHeld(); stopOriginal(); send(Action.Import(it)) } ?: cancelled()
+                is ContinuousEditorAction.ImportAudioFile -> if (studio.work.value.jobId != null || studio.work.value.preparationId != null) false
+                    else { releaseHeld(); stopOriginal(); send(Action.Import(action.location)) }
                 ContinuousEditorAction.RecordSource -> startSource(project)
                 ContinuousEditorAction.RecordSystemSource -> startSource(project, system = true)
                 ContinuousEditorAction.StopSourceRecording -> finishSource()
@@ -693,6 +695,8 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                     true
                 }
                 ContinuousEditorAction.OpenProject -> ports.chooseOpen()?.let { releaseHeld(); stopOriginal(); loopModes.clear(); send(Action.Open(it)) } ?: cancelled()
+                is ContinuousEditorAction.OpenProjectFile -> if (studio.work.value.jobId != null || studio.work.value.preparationId != null) false
+                    else { releaseHeld(); stopOriginal(); loopModes.clear(); send(Action.Open(action.location)) }
                 ContinuousEditorAction.SaveProject -> ports.chooseSave()?.let { send(Action.Save(it)) } ?: cancelled()
                 ContinuousEditorAction.ExportWav -> ports.chooseExport(songFrames(project))?.let {
                     send(Action.Export(it.copy(bits = view.value.exportBits, tailMode = exportTailMode()), PlaybackTarget.Arrangement()))
@@ -1102,6 +1106,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         ContinuousEditorAction.OpenVocalPractice, ContinuousEditorAction.OpenVocalPitch, ContinuousEditorAction.OpenVocalCoach, ContinuousEditorAction.OpenSourceAnalysis,
         ContinuousEditorAction.OpenScratch, ContinuousEditorAction.OpenLiveChopTiming, ContinuousEditorAction.BeginLiveChop, ContinuousEditorAction.ImportAudio, ContinuousEditorAction.ImportLibrary,
         ContinuousEditorAction.ImportOnline, ContinuousEditorAction.SeparateSource, ContinuousEditorAction.OpenProject,
+        is ContinuousEditorAction.ImportAudioFile, is ContinuousEditorAction.OpenProjectFile,
         ContinuousEditorAction.RecordSource, ContinuousEditorAction.RecordSystemSource, ContinuousEditorAction.RecordVoice,
         ContinuousEditorAction.RecordHits -> true
         else -> false

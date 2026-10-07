@@ -1,6 +1,6 @@
 """Real Mac bundle codec acceptance using generated audio in a temporary directory.
 
-System capture is separately opt-in: two short quiet tones are played; raw capture
+System capture is separately opt-in: short quiet stereo tones are played; raw capture
 stays in memory. Pause unrelated audio before using --system-audio.
 """
 import argparse
@@ -62,6 +62,7 @@ def main():
         run(*base, 'CodecCheck', directory, env=environment, cwd=directory)
         if args.system_audio:
             run(*base, 'SystemCaptureCheck', libs / 'choplab-sck-audio', env=environment, cwd=directory, timeout=40)
+            run(*base, 'SystemCaptureCheck', libs / 'choplab-sck-audio', '--float32', env=environment, cwd=directory, timeout=40)
     print('MAC_BUNDLE_ACCEPTANCE_PASS; human listening, OAuth, and notarization remain separate')
 
 
