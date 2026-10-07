@@ -308,7 +308,10 @@ class NextBackendTest {
             val pad = com.choplab.core.model.Pad(48, take.asset.hash, com.choplab.core.model.FrameRange(0, take.asset.frames), "VOICE 1", gain = .9f)
             val clip = com.choplab.core.model.Clip("take-1", track.id, take.asset.hash, range, timelineStartFrame = 0)
             // The real compiler loads the float take for its PAD and the song.
+            assertTrue(first.voice.pendingSave, "Publication alone keeps the unaccepted original")
             assertTrue(first.studio.dispatch(Action.Edit(Intent.AddVoiceTake(take.asset, pad, clip, track))).accepted)
+            first.voice.acknowledge()
+            assertFalse(first.voice.pendingSave)
             assertTrue(first.studio.dispatch(Action.SelectPlaybackTarget(PlaybackTarget.Arrangement())).accepted)
             val song = dir.resolve("song.wav")
             assertTrue(first.studio.dispatch(Action.Export(ExportRequest(first.files.register(song), range.length.toInt(), bits = 24),

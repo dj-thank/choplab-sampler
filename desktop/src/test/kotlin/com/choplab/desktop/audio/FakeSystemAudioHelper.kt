@@ -25,8 +25,12 @@ object FakeSystemAudioHelper {
             out.write("CHOPLAB-ERROR NO_DISPLAY No visible display\n".toByteArray()); out.flush()
             exitProcess(1)
         }
+        if (mode == "unavailable") {
+            out.write("CHOPLAB-ERROR UNAVAILABLE Start failed\n".toByteArray()); out.flush()
+            exitProcess(1)
+        }
         if (mode == "refused") {
-            out.write("CHOPLAB-ERROR denied\n".toByteArray()); out.flush()
+            out.write("CHOPLAB-ERROR DENIED User declined\n".toByteArray()); out.flush()
             exitProcess(1)
         }
         if (mode == "late") Thread.sleep(args.getOrNull(1)?.toLong() ?: 1_500)

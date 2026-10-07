@@ -106,6 +106,7 @@ internal class DesktopEditorPorts(
     override val systemAudioCapture get() = backend.systemAudio
     private val japanese get() = Locale.getDefault().language == "ja"
     override val autoChop get() = backend.autoChop
+    override val autosaveFailure get() = backend.persistenceFailure
     override val originalAvailable get() = backend.engine.status.value.phase == DriverPhase.ATTACHED
     override fun originalPlaying(): Boolean? = when (val probe = backend.engine.originalPlaybackProbe()) {
         is OriginalPlaybackProbe.Ready -> probe.playback.playing
@@ -146,7 +147,7 @@ internal class DesktopEditorPorts(
     override fun liveChopProbe() = backend.engine.liveChopProbe()
     override fun readout() = ContinuousEditorReadout(backend.audition.nativeFrame(), backend.engine.playback().sequenceRenderFrames,
         handSourceFrame = backend.audition.nativeHandFrame(), countInBeatsRemaining = backend.engine.snapshot().countInBeatsRemaining,
-        pcm = pcmReadout())
+        pcm = pcmReadout(), input = voiceInputReadout())
     private fun pcmReadout() = backend.engine.pcmPlayback().let { ContinuousPcmReadout(it.status, it.underrunFrames, it.droppedRequests) }
     override suspend fun peaks(asset: Asset) = backend.loadPeaks(asset)
     override val drumKitsAvailable get() = true
@@ -163,14 +164,21 @@ internal class DesktopEditorPorts(
     override suspend fun startVoice(maxSeconds: Int) = when (backend.voice.start(maxSeconds)) {
         VoiceTakes.Start.STARTED -> VoiceStart.STARTED
         VoiceTakes.Start.NO_ROOM -> VoiceStart.NO_ROOM
-        VoiceTakes.Start.NO_INPUT -> VoiceStart.UNAVAILABLE
+        VoiceTakes.Start.NO_INPUT -> if (backend.macAudio?.microphonePermission in setOf(
+            com.choplab.desktop.audio.MacMicrophonePermission.Status.DENIED,
+            com.choplab.desktop.audio.MacMicrophonePermission.Status.RESTRICTED)) VoiceStart.DENIED else VoiceStart.UNAVAILABLE
     }
+    override fun cancelVoiceOpening() { backend.macAudio?.cancelOpening(); backend.voice.cancelOpening() }
+    override fun voiceInputReadout() = backend.voice.inputReadout()
+    override suspend fun acknowledgeVoiceTake() = backend.voice.acknowledge()
     override fun cueVoice() = backend.voice.cue()
     override val recordingCue: RecordingCuePort = object : RecordingCuePort {
         override suspend fun startArmedVoice(maxSeconds: Int) = when (backend.voice.start(maxSeconds, waitForCue = true)) {
             VoiceTakes.Start.STARTED -> VoiceStart.STARTED
             VoiceTakes.Start.NO_ROOM -> VoiceStart.NO_ROOM
-            VoiceTakes.Start.NO_INPUT -> VoiceStart.UNAVAILABLE
+            VoiceTakes.Start.NO_INPUT -> if (backend.macAudio?.microphonePermission in setOf(
+            com.choplab.desktop.audio.MacMicrophonePermission.Status.DENIED,
+            com.choplab.desktop.audio.MacMicrophonePermission.Status.RESTRICTED)) VoiceStart.DENIED else VoiceStart.UNAVAILABLE
         }
         override fun cueVoiceAt(engineFrame: Long): Boolean = backend.engine.estimatedOutputNanos(engineFrame)?.let(backend.voice::cueAt) == true
         override fun armingTimedOut() = backend.voice.armingTimedOut

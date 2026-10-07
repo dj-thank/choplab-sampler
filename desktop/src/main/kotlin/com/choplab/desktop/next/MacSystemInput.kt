@@ -50,7 +50,11 @@ internal class MacSystemInput(
                 line.append(byte.toChar())
             }
             if (line.startsWith("CHOPLAB-ERROR")) {
-                failure = if (line.startsWith("CHOPLAB-ERROR NO_DISPLAY")) Failure.NO_DISPLAY else Failure.DENIED
+                failure = when (line.toString().removePrefix("CHOPLAB-ERROR ").substringBefore(' ')) {
+                    "NO_DISPLAY" -> Failure.NO_DISPLAY
+                    "DENIED" -> Failure.DENIED
+                    else -> Failure.UNAVAILABLE
+                }
                 return null
             }
             if (line.toString() != "CHOPLAB-FLOAT32 48000 2") { failure = Failure.INVALID; return null }
