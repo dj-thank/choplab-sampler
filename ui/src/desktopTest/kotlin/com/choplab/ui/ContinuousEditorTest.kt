@@ -171,6 +171,7 @@ class ContinuousEditorTest {
                     scene.click("ce-stop-all")
                     assertEquals(ContinuousEditorAction.StopAll, actions.last())
                     scene.reach("ce-song-monitor")
+                    full("ce-song-monitor")
                     full("ce-song-stop")
                     scene.click("ce-pcm-status")
                     for (tag in listOf("ce-pcm-reload", "ce-pcm-stop", "ce-pcm-close")) full(tag)
@@ -671,7 +672,11 @@ class ContinuousEditorTest {
     }
 
     @Test fun recordingStopIsReachableFromBothPanesAtActualCompactWindowHeights() = runBlocking<Unit> {
-        for ((width, height) in listOf(390 to 844, 844 to 390)) for (voice in listOf(false, true)) {
+        val previous = Locale.getDefault()
+        try {
+        for (locale in listOf(Locale.JAPANESE, Locale.ENGLISH))
+        for ((width, height) in listOf(390 to 844, 844 to 390, 844 to 368)) for (voice in listOf(false, true)) {
+            Locale.setDefault(locale)
             val actions = mutableListOf<ContinuousEditorAction>()
             val state = mutableStateOf(ContinuousEditorFixture.state().copy(compactPane = ContinuousPane.TIMELINE,
                 recordingVoice = voice, recordingHits = !voice,
@@ -684,6 +689,7 @@ class ContinuousEditorTest {
             }
             try {
                 scene.settle()
+                println("RECORD_CONTROLS locale=${locale.language} width=$width height=$height voice=$voice viewport=${scene.tag("ce-beat-viewport")!!.boundsInRoot}")
                 for (tag in listOf("ce-stop-all", "ce-song-stop")) {
                     val bounds = requireNotNull(scene.tag(tag)).boundsInRoot
                     assertTrue(bounds.width >= 48 && bounds.height >= 48 && bounds.bottom <= height, "$tag remains visible while recording")
@@ -692,12 +698,13 @@ class ContinuousEditorTest {
                 val stopTag = if (voice) "ce-record-voice" else "ce-record-hits"
                 scene.click(stopTag)
                 assertEquals(if (voice) ContinuousEditorAction.StopVoice else ContinuousEditorAction.StopHits, actions.last())
-                scene.capture("recording-stop-${if (voice) "voice" else "hits"}-${width}x$height-font200.png")
+                scene.capture("recording-stop-${locale.language}-${if (voice) "voice" else "hits"}-${width}x$height-font200.png")
                 scene.click("ce-stop-all")
                 scene.click("ce-song-stop")
                 assertEquals(listOf(ContinuousEditorAction.StopAll, ContinuousEditorAction.StopSong), actions.takeLast(2))
             } finally { scene.close() }
         }
+        } finally { Locale.setDefault(previous) }
     }
 
     @Test fun originalIdentityAndMonitoringRemainSeparateAcrossStagesAndPadSelection() = runBlocking<Unit> {

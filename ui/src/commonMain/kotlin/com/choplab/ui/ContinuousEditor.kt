@@ -71,9 +71,12 @@ import kotlin.math.roundToLong
     CETheme {
         BoxWithConstraints(modifier.fillMaxSize().background(CEColor.Ink).padding(8.dp).clip(RoundedCornerShape(16.dp)).background(CEColor.Cream)) {
             val compact = maxWidth < 900.dp
+            // In a short window, a large-font recording status row must not consume the PAD pane's
+            // entire viewport. Keep Stop fixed and put the measurements in the existing scroll area.
+            val scrollRecordingStatus = compact && state.stage == ContinuousStage.BEAT && maxHeight < 480.dp
             Column(Modifier.fillMaxSize().padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 CEHeader(state, onAction, compact, readout, refreshKey)
-                CERecordingStatus(state, onAction, readout, refreshKey)
+                if (!scrollRecordingStatus) CERecordingStatus(state, onAction, readout, refreshKey)
                 if (state.autosaveFailed) Text(stringResource(Res.string.ce_autosave_failed),
                     Modifier.testTag("ce-autosave-failed").semantics { liveRegion = LiveRegionMode.Polite }, color = CEColor.Ink)
                 if (state.vocalPreview) Text(stringResource(Res.string.vocal_preview_source_owned), Modifier.testTag("ce-vocal-preview-owner"))
@@ -86,6 +89,7 @@ import kotlin.math.roundToLong
                         val maximumPadSide = (maxHeight - 16.dp).coerceAtLeast(64.dp)
                         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).testTag("ce-beat-scroll"),
                             verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (scrollRecordingStatus) CERecordingStatus(state, onAction, readout, refreshKey)
                             CEOriginalDock(state, onAction, readout, refreshKey, compact = true,
                                 modifier = Modifier.onSizeChanged { sourceHeight = with(density) { it.height.toDp() } })
                             Box(Modifier.fillMaxWidth().then(if (state.compactPane == ContinuousPane.TIMELINE) Modifier.height(stageHeight) else Modifier)
@@ -800,7 +804,8 @@ import kotlin.math.roundToLong
                 .semantics { contentDescription = seekLabel; stateDescription = seekState }, enabled = state.permits(ContinuousCapability.SONG_SEEK),
             colors = SliderDefaults.colors(thumbColor = CEColor.Orange, activeTrackColor = CEColor.Orange, inactiveTrackColor = CEColor.Tan))
         CEValueSlider(stringResource(Res.string.ce_song_gain), state.songMonitorGain, state, ContinuousCapability.SONG_MONITOR_GAIN,
-            { onAction(ContinuousEditorAction.SetSongMonitorGain(it)) }, Modifier.width(if (stretch) 220.dp else 260.dp), dark = true, tag = "ce-song-monitor",
+            { onAction(ContinuousEditorAction.SetSongMonitorGain(it)) },
+            Modifier.width((if (stretch) 220.dp else 260.dp).coerceAtMost(viewportWidth)), dark = true, tag = "ce-song-monitor",
             stacked = LocalDensity.current.fontScale > 1.3f)
         // A swung tempo can be wider than the compact viewport at large text sizes. Wrap its label
         // within that measured width so scrolling can expose the entire input target beside fixed Stop.
