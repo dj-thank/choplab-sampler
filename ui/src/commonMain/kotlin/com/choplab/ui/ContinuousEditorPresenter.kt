@@ -101,6 +101,8 @@ interface ContinuousEditorPorts {
     suspend fun copyText(text: String): Boolean = false
     /** Whether this host can record the microphone. */
     val voiceAvailable: Boolean get() = false
+    /** Storage-only estimate before recording; never opens an input or requests permission. Null means unknown. */
+    suspend fun voiceRecordingEstimateMillis(maxSeconds: Int): Long? = null
     /** Opens the microphone for a take of at most [maxSeconds], asking for permission first where the platform needs it. */
     suspend fun startVoice(maxSeconds: Int): VoiceStart = VoiceStart.UNAVAILABLE
     /** The song started now: what the microphone captured before this is the take's lead-in. */
