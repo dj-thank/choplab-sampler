@@ -34,15 +34,16 @@ import javax.swing.SwingUtilities
 /** Development Preview entry; the existing production/default launcher remains unchanged. */
 fun main() {
     check(java.lang.Boolean.getBoolean("choplab.preview")) { "Linked editor requires the isolated Preview profile" }
+    val directory = DesktopProfile.dataDirectory(preview = true).toPath().resolve("next-v10")
+    val display = NextDisplaySettings(directory.resolve("ui/display.properties"))
     val title = if (Locale.getDefault().language == "ja") "おとひろい NEXT" else "Earth Song NEXT"
     applyMacOsHostProperties(title)
-    val directory = DesktopProfile.dataDirectory(preview = true).toPath().resolve("next-v10")
     val backend = startNextWithRecovery(directory) {
         prepareDesktopOnnxRuntime()
         if (java.lang.Boolean.getBoolean("choplab.silentSmoke"))
             NextBackend.create(directory, sinkFactory = { error("Audio disabled for isolated lifecycle verification") }, microphone = { null })
         else NextBackend.create(directory)
-    } ?: return
+    } ?: run { display.close(); return }
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val parent = AtomicReference<AwtWindow?>(null)
     val ports = DesktopEditorPorts(backend) { parent.get() }
@@ -84,9 +85,12 @@ fun main() {
                 }
                 onDispose { desktop?.setQuitHandler(null) }
             }
-            Window(title = title,
+            val displayValue by display.preferences.collectAsState()
+            val windowTitle = remember(displayValue.language) { if (Locale.getDefault().language == "ja") "おとひろい NEXT" else "Earth Song NEXT" }
+            Window(title = windowTitle,
                 state = rememberWindowState(width = 1440.dp, height = 1024.dp),
                 onCloseRequest = requestClose) {
+                NextDisplayEnvironment {
                 SideEffect { parent.set(window) }
                 DisposableEffect(window) {
                     val dialogOwner = NextDialogOwners.register(window) { presenter.onAction(ContinuousEditorAction.StopAll) }
@@ -138,6 +142,7 @@ fun main() {
                         // A text editor/dialog keeps its own shortcuts and pending edits.
                         if (action == ContinuousEditorAction.StopAll || window.ownedWindows.filterIsInstance<java.awt.Dialog>().none { it.isVisible }) presenter.onAction(action)
                     }, dialogOpen = editorDialogOpen)
+                    NextDisplayMenu(display, closing || editorDialogOpen)
                     NextMacAudioMenus(backend, state, closing || editorDialogOpen)
                     backend.windowsAudio?.let { audio ->
                         val route by audio.route.collectAsState()
@@ -172,7 +177,8 @@ fun main() {
                     presenter::onAction, presenter::readout, refresh, diagnostics = presenter::diagnostics, mixerReadout = presenter::readMixer,
                     lyricProposal = lyricProposal, stepPatterns = stepPatterns, vocalGuide = vocalGuide, fourStems = fourStems,
                     autoChop = autoChop, onlineSource = onlineSource, sourceAnalysis = sourceAnalysis, vocalTakes = vocalTakes, vocalPunch = vocalPunch, vocalPractice = vocalPractice, vocalPitch = vocalPitch, vocalCoach = vocalCoach, beatStretch = beatStretch, quickStart = quickStart)
+                }
             }
         }
-    } finally { quickStart.close(); ports.close(); recovery?.stop(); runBlocking { backend.shutdown(flush = !closedWithoutAutosave.get()) }; scope.cancel() }
+    } finally { quickStart.close(); ports.close(); recovery?.stop(); runBlocking { backend.shutdown(flush = !closedWithoutAutosave.get()) }; scope.cancel(); display.close() }
 }

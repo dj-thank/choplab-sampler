@@ -1,0 +1,4 @@
+<resources>
+    <string name="ce_a11y_source_range">原曲の切り出し範囲</string>
+    <string name="ce_a11y_song_position">曲全体の再生位置</string>
+</resources>

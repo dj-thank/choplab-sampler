@@ -1,0 +1,4 @@
+<resources>
+    <string name="ce_a11y_source_range">Original audio cut range</string>
+    <string name="ce_a11y_song_position">Song playback position</string>
+</resources>

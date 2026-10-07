@@ -1,0 +1,7 @@
+<resources>
+    <string name="next_display_menu">表示</string>
+    <string name="next_display_language">言語</string>
+    <string name="next_display_system">システム設定に従う</string>
+    <string name="next_display_size">文字サイズ</string>
+    <string name="next_display_failed">表示設定を保存または復元できませんでした。</string>
+</resources>
