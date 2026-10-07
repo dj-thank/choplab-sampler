@@ -121,7 +121,9 @@ class AudioSourceController(val library: LocalAudioLibrary, private val backend:
             current(lease)
             publish(lease) { it.copy(message="${index+1}/${queue.size}曲目 · ${track.title}") }
             try {
-                if (library.spotifyItem(track.spotifyUrl) != null) {
+                val cached = library.spotifyItem(track.spotifyUrl)
+                if (cached != null) {
+                    library.rememberSpotify(track.spotifyUrl, cached, track.artist, track.album)
                     progress = progress.copy(existing=progress.existing+1)
                 } else {
                     val found = backend.search(track.query.take(240),id)
@@ -137,7 +139,7 @@ class AudioSourceController(val library: LocalAudioLibrary, private val backend:
                     require(prior != null || library.directory.usableSpace >= LocalAudioLibrary.MAX_FILE_BYTES * 2) { "空き容量が不足しています" }
                     val item = prior ?: download(lease,id,checked,selectForUse=false)
                     current(lease)
-                    library.rememberSpotify(track.spotifyUrl,item)
+                    library.rememberSpotify(track.spotifyUrl,item,track.artist,track.album)
                     progress = if(prior == null) progress.copy(added=progress.added+1) else progress.copy(existing=progress.existing+1)
                 }
             } catch (error: Exception) {

@@ -68,19 +68,7 @@ fun AudioSourceHubContent(
                 }
                 when(state.section) {
                     SourceSection.LIBRARY -> {
-                        if(state.library.isEmpty())Text("取り込んだ音がここに残ります。毎回ファイルを探す必要はありません。")
-                        LazyColumn(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(8.dp)) {
-                            items(state.library,key={it.id}) { item ->
-                                OutlinedCard(Modifier.fillMaxWidth().clickable(enabled=canUseAudio&&(!state.busy||state.spotifySync!=null)){onUse(item.id)}
-                                    .semantics { contentDescription="ライブラリ音源 ${item.title}を使う" }) {
-                                    Column(Modifier.padding(12.dp)) {
-                                        Text(item.title,fontWeight=FontWeight.Bold)
-                                        Text(if(item.origin.startsWith("https://www.youtube.com/"))"YouTubeから取り込み" else item.origin)
-                                        Text("タップしてチョップへ")
-                                    }
-                                }
-                            }
-                        }
+                        LibraryBrowserPanel(state.library,canUseAudio&&(!state.busy||state.spotifySync!=null),onUse,Modifier.weight(1f))
                     }
                     SourceSection.YOUTUBE -> {
                         OutlinedTextField(value=state.query,onValueChange=onQuery,enabled=!state.busy,

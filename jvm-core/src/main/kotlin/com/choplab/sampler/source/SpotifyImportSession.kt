@@ -62,7 +62,7 @@ class SpotifyImportSession(
     defaultClientId: String = "",
 ) : AutoCloseable {
     private val mutable=MutableStateFlow(SpotifyImportState(configured=defaultClientId.isNotBlank(),
-        message="Spotifyにログインすると、お気に入りを自動でライブラリに追加します"))
+        message="Spotifyにログインして、取り込む曲を選びます"))
     val state=mutable.asStateFlow()
     private val executor=Executors.newSingleThreadExecutor { Thread(it,"ChopLab-Spotify-Import").apply { isDaemon=true } }
     private val generation=AtomicLong()

@@ -45,6 +45,8 @@
 
 段階3ではSpotify接続後の自動一括取込を選択式へ変更し、YouTube Music/動画検索、共有URL、ジャケット・曲名・artist・album・長さ・codec/rate/bitrateを表示します。公式性は確認できた根拠だけを表示し、一致度は校正前の確率に見せません。候補確認を既定とし、取得形式IDだけで高音質と断定しません。
 
+2026-10-07の訂正: 起動やSpotify接続だけで全お気に入りの音源を一括取得しない。desktopではアーティスト検索→アルバム→曲、保存したアルバム、お気に入りの曲を明示して開き、次のページも手動で取得する。ダウンロードは選んだ曲と件数を確認して開始する。取得済みLibraryはアーティスト/アルバム/曲の分類と検索・40件ずつの表示を持ち、情報のない旧音源も保持する。アーティストのアルバムと検索の件数は[公式API仕様](https://developer.spotify.com/documentation/web-api/reference/get-an-artists-albums)に従って10件、それ以外のmetadataページは20件。既存取得機能の取消・元bytes・重複音源の再利用を保つ。
+
 SpotifyはmetadataとAPI機能、YouTubeは別サービスの音声であり、注意表示だけで連携や配布が適合したとはしません。[Spotify policy](https://developer.spotify.com/policy) と [YouTube terms](https://www.youtube.com/static?template=terms) を採用時の具体的フローと照合します。未解決の連携は一般配布へ有効化せず、ファイル/ライブラリの制作を継続可能にします。DRM・capture-policyの回避は実装しません。
 
 ## 保存する価値と見送り

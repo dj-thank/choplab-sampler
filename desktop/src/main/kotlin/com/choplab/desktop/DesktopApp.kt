@@ -379,15 +379,15 @@ private fun runDesktopApplication(args: Array<String>) = application {
                     sourceHubVisible=false
                 },
                 spotifyContent={if(spotify.connected) SpotifySearchPanel(
-                    spotifyState,sourceState.busy,spotify::setSearchQuery,spotify::searchForImport,spotifySync::addTrack,
-                    {sourceHub.section(SourceSection.LIBRARY)},spotifySync::syncAgain,::disconnectSpotify,
+                    spotifyState,spotify,spotifySync::addTracks,
+                    {sourceHub.section(SourceSection.LIBRARY)},::disconnectSpotify,
                 ) else SpotifySourcePicker(
                     SpotifyImportState(connected=spotify.connected,busy=spotifyState.busy,configured=spotifyState.clientIdConfigured,message=spotifyState.message,tracks=spotifyState.sourceTracks,hasMore=spotifyState.sourceHasMore),
                     sourceState.busy,"http://127.0.0.1/callback",
                     onLogin={client ->if(client.isBlank() || spotify.configureClientId(client))spotify.login()},
-                    onDisconnect=::disconnectSpotify,onMore=spotifySync::syncAgain,onPick=sourceHub::importFavorite,
+                    onDisconnect=::disconnectSpotify,onMore=spotify::showMoreLibrary,onPick=sourceHub::importFavorite,
                     onOpen={link->java.awt.Desktop.getDesktop().browse(java.net.URI(link))},
-                    automaticSync=true,onLibrary={sourceHub.section(SourceSection.LIBRARY)},
+                    automaticSync=false,onLibrary={sourceHub.section(SourceSection.LIBRARY)},
                 )},
                 spotifyLabel="Spotify",
             )

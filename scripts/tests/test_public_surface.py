@@ -1142,6 +1142,7 @@ class PublicSurfacePolicyTest(unittest.TestCase):
             "ChopLab-windows-app-image.zip",
             "ChopLab-windows-preview.zip",
             "ChopLab-windows-next.zip",
+            "ChopLab-mac-preview.zip",
             "ChopLab-mac-next-preview.zip",
         ):
             self.assertEqual(80, explicit_archive_nested_limit(Path(name)))

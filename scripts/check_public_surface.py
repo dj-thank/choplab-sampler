@@ -105,6 +105,7 @@ PACKAGED_APP_ARCHIVE_NAMES = frozenset({
     "ChopLab-windows-app-image.zip",
     "ChopLab-windows-preview.zip",
     "ChopLab-windows-next.zip",
+    "ChopLab-mac-preview.zip",
     "ChopLab-mac-next-preview.zip",
 })
 ZIP_NESTED_MEMBER_LIMIT = 16 * 1024 * 1024

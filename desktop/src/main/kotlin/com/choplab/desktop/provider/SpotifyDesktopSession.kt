@@ -2,6 +2,9 @@ package com.choplab.desktop.provider
 
 import com.choplab.sampler.source.SourceTrack
 import com.choplab.sampler.source.SourceRecipes
+import com.choplab.sampler.source.SpotifyCatalogPage
+import com.choplab.sampler.source.SpotifyCatalogRequest
+import com.choplab.sampler.source.SpotifyCatalogJson
 import com.choplab.desktop.spotify.JdkSpotifyTokenClient
 import com.choplab.desktop.spotify.SpotifyApi
 import com.choplab.desktop.spotify.SpotifyApiClient
@@ -68,6 +71,8 @@ data class SpotifyDesktopState(
     val searchMessage: String = "",
     val searchCompletedQuery: String? = null,
     val libraryLoaded: Boolean = false,
+    val catalogPage: SpotifyCatalogPage? = null,
+    val connectionRevision: Long = 0,
     val librarySummary: String = "ライブラリは未取得です",
     val message: String = "Client IDを設定してSpotifyへ接続してください",
     val busy: Boolean = false,
@@ -129,6 +134,7 @@ class SpotifyDesktopSession(
     private val providedClientIdWasInvalid = clientId.isNotBlank() && configuredClientId.isBlank()
     private var credentials: Credentials? = null
     private var nextLoginId = 0L
+    private var connectionRevision = 0L
     private var libraryOffset = 0
     private var activeLogin: ActiveLogin? = null
     private var activeWork: Future<*>? = null
@@ -350,6 +356,16 @@ class SpotifyDesktopSession(
         }
     }
 
+    /** One explicit metadata page; no background prefetch and no audio acquisition. */
+    fun browse(request: SpotifyCatalogRequest) = withAccessToken("Spotifyライブラリ") { token, lease ->
+        val response = api.catalogPage(token, request)
+        generation.requireCurrent(lease)
+        if (response.statusCode !in 200..299) throw SpotifyApiException(response, "ライブラリ")
+        val page = try { SpotifyCatalogJson.page(response.body, request) }
+            catch (_: Exception) { throw SpotifyMetadataResponseException() }
+        OperationResult("Spotifyライブラリを表示しました", transform = { it.copy(catalogPage = page) })
+    }
+
     fun showMoreLibrary() {
         if (mutableState.value.busy) return
         if (!mutableState.value.libraryLoaded) { showLibrary(); return }
@@ -448,6 +464,7 @@ class SpotifyDesktopSession(
                 setStateLocked(
                     mutableState.value.copy(
                         phase = SpotifyConnectionPhase.CONNECTED,
+                        connectionRevision = ++connectionRevision,
                         busy = false,
                         message = "Spotifyと接続しました",
                     ),

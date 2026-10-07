@@ -5,6 +5,7 @@ import java.net.http.HttpClient
 import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.time.Duration
+import com.choplab.sampler.source.*
 
 data class SpotifyApiRequest(
     val method: String,
@@ -14,6 +15,22 @@ data class SpotifyApiRequest(
 )
 
 object SpotifyApiRequestBuilder {
+    fun catalogPage(accessToken: String, request: SpotifyCatalogRequest): SpotifyApiRequest {
+        require(request.offset in 0..request.maximumOffset)
+        val page = "limit=${request.pageSize}&offset=${request.offset}"
+        fun id() = request.id.also { require(Regex("[A-Za-z0-9]{22}").matches(it)) }
+        val path = when (request.route) {
+            SpotifyCatalogRoute.FAVORITES -> "me/tracks?$page"
+            SpotifyCatalogRoute.SAVED_ALBUMS -> "me/albums?$page"
+            SpotifyCatalogRoute.ARTIST_ALBUMS -> "artists/${id()}/albums?$page&include_groups=album,single"
+            SpotifyCatalogRoute.ALBUM_TRACKS -> "albums/${id()}/tracks?$page"
+            SpotifyCatalogRoute.SEARCH -> {
+                require(request.query.isNotBlank() && request.query.length <= 240)
+                "search?q=${encode(request.query)}&type=${request.kind.name.lowercase()}&$page"
+            }
+        }
+        return authorized("GET", URI("https://api.spotify.com/v1/$path"), accessToken)
+    }
     fun searchTracks(accessToken: String, query: String, limit: Int = 10): SpotifyApiRequest {
         require(query.isNotBlank()) { "Spotify search query must not be blank" }
         require(limit in 1..10) { "Spotify search limit must be between 1 and 10" }
@@ -84,6 +101,7 @@ class JdkSpotifyApiTransport(
 }
 
 interface SpotifyApiClient {
+    fun catalogPage(accessToken: String, request: SpotifyCatalogRequest): SpotifyApiResponse = SpotifyApiResponse(501, "")
     fun searchTracks(accessToken: String, query: String, limit: Int = 10): SpotifyApiResponse
     fun currentPlayback(accessToken: String): SpotifyApiResponse
     fun savedTracks(accessToken: String, limit: Int = 20): SpotifyApiResponse
@@ -95,6 +113,8 @@ interface SpotifyApiClient {
 class SpotifyApi(
     private val transport: SpotifyApiTransport = JdkSpotifyApiTransport(),
 ) : SpotifyApiClient {
+    override fun catalogPage(accessToken: String, request: SpotifyCatalogRequest): SpotifyApiResponse =
+        transport.send(SpotifyApiRequestBuilder.catalogPage(accessToken, request))
     override fun searchTracks(accessToken: String, query: String, limit: Int): SpotifyApiResponse =
         transport.send(SpotifyApiRequestBuilder.searchTracks(accessToken, query, limit))
 

@@ -12,9 +12,8 @@ import kotlinx.coroutines.launch
 /**
  * Platform-neutral Spotify liked-track synchronization shared by Windows and Android.
  *
- * One metadata fetch runs per connection or explicit request, followed by one cancellable
- * library import. Closing a panel has no effect on the queue. Search additions queue behind
- * an active import and never refetch or overwrite liked tracks.
+ * Connection alone performs no fetch or download. Explicit additions queue behind an active
+ * import. The retained bulk operation requires an explicit request from its caller.
  */
 open class SpotifyFavoritesAutoImport<S>(
     private val spotify: StateFlow<S>,
@@ -27,7 +26,7 @@ open class SpotifyFavoritesAutoImport<S>(
 ) : AutoCloseable {
     private enum class Stage { WAIT_CONNECTION, FETCHING, WAIT_IMPORT, IMPORTING, DONE, PAUSED }
 
-    private var stage = Stage.WAIT_CONNECTION
+    private var stage = Stage.PAUSED
     private var expectedRevision = 0L
     private var tracks = emptyList<SourceTrack>()
     private var closed = false
@@ -51,7 +50,7 @@ open class SpotifyFavoritesAutoImport<S>(
             if (stage == Stage.IMPORTING) sources.cancelSpotify()
             tracks = emptyList()
             selectedTracks.clear()
-            stage = Stage.WAIT_CONNECTION
+            stage = Stage.PAUSED
             return
         }
         if (stage in listOf(Stage.DONE, Stage.PAUSED, Stage.IMPORTING) && !source.busy &&
@@ -95,8 +94,16 @@ open class SpotifyFavoritesAutoImport<S>(
     /** Queues one searched track (100 max); it starts once the current import finishes. */
     @Synchronized
     fun addTrack(track: SourceTrack): Boolean {
-        if (closed || !isConnected(spotify.value) || selectedTracks.size >= 100) return false
-        selectedTracks[track.spotifyUrl] = track
+        return addTracks(listOf(track))
+    }
+
+    /** Admit a whole explicit selection atomically; a full queue cannot start a partial album. */
+    @Synchronized
+    fun addTracks(tracks: List<SourceTrack>): Boolean {
+        val additions = tracks.distinctBy { it.spotifyUrl }
+        if (closed || !isConnected(spotify.value) || additions.isEmpty() ||
+            (selectedTracks.keys + additions.map { it.spotifyUrl }).distinct().size > 100) return false
+        additions.forEach { selectedTracks[it.spotifyUrl] = it }
         requests.value++
         return true
     }

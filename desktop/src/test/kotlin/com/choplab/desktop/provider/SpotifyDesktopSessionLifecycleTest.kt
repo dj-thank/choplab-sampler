@@ -48,11 +48,12 @@ class SpotifyDesktopSessionLifecycleTest {
     }
 
     @Test
-    fun oauthConnectionPaginatesAndPopulatesLibraryWithoutPickingAnySong() {
+    fun oauthConnectionIsIdleAndExplicitPagedSelectionsPopulateTheLibrary() {
         val root=java.nio.file.Files.createTempDirectory("spotify-oauth-library").toFile()
         val offsets=java.util.Collections.synchronizedList(mutableListOf<Int>())
         val downloads=java.util.concurrent.atomic.AtomicInteger()
         val api=object:SpotifyApiClient by FakeApi() {
+            override fun catalogPage(accessToken:String,request:com.choplab.sampler.source.SpotifyCatalogRequest) = savedTracksPage(accessToken,request.offset)
             override fun savedTracksPage(accessToken:String,offset:Int):SpotifyApiResponse {
                 offsets.add(offset)
                 val n=if(offset==0)1 else 2
@@ -82,7 +83,18 @@ class SpotifyDesktopSessionLifecycleTest {
                 session(api=api,callbackFactory=SpotifyAuthorizationCallbackFactory { ImmediateCallback }).use { session ->
                     com.choplab.desktop.source.SpotifyAutoImport(session.state,hub,session::loadImportLibrary).use { sync ->
                         connect(session)
-                        await { hub.state.value.spotifySync?.completed==2 && !hub.state.value.busy }
+                        assertEquals(0,downloads.get())
+                        assertTrue(offsets.isEmpty())
+                        val browser=SpotifyCatalogBrowser(session)
+                        browser.root(com.choplab.sampler.source.SpotifyCatalogKind.TRACK)
+                        await { !session.state.value.busy && browser.page!=null }
+                        assertEquals(0,downloads.get())
+                        browser.selectPage(); assertTrue(browser.addSelected(sync::addTracks))
+                        await { hub.state.value.library.size==1 && !hub.state.value.busy }
+                        browser.next(); await { !session.state.value.busy && browser.page?.request?.offset==20 }
+                        assertEquals(1,downloads.get())
+                        browser.selectPage(); assertTrue(browser.addSelected(sync::addTracks))
+                        await { hub.state.value.library.size==2 && !hub.state.value.busy }
                         assertEquals(listOf(0,20),offsets.toList())
                         assertEquals(2,hub.state.value.library.size)
                         assertEquals(null,hub.state.value.pendingUseId)
@@ -94,9 +106,12 @@ class SpotifyDesktopSessionLifecycleTest {
                         assertEquals(3,downloads.get())
                         assertTrue(hub.state.value.library.all { it.origin.startsWith("https://www.youtube.com/") })
                         assertEquals(null,hub.state.value.pendingUseId)
-                        sync.syncAgain()
-                        await { offsets.size==4 && hub.state.value.spotifySync?.existing==2 && !hub.state.value.busy }
+                        browser.previous(); await { !session.state.value.busy && browser.page?.request?.offset==0 }
+                        browser.selectPage(); assertTrue(browser.addSelected(sync::addTracks))
+                        await { hub.state.value.spotifySync?.existing==1 && !hub.state.value.busy }
                         assertEquals(3,downloads.get())
+                        assertTrue(hub.state.value.library.all { it.artist=="Artist" })
+                        browser.close()
                     }
                 }
             }

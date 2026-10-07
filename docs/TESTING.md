@@ -79,6 +79,8 @@ Androidの2言語TTSと1件の実4stemは、ownerの隔離Preview・対応test A
 
 Macでは同じJVM/desktop suiteに加え、`:desktop:compileMacSystemAudioHelper`、`:desktop:desktopUiQualityTest`、`:desktop:desktopLongPressUiTest` を実行します。実ファイル・providerの取込は私有の隔離ライブラリで確認し、取得時間とdecode/再読込を分けて測ります。合成音源の比較ではフレーム・rate・左右・サンプル一致も確認します。
 
+音源ブラウザは800件の合成metadataで、接続だけの取得0、明示ページごとの取得、アーティスト→アルバム→曲、選択した曲だけの追加、取得済み音源のbytes保持・metadata補完を検査します。`MusicBrowserUiTest` は実Compose描画の日英・狭幅・文字2倍、ページ操作とRetry-After後の操作再開（自動API再試行0）を確認します。梱包したJavaの `MusicBrowserNativeSelfTest` は所有する実Library/Spotify窓を開いてCompose表示後に閉じ、残存窓0・初期API要求0・音源取得0を確認します。合成アカウントと一時profileだけを使い、実Spotify OAuth/APIと利用者の操作感は別の受入です。
+
 Mac NEXTの梱包後は、同梱Javaから `NextWholeCreationSelfTest` の全制作を実行し、さらに次を確認します。manifestの全ファイル・署名、PATHをシステム標準だけにした同梱codecで11種類（FLAC/MP3/AAC in M4A/raw AAC/Ogg/Opus/ALAC/AIFFとAIF/MP4/WebM）の取込、24bit losslessの値一致・44.1 kHz monoの共有変換・原本bytes保持・取消後再試行、同梱Javaでの取込/chop/PAD/pattern/保存/再開/UndoRedo/16・24bit書出し、合成マイクから実presenter/host窓口を通した原曲録音（44.1 kHz floatの全sample保持、PAD・曲・24bit出力・autosave再開）、実libraryでの追加/明示選択/タイトルと元bytes保持/bundle往復/UndoRedo/PAD配置/24bit書出し/保存再開、実launcherの画面応答と通常終了・再起動2回、自動保存の編集内容と全音源hash一致を確認します。合成素材・一時profile・無音出力を使い、利用者データは読み書きしません。実音・実マイク・ファイル窓口の手操作・聴感は別の確認です。 全制作の合成TTS/分離modelと、同じpackageでの実codec・実モデル・日英の端末TTSは別のfixtureとして記録します。fresh packageの成功とインストール先の更新・bytes照合も分け、後者を実施するまではinstalled=falseを保持します。
 
 ```sh

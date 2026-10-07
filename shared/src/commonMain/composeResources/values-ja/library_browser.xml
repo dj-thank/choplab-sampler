@@ -1,0 +1,28 @@
+<resources>
+    <string name="music_artists">アーティスト</string>
+    <string name="music_albums">アルバム</string>
+    <string name="music_tracks">曲</string>
+    <string name="music_downloaded">ダウンロード済み</string>
+    <string name="music_favorites">お気に入りの曲</string>
+    <string name="music_saved_albums">保存したアルバム</string>
+    <string name="music_search">曲・アーティスト・アルバムを検索</string>
+    <string name="music_unknown_artist">アーティスト情報なし</string>
+    <string name="music_unknown_album">アルバム情報なし</string>
+    <string name="music_back">戻る</string>
+    <string name="music_next">次のページ</string>
+    <string name="music_previous">前のページ</string>
+    <string name="music_count">%1$d曲</string>
+    <string name="music_page">%3$d件中 %1$d–%2$d件</string>
+    <string name="music_empty">条件に合う項目がありません。</string>
+    <string name="music_start">アーティスト・アルバム・お気に入りから選んで探せます。曲を選ぶまでダウンロードは始まりません。</string>
+    <string name="music_artist_search">アーティストを検索して、アルバムから曲を開きます。</string>
+    <string name="music_open">開く</string>
+    <string name="music_add">この曲をダウンロード</string>
+    <string name="music_selected_add">選んだ%1$d曲をダウンロード</string>
+    <string name="music_select_page">このページを選択</string>
+    <string name="music_clear_selection">選択を解除</string>
+    <string name="music_queued">選んだ曲を追加待ちにしました。取得済みの音源は再利用します。</string>
+    <string name="music_queue_full">追加待ちが上限か、未接続です。現在の取得後に再試行してください。</string>
+    <string name="music_search_button">検索</string>
+    <string name="music_home">音楽を探す</string>
+</resources>

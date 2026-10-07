@@ -7,6 +7,23 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class SpotifyApiTest {
+    @Test fun catalogRequestsUseTypedBoundedEndpointsAndDoNotFollowProviderLinks() {
+        val id = "0123456789012345678901"
+        for ((route, path) in listOf(
+            com.choplab.sampler.source.SpotifyCatalogRoute.FAVORITES to "/v1/me/tracks",
+            com.choplab.sampler.source.SpotifyCatalogRoute.SAVED_ALBUMS to "/v1/me/albums",
+            com.choplab.sampler.source.SpotifyCatalogRoute.ARTIST_ALBUMS to "/v1/artists/$id/albums",
+            com.choplab.sampler.source.SpotifyCatalogRoute.ALBUM_TRACKS to "/v1/albums/$id/tracks")) {
+            val request = SpotifyApiRequestBuilder.catalogPage("token", com.choplab.sampler.source.SpotifyCatalogRequest(route, id = id, offset = 20))
+            assertEquals(path, request.uri.path)
+            assertTrue(request.uri.query.contains("limit=" + if (route == com.choplab.sampler.source.SpotifyCatalogRoute.ARTIST_ALBUMS) 10 else 20))
+            assertTrue(request.uri.query.contains("offset=20"))
+        }
+        assertFailsWith<IllegalArgumentException> {
+            SpotifyApiRequestBuilder.catalogPage("token", com.choplab.sampler.source.SpotifyCatalogRequest(
+                com.choplab.sampler.source.SpotifyCatalogRoute.ALBUM_TRACKS, id = "../../other"))
+        }
+    }
     @Test
     fun searchRequestRejectsTheCurrentDevelopmentModeLimitOverTen() {
         assertFailsWith<IllegalArgumentException> {

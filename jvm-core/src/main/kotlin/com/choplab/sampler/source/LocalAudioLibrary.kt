@@ -27,8 +27,7 @@ class LocalAudioLibrary(val directory: File, private val validateAudio: (File)->
             runCatching {
                 val properties = readProperties(meta)
                 val file = resolve(meta.nameWithoutExtension)
-                AudioLibraryItem(meta.nameWithoutExtension, properties.getProperty("title").take(240),
-                    properties.getProperty("origin", "ファイル"), file.length())
+                item(meta.nameWithoutExtension, properties, file)
             }.getOrNull()
         }.toList()
 
@@ -61,12 +60,24 @@ class LocalAudioLibrary(val directory: File, private val validateAudio: (File)->
             val id = link.readText(Charsets.UTF_8)
             val file = resolve(id)
             val meta = readProperties(File(directory, "$id.properties"))
-            AudioLibraryItem(id, meta.getProperty("title"), meta.getProperty("origin", "ファイル"), file.length())
+            item(id, meta, file)
         }.getOrNull()
     }
 
-    @Synchronized fun rememberSpotify(url: String, item: AudioLibraryItem) {
+    @Synchronized fun rememberSpotify(url: String, item: AudioLibraryItem, artist: String = "", album: String = "") {
         resolve(item.id)
+        if (artist.isNotBlank() || album.isNotBlank()) {
+            val target = File(directory, "${item.id}.properties")
+            val properties = readProperties(target)
+            fun clean(value: String) = value.filter { it.code >= 32 }.take(240)
+            if (artist.isNotBlank()) properties.setProperty("artist", clean(artist))
+            if (album.isNotBlank()) properties.setProperty("album", clean(album))
+            val pending = File(directory, ".${UUID.randomUUID()}.metadata")
+            try {
+                pending.writer(Charsets.UTF_8).use { properties.store(it, "ChopLab personal audio") }
+                Files.move(pending.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE)
+            } finally { pending.delete() }
+        }
         val link = spotifyLink(url)
         check(link.parentFile.isDirectory || link.parentFile.mkdirs())
         val temp = File(link.parentFile, ".${UUID.randomUUID()}")
@@ -105,7 +116,7 @@ class LocalAudioLibrary(val directory: File, private val validateAudio: (File)->
             if (metadata.isFile) {
                 runCatching {
                     val known = readProperties(metadata)
-                    AudioLibraryItem(id, known.getProperty("title"), known.getProperty("origin", "ファイル"), resolve(id).length())
+                    item(id, known, resolve(id))
                 }.getOrNull()?.let { return it }
             }
             validateAudio(temp)
@@ -238,6 +249,10 @@ class LocalAudioLibrary(val directory: File, private val validateAudio: (File)->
             }
         }
     }
+
+    private fun item(id: String, properties: Properties, file: File) = AudioLibraryItem(id,
+        properties.getProperty("title").take(240), properties.getProperty("origin", "ファイル"), file.length(),
+        properties.getProperty("artist", "").take(240), properties.getProperty("album", "").take(240))
 
     private fun readProperties(file: File): Properties {
         require(file.length() in 1..16384) { "音源情報が不正です" }
