@@ -29,7 +29,7 @@ internal class CancellableInputOpener(private val factory: suspend () -> MicInpu
                 input = runBlocking { factory() }
                 session.answer.complete(input)
                 session.handoff.await()
-            } catch (_: Exception) { session.answer.complete(null) }
+            } catch (failure: Exception) { session.answer.completeExceptionally(failure) }
             finally {
                 val release = synchronized(lock) { !session.transferred }
                 if (release) try { input?.close() } catch (_: Exception) { }
