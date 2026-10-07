@@ -12,7 +12,8 @@ case "${1:-}" in
   "") ;;
   --debug)
     CHOPLAB_ARGS+=(--debug-jvm)
-    printf 'Waiting for a JVM debugger at 127.0.0.1:5005 before opening the editor.\n'
+    printf 'Preparing and building NEXT. The debugger is not ready yet.\n'
+    printf 'Connect to 127.0.0.1:5005 only after "Listening for transport dt_socket" appears below.\n'
     ;;
   --help|-h)
     printf 'Usage: %s [--debug]\n' "$0"
