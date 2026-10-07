@@ -1,6 +1,7 @@
 package com.choplab.jvm
 
 import java.nio.file.Files
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
@@ -57,22 +58,35 @@ class ArmedVoiceRecorderTest {
         val clock = AtomicLong(1_000_000_000)
         val mic = ClockedInput(clock)
         val recorder = VoiceRecorder(mic, scratch, 1, waitForCue = true, nanoTime = clock::get)
-        assertFalse(recorder.cueAt(22_000_000_000), "Beyond the separate 20-second preparation bound")
-        mic.add(FloatArray(2_000) { .9f }, 1_250_000_000)
-        withinSeconds(5) { mic.reads == 1 }
-        assertEquals(0, recorder.recordedMillis)
-        assertNull(recorder.finish(store, "CANCELLED"))
-        assertEquals(0, store.storedBytes())
-        assertEquals(1, mic.closes)
+        try {
+            assertFalse(recorder.cueAt(22_000_000_000), "Beyond the separate 20-second preparation bound")
+            mic.add(FloatArray(2_000) { .9f }, 1_250_000_000)
+            withinSeconds(5) { mic.reads == 1 }
+            assertEquals(0, recorder.recordedMillis)
+            assertNull(recorder.finish(store, "CANCELLED"))
+            assertEquals(0, store.storedBytes())
+            assertEquals(1, mic.closes)
+        } finally { recorder.discard() }
 
-        val timedInput = ClockedInput(clock)
+        val clockAdvanced = CountDownLatch(1)
+        val resumeCapture = CountDownLatch(1)
+        val timedInput = ClockedInput(clock, afterClockAdvance = {
+            clockAdvanced.countDown()
+            check(resumeCapture.await(5, TimeUnit.SECONDS))
+        })
         val timed = VoiceRecorder(timedInput, scratch, 1, waitForCue = true, nanoTime = clock::get)
-        timedInput.add(FloatArray(2_000) { .5f }, clock.get() + 21_000_000_000)
-        withinSeconds(5) { timed.armingTimedOut }
-        assertTrue(timed.interrupted)
-        assertNull(timed.finish(store, "TIMEOUT"))
-        assertEquals(0, Files.list(scratch).use { it.count() })
-        assertEquals(1, timedInput.closes)
+        try {
+            timedInput.add(FloatArray(2_000) { .5f }, clock.get() + 21_000_000_000)
+            assertTrue(clockAdvanced.await(5, TimeUnit.SECONDS))
+            assertTrue(timed.armingTimedOut, "The deadline is observable while the input read is still returning")
+            assertFalse(timed.interrupted, "The capture thread has not processed that input yet")
+            resumeCapture.countDown()
+            withinSeconds(5) { timed.interrupted }
+            assertTrue(timed.armingTimedOut)
+            assertNull(timed.finish(store, "TIMEOUT"))
+            assertEquals(0, Files.list(scratch).use { it.count() })
+            assertEquals(1, timedInput.closes)
+        } finally { resumeCapture.countDown(); timed.discard() }
     }
 
     @Test fun aLateShortTakeKeepsItsActualOffsetInsteadOfMovingTowardTheCue() {
@@ -89,7 +103,8 @@ class ArmedVoiceRecorderTest {
         assertEquals(-1_600, take.leadFrames, "200 ms late even though the take lasts only 12.5 ms")
     }
 
-    private class ClockedInput(private val clock: AtomicLong, override val channels: Int = 1) : MicInput {
+    private class ClockedInput(private val clock: AtomicLong, override val channels: Int = 1,
+                               private val afterClockAdvance: () -> Unit = {}) : MicInput {
         override val sampleRate = 8_000
         private data class Buffer(val samples: FloatArray, val endNanos: Long)
         private val queue = LinkedBlockingQueue<Buffer>()
@@ -102,6 +117,7 @@ class ArmedVoiceRecorderTest {
                 val input = queue.poll(5, TimeUnit.MILLISECONDS) ?: continue
                 input.samples.copyInto(buffer)
                 clock.set(input.endNanos)
+                afterClockAdvance()
                 reads++
                 return input.samples.size
             }
