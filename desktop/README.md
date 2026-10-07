@@ -38,7 +38,11 @@ JDK21とXcode Command Line Toolsを用意し、repository rootで `./scripts/run
 
 Macの配布・OS/CPU別の受入と、開発起動の成功は区別します。最新結果はROADMAPで確認してください。
 
-NEXTもMacの「ファイル」「編集」「再生」メニューから操作できます。Command-Iで音源、Command-Oでライブラリ、Command-Shift-Oで制作を開き、Command-Sで保存、Command-EでWAV書き出し、Command-Z / Command-Shift-Zで制作のUndo / Redo、Command-.で全停止します。録音中や処理中は、対応する編集・保存操作を無効にします。ダイアログを操作中はメイン画面のショートカットを止めます。Windowsは既存と同じControlキー、RedoはControl-Yです。
+NEXTもMacの「ファイル」「編集」「再生」メニューから操作できます。Command-Nで新しい制作、Command-Iで音源、Command-Oでライブラリ、Command-Shift-Oで制作を開き、Command-Sで保存、Command-EでWAV書き出し、Command-Z / Command-Shift-Zで制作のUndo / Redo、Command-.で全停止します。新しい制作へ進む前に、保存・破棄・取消を選べます。録音中や処理中は、対応する編集・保存操作を無効にします。補助窓でも全停止を使え、Escapeで閉じられます。Windowsは既存と同じControlキー、RedoはControl-Yです。
+
+「表示 → 文字サイズ」で100%・130%・200%を選ぶとその場で反映し、次回起動にも引き継ぎます。「表示 → 言語」はOS既定・日本語・英語を保存し、編集中の入力を保つため次回起動から適用します。ライブチョップや演奏録音中のPADはTabで選び、Space/Enterで押す・離す操作ができます。原曲波形は左右キーで移動、Home/Endで先頭・末尾へ移動し、HANDの円盤も左右キーで操作できます。
+
+録音前の見込み時間、録音中の入力レベル・経過・残り時間、入力や出力の中断理由を表示します。保存できなかった録音は原音を保ち、再試行または明示的な破棄を選べます。Macの音声メニューから入力・出力機器の選択、一覧更新、再接続ができます。保存・書き出し成功後はSAVE画面にファイル名と「保存先を表示」が出ます。取消や失敗を成功として表示しません。
 
 NEXTのウィンドウへ音源または `.choplab` 制作ファイルを1つドロップして開けます。音源の追加は1回のUndoで戻せ、元の音声bytesは保持します。複数の音源はライブラリの「ファイルを追加」から選びます。フォルダ・URL・複数ファイルをドロップしても、勝手に一覧取得したり先頭の音源へ置き換えたりしません。
 
@@ -62,7 +66,7 @@ python3 scripts/run_mac_acceptance.py \
 
 `./gradlew :desktop:packageMacLinkedPreview` で `desktop/build/mac-linked-preview-app-image/ChopLab NEXT.app` を作成します。Java、録音helper、取得/decodeツール、ドラム分離モデルを含み、単体で起動できます。初回ビルドはHomebrewのffmpeg/node、Python3.11以降とXcode CLIが必要です。同梱ツールとnative依存は `config/mac-media-tool-files.txt` / `config/mac-media-tool-files-20261006.txt` の確認済み完全集合で固定し、実行時はHomebrewやPATHを使いません。元の4工程・大きなPAD・右側の曲配置を使う新しい編集入口です。既存Previewと別のapp identityを持ち、制作はPreview領域の `next-v10` に分離します。ローカルad-hoc署名で、公証済みの一般配布とは別です。
 
-WAV・FLAC・MP3・M4A（AAC/ALAC）・AAC・Ogg・Opus・AIFF/AIF・MP4・WebMの取込、チョップ、PAD、合成ドラム、曲への配置、原曲用のマイク録音、曲に合わせた声の録音、スクラッチ、保存/再開、WAV書出しを接続しています。オンライン候補からの明示取込、Mac端末音録音、音源ライブラリ、ドラム分離もNEXTへ接続済みです。Spotify接続と長尺prefetchは移植中で、全制作機能の受入はROADMAPに沿って進めます。起動と保存復元の再現手順は [TESTING](../docs/TESTING.md)、移行とMac実測は [ROADMAP](../docs/ROADMAP.md) で管理します。
+WAV・FLAC・MP3・M4A（AAC/ALAC）・AAC・Ogg・Opus・AIFF/AIF・MP4・WebMの取込、チョップ、PAD、合成ドラム、曲への配置、原曲用のマイク録音、曲に合わせた声の録音、スクラッチ、保存/再開、WAV書出しを接続しています。オンライン候補からの明示取込、Mac端末音録音、音源ライブラリ、ドラム分離もNEXTへ接続済みです。NEXTのSpotify窓では曲情報を検索し、音源のダウンロードはPreviewで選択して行います。ライブラリはアーティスト→アルバム→曲の順に絞り込めます。起動と保存復元の再現手順は [TESTING](../docs/TESTING.md)、全制作機能と長尺音源の受入は [ROADMAP](../docs/ROADMAP.md) で管理します。
 
 helperはmacOS14.0を明示してbuildし、最終アプリの最低OSは同梱helper・ツール・Java runtime・JAR内native依存の実バイナリから判定して、Info.plistと配布manifestへ記録します。このMacで用意したcodecにはmacOS27.0を要求するものがあるため、そのbundleはmacOS27.0以降用です。Apple Silicon以外や古いOSは別のbytesでの検証が必要です。
 
