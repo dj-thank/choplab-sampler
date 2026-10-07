@@ -378,7 +378,11 @@
     <string name="ce_input_opening">Opening the input…</string>
     <string name="ce_recorded_time">Recorded %1$s</string>
     <string name="ce_recording_remaining">Remaining %1$s</string>
-    <string name="ce_input_level">Microphone input level</string>
+    <string name="ce_recording_estimate">Approx. %1$s</string>
+    <string name="ce_estimate_unknown">checked at start</string>
+    <string name="ce_mic_estimate">Microphone estimate: %1$s</string>
+    <string name="ce_system_estimate">Device audio estimate: %1$s</string>
+    <string name="ce_input_level">Input level</string>
     <string name="ce_discard_recording">Discard recording</string>
     <string name="ce_discard_recording_hint">Discard this recording without adding it to the project? Existing audio and edits are kept.</string>
     <string name="ce_recording_pending">A recording is waiting to be saved. Recovered recordings are added as SOURCE.</string>
@@ -393,5 +397,7 @@
     <string name="ce_punch_capturing">Punch: recording selected range</string>
     <string name="ce_punch_saving">Punch: saving take</string>
     <string name="ce_punch_waiting">Punch: preparing</string>
+    <string name="ce_punch_stopping">Punch: stopping and keeping captured audio</string>
+    <string name="ce_punch_closing">Punch: keeping captured audio before closing</string>
     <string name="ce_recording_added_pending">The recording is already in the project. Retry saving; it will not be added twice. You can also save a project file.</string>
 </resources>

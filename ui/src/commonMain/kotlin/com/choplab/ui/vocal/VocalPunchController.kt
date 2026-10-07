@@ -14,7 +14,8 @@ interface VocalPunchActions {
 }
 data class VocalPunchState(val startSeconds: String, val endSeconds: String, val preRollBars: Int = 1,
     val countInBars: Int = 1, val passes: Int = 1, val manualMillis: String = "0", val busy: Boolean = false,
-    val stopping: Boolean = false, val closing: Boolean = false, val closed: Boolean = false, val saved: Int = 0, val problem: PunchProblem? = null)
+    val stopping: Boolean = false, val closing: Boolean = false, val closed: Boolean = false, val saved: Int = 0,
+    val saving: Boolean = false, val problem: PunchProblem? = null)
 
 /** Configuration is session-only. Stop/Close preserve completed and partial candidates; Apply belongs to comp. */
 class VocalPunchController(private val document: StateFlow<DocumentState>, val progress: StateFlow<VocalPunchProgress>,
@@ -38,11 +39,11 @@ class VocalPunchController(private val document: StateFlow<DocumentState>, val p
                 value.passes, (manual * 48).roundToLong().toInt()).also { it.plan(document.value.project) }
         } catch (_: IllegalArgumentException) { mutable.value = value.copy(problem = PunchProblem.INVALID); return false }
         val revision = document.value.revision
-        mutable.value = value.copy(busy = true, stopping = false, saved = 0, problem = null)
+        mutable.value = value.copy(busy = true, stopping = false, saving = false, saved = 0, problem = null)
         val pending = jobs.async(start = CoroutineStart.LAZY) {
             val completion = try { actions.record(request, revision) }
                 catch (_: Exception) { PunchCompletion(VocalPunchResult(problem = PunchProblem.SAVE_FAILED), false) }
-            mutable.update { it.copy(busy = false, saved = if (completion.saved) completion.result.captured?.passes?.size ?: 0 else 0,
+            mutable.update { it.copy(busy = false, saving = false, saved = if (completion.saved) completion.result.captured?.passes?.size ?: 0 else 0,
                 manualMillis = "0", problem = completion.result.problem ?: if (!completion.saved && completion.result.captured != null) PunchProblem.SAVE_FAILED else null) }
             if (state.value.closing) finishClose()
             completion
@@ -51,6 +52,9 @@ class VocalPunchController(private val document: StateFlow<DocumentState>, val p
         // A rotating/recreated composition may cancel its waiter, never the session-owned recording/save.
         return pending.await().saved
     }
+
+    /** The host has stopped; the presenter is accepting and persisting the retained candidates. */
+    fun beginSaving() { mutable.update { if (it.busy) it.copy(saving = true) else it } }
 
     fun stop() { mutable.update { it.copy(stopping = true) }; actions.stop() }
     fun requestClose() {

@@ -10,6 +10,7 @@ import com.choplab.core.edit.StretchDraft
 import com.choplab.core.kits.DrumKits
 import com.choplab.core.model.*
 import com.choplab.core.pattern.PatternProblem
+import com.choplab.core.vocal.*
 import com.choplab.engine.EngineCommand
 import com.choplab.engine.EngineProgram
 import com.choplab.engine.Tempo
@@ -27,6 +28,95 @@ import kotlin.test.*
 
 /** Presenter/Studio contracts with fake platform ports; not physical audio evidence. */
 class ContinuousEditorPresenterTest {
+    @Test fun recordingEstimatesProbeStorageWithoutOpeningInputsAndRefreshAfterDiscard() = runBlocking<Unit> {
+        var microphoneEstimate = 71_000L
+        val requests = java.util.concurrent.CopyOnWriteArrayList<Int>()
+        val systemRequests = java.util.concurrent.CopyOnWriteArrayList<Int>()
+        var systemOpens = 0
+        val system = object : SystemAudioCapture by FakeSystemCapture() {
+            override suspend fun recordingEstimateMillis(maxSeconds: Int): Long { systemRequests += maxSeconds; return 25_000 }
+            override suspend fun start(maxSeconds: Int): SystemAudioCapture.Start { systemOpens++; return SystemAudioCapture.Start.STARTED }
+        }
+        val h = Harness(voice = true, system = system, decoratePorts = { base -> object : ContinuousEditorPorts by base {
+            override suspend fun voiceRecordingEstimateMillis(maxSeconds: Int): Long { requests += maxSeconds; return microphoneEstimate }
+        } })
+        try {
+            h.until { it.voiceRecordingEstimateMillis == 71_000L && it.systemRecordingEstimateMillis == 25_000L }
+            assertTrue(h.ports.voiceStarts.isEmpty()); assertEquals(0, systemOpens)
+            assertTrue(requests.single() in 1..300); assertTrue(systemRequests.single() in 1..requests.single())
+            repeat(20) { h.presenter.readout() }
+            delay(250); assertEquals(1, requests.size, "Monitor reads do not probe storage")
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordSource))
+            h.until { it.recordingSource && it.voiceRecordingEstimateMillis == null }
+            microphoneEstimate = 19_000
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.DiscardSourceRecording))
+            h.until { it.voiceRecordingEstimateMillis == 19_000L }
+            assertEquals(2, requests.size)
+        } finally { h.close() }
+    }
+
+    @Test fun recordingEstimateFailureStaysUnknownAndNeverPreventsStartingTheActualInput() = runBlocking<Unit> {
+        val checked = CompletableDeferred<Unit>()
+        val h = Harness(voice = true, decoratePorts = { base -> object : ContinuousEditorPorts by base {
+            override suspend fun voiceRecordingEstimateMillis(maxSeconds: Int): Long? { checked.complete(Unit); error("storage cannot be queried") }
+            override fun voiceInputReadout() = RecordingInputReadout(limitMillis = 37_000)
+        } })
+        try {
+            withTimeout(5_000) { checked.await() }
+            assertNull(h.presenter.state.value.voiceRecordingEstimateMillis)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordSource))
+            assertEquals(37_000L, h.presenter.readout().input.limitMillis)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.DiscardSourceRecording))
+        } finally { h.close() }
+    }
+
+    @Test fun punchAcknowledgementFailureKeepsAcceptedCandidatesAndRetriesOnlyCleanup() = runBlocking<Unit> {
+        val acknowledgeEntered = CompletableDeferred<Unit>(); val releaseAcknowledgement = CompletableDeferred<Unit>()
+        var failAck = true; var pending = false; var acknowledgements = 0; var captures = 0
+        val progress = MutableStateFlow(VocalPunchProgress())
+        val asset = Asset("f".repeat(64), "wav", 44 + 48_000L * 4, 48_000, 1, 48_000, "Punch")
+        val punch = object : VocalPunchPort {
+            override val progress = progress
+            override suspend fun capture(project: Project, expectedRevision: Long, request: VocalPunchRequest, stopped: () -> Boolean): VocalPunchResult {
+                captures++; pending = true
+                return VocalPunchResult(VocalCapturedSession(asset, listOf(VocalCapturedPass(FrameRange(0, 48_000), 0))))
+            }
+            override fun requestStop() = Unit
+            override fun interrupt() = Unit
+        }
+        val h = Harness(voice = true, decoratePorts = { base -> object : ContinuousEditorPorts by base {
+            override val vocalPunch = punch
+            override fun voiceInputReadout() = RecordingInputReadout(pendingSave = pending)
+            override suspend fun acknowledgeVoiceTake() {
+                acknowledgements++; acknowledgeEntered.complete(Unit); releaseAcknowledgement.await()
+                if (failAck) error("autosave unavailable")
+                pending = false
+            }
+        } })
+        try {
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenVocalPunch))
+            val controller = requireNotNull(h.presenter.vocalPunch.value)
+            controller.update { it.copy(endSeconds = "1", preRollBars = 0, countInBars = 0) }
+            val recording = async { controller.record() }
+            withTimeout(5_000) { acknowledgeEntered.await() }
+            assertEquals(PunchPhase.IDLE, progress.value.phase)
+            assertEquals(PunchPhase.SAVING, h.presenter.readout().punchPhase, "Document persistence remains saving after the host becomes idle")
+            assertTrue(controller.state.value.saving)
+            releaseAcknowledgement.complete(Unit)
+            assertTrue(recording.await(), "Candidates have already been accepted into the document")
+            h.until { it.pendingRecordingApplied && !it.recordingPunch }
+            val accepted = h.studio.document.value
+            assertEquals(1, accepted.project.takes.size); assertEquals(1, controller.state.value.saved)
+            assertEquals(PunchProblem.SAVE_FAILED, controller.state.value.problem)
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.DiscardPendingRecording))
+            failAck = false
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RetryRecordingSave))
+            h.until { !it.pendingRecording }
+            assertEquals(accepted, h.studio.document.value)
+            assertEquals(2, acknowledgements); assertEquals(1, captures); assertTrue(h.ports.voiceNames.isEmpty())
+        } finally { failAck = false; releaseAcknowledgement.complete(Unit); h.close() }
+    }
+
     @Test fun closeCancelsAnInputOpeningWithoutWaitingForTheChooserOrMutex() = runBlocking<Unit> {
         val entered = CompletableDeferred<Unit>(); val answer = CompletableDeferred<VoiceStart>()
         var cancellations = 0

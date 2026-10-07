@@ -72,3 +72,16 @@ internal fun ceRecordingTime(milliseconds: Long): String {
     val seconds = milliseconds.coerceAtLeast(0) / 1000
     return "${seconds / 60}:${(seconds % 60).toString().padStart(2, '0')}"
 }
+
+/** Kept beside the CAPTURE input choices so no idle status row displaces the BEAT instrument. */
+@Composable internal fun CERecordingEstimates(state: ContinuousEditorState) {
+    if (state.recordingSource || state.recordingVoice || state.recordingPunch || state.startingVoiceRecording || state.pendingRecording) return
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (state.permits(ContinuousCapability.RECORD_SOURCE)) Text(
+            stringResource(Res.string.ce_mic_estimate, state.voiceRecordingEstimateMillis?.let(::ceRecordingTime)
+                ?: stringResource(Res.string.ce_estimate_unknown)), Modifier.weight(1f).testTag("ce-mic-estimate"), style = MaterialTheme.typography.bodySmall)
+        if (state.permits(ContinuousCapability.RECORD_SYSTEM_SOURCE)) Text(
+            stringResource(Res.string.ce_system_estimate, state.systemRecordingEstimateMillis?.let(::ceRecordingTime)
+                ?: stringResource(Res.string.ce_estimate_unknown)), Modifier.weight(1f).testTag("ce-system-estimate"), style = MaterialTheme.typography.bodySmall)
+    }
+}

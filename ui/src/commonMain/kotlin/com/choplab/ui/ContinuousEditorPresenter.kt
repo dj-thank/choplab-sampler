@@ -213,6 +213,9 @@ private data class KitQuestion(val kitId: String, val bank: List<Pad>, val repla
 private data class PendingRecording(val system: Boolean = false, val voice: VoiceRecording? = null,
     val full: Boolean = false, val interrupted: Boolean = false, val applied: Boolean = false)
 
+private data class RecordingEstimateRequest(val voiceSeconds: Int, val systemSeconds: Int,
+    val assets: List<Asset>, val stage: ContinuousStage, val blocked: Boolean)
+
 private data class EditorView(
     val exportBits: Int = 24,
     val exportTail: Boolean = true,
@@ -227,7 +230,10 @@ private data class EditorView(
     val originalPlaying: Boolean = false,
     val vocalPreview: Boolean = false,
     val punchRecording: Boolean = false,
+    val punchSaving: Boolean = false,
     val pendingRecording: PendingRecording? = null,
+    val voiceEstimateMillis: Long? = null,
+    val systemEstimateMillis: Long? = null,
     val recordingInterruption: RecordingInterruption? = null,
     val originalGain: Float = 1f,
     val songGain: Float = 1f,
@@ -449,6 +455,28 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 envelopes.value = next.toMap()
             }
         }
+        jobs.launch {
+            // Storage probes are suspend host work, never performed by the render/readout loop. Refresh when
+            // assets, stage or input ownership change; monitor ticks and estimate publication do not retrigger it.
+            combine(studio.document.map { it.project }, view.map { editor ->
+                editor.stage to (editor.voice != null || editor.startingVoice || editor.recordingSource ||
+                    editor.punchRecording || editor.pendingRecording != null)
+            }.distinctUntilChanged()) { project, input ->
+                RecordingEstimateRequest(voiceSecondsLeft(project), voiceSecondsLeft(project, 2), project.assets, input.first, input.second)
+            }.distinctUntilChanged().collectLatest { request ->
+                view.update { it.copy(voiceEstimateMillis = null, systemEstimateMillis = null) }
+                if (request.blocked) return@collectLatest
+                suspend fun estimate(seconds: Int, probe: suspend (Int) -> Long?): Long? {
+                    if (seconds == 0) return 0
+                    return try { probe(seconds)?.coerceIn(0L, seconds * 1000L) }
+                    catch (cancel: CancellationException) { throw cancel }
+                    catch (_: Exception) { null }
+                }
+                val voice = if (ports.voiceAvailable) estimate(request.voiceSeconds, ports::voiceRecordingEstimateMillis) else null
+                val system = ports.systemAudioCapture?.let { estimate(request.systemSeconds, it::recordingEstimateMillis) }
+                view.update { it.copy(voiceEstimateMillis = voice, systemEstimateMillis = system) }
+            }
+        }
         jobs.launch { studio.document.collect { serialized.withLock { mixerEditor.documentChanged() } } }
         // Subscribe before a host can dispatch its first Open. SharedFlow has no replay for late subscribers.
         jobs.launch(start = CoroutineStart.UNDISPATCHED) { studio.notices.collect { notice ->
@@ -521,7 +549,8 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 limitMillis = (editor.hits.songEnd - editor.hits.from) * 1000 / CONTINUOUS_TIMELINE_RATE)
             else ports.voiceInputReadout()
         return clock.copy(scratchFraction = fraction, liveChopGesture = captureLiveChop(),
-            recordingMillis = input.recordedMillis, input = input, punchPhase = ports.vocalPunch?.progress?.value?.phase)
+            recordingMillis = input.recordedMillis, input = input,
+            punchPhase = if (editor.punchSaving) PunchPhase.SAVING else ports.vocalPunch?.progress?.value?.phase)
     }
     fun diagnostics(): ContinuousDiagnostics? = ports.diagnostics()
     /** A host interruption cancels offline separation without waiting for a native worker or the action lock. */
@@ -1283,7 +1312,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                         return PunchCompletion(VocalPunchResult(problem = PunchProblem.BUSY), false)
                     if (sourcePreview?.stop() is TtsResult.Failure) return PunchCompletion(VocalPunchResult(problem = PunchProblem.BUSY), false)
                     releaseHeld(); if (!letGoScratch() || !stopOriginal()) return PunchCompletion(VocalPunchResult(problem = PunchProblem.BUSY), false)
-                    view.update { it.copy(punchRecording = true) }
+                    view.update { it.copy(punchRecording = true, punchSaving = false) }
                     studio.document.value.project
                 }
                 try {
@@ -1291,6 +1320,8 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                     return serialized.withLock {
                         val captured = result.captured ?: return@withLock PunchCompletion(result, false)
                         if (studio.document.value.revision != expectedRevision) return@withLock PunchCompletion(result.copy(problem = PunchProblem.STALE), false)
+                        controller.beginSaving()
+                        view.update { it.copy(punchSaving = true) }
                         val plan = request.plan(project)
                         val intent = VocalPunchRecording.retain(project, captured, plan,
                             result.alignment.framesFor(result.alignment.route), request.manualFrames48k, ::freshId)
@@ -1299,12 +1330,15 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                             val saved = send(Action.Edit(intent, expectedRevision))
                             if (saved) {
                                 lastPunchRange = request.startFrame to request.endFrame
-                                ports.acknowledgeVoiceTake()
+                                // The document already owns these candidates. A persistence/cleanup failure must
+                                // retry only acknowledgement, never recover the same bytes as another SOURCE.
+                                if (!acknowledgeRecording(PendingRecording(applied = true)))
+                                    return@withLock PunchCompletion(result.copy(problem = PunchProblem.SAVE_FAILED), true)
                             }
                             PunchCompletion(result.copy(problem = result.problem ?: if (saved) null else PunchProblem.SAVE_FAILED), saved)
                         } finally { finishingTake = false }
                     }
-                } finally { view.update { it.copy(punchRecording = false) } }
+                } finally { view.update { it.copy(punchRecording = false, punchSaving = false) } }
             }
         }, jobs, 0, songFrames(studio.document.value.project))
         punchEditor.value = controller
@@ -3097,6 +3131,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         return ContinuousEditorState(stage = v.stage, projectTitle = p.title, documentRevision = input.document.revision, newProjectRevision = v.newProjectRevision, original = source,
             pendingRecording = v.pendingRecording != null || hasPendingInput(), pendingRecordingApplied = v.pendingRecording?.applied == true, recordingPunch = v.punchRecording,
             recordingInterruption = v.recordingInterruption,
+            voiceRecordingEstimateMillis = v.voiceEstimateMillis, systemRecordingEstimateMillis = v.systemEstimateMillis,
             exportBits = v.exportBits, exportTail = v.exportTail, stemProgress = input.work.stemProgress,
             originalPlaying = v.originalPlaying && !v.vocalPreview, vocalPreview = v.vocalPreview, liveChopping = v.liveChop != null, liveChopTiming = v.liveTiming, recordingVoice = v.voice != null,
             startingVoiceRecording = v.startingVoice, recordingHits = v.hits != null || v.overdub != null, loopOverdubBars = v.overdub?.bars ?: 0,

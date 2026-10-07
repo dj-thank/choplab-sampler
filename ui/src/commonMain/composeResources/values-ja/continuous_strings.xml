@@ -378,7 +378,11 @@
     <string name="ce_input_opening">入力を準備中…</string>
     <string name="ce_recorded_time">録音 %1$s</string>
     <string name="ce_recording_remaining">残り %1$s</string>
-    <string name="ce_input_level">マイク入力レベル</string>
+    <string name="ce_recording_estimate">目安 %1$s</string>
+    <string name="ce_estimate_unknown">開始時に確認</string>
+    <string name="ce_mic_estimate">マイクの録音時間の目安：%1$s</string>
+    <string name="ce_system_estimate">デバイス音の録音時間の目安：%1$s</string>
+    <string name="ce_input_level">入力レベル</string>
     <string name="ce_discard_recording">録音を破棄</string>
     <string name="ce_discard_recording_hint">この録音を制作に追加せず破棄しますか？ すでにある音源と編集は残ります。</string>
     <string name="ce_recording_pending">保存待ちの録音があります。再起動後の録音は原曲として回収します。</string>
@@ -393,5 +397,7 @@
     <string name="ce_punch_capturing">パンチ録音：選んだ範囲を録音中</string>
     <string name="ce_punch_saving">パンチ録音：テイクを保存中</string>
     <string name="ce_punch_waiting">パンチ録音：準備中</string>
+    <string name="ce_punch_stopping">パンチ録音：停止して録れた音を保持しています</string>
+    <string name="ce_punch_closing">パンチ録音：録れた音を保持して閉じています</string>
     <string name="ce_recording_added_pending">録音は制作に追加済みです。保存を再試行しても二重に追加されません。制作ファイルへの手動保存もできます。</string>
 </resources>

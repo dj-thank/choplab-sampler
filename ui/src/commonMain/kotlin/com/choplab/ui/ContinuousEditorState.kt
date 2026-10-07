@@ -179,6 +179,9 @@ enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
     val pendingRecordingApplied: Boolean = false,
     val recordingPunch: Boolean = false,
     val recordingInterruption: RecordingInterruption? = null,
+    /** Before-start storage/document estimates; actual capture limits come from the input readout. */
+    val voiceRecordingEstimateMillis: Long? = null,
+    val systemRecordingEstimateMillis: Long? = null,
     /** Same original source object/identity in stages 1, 2 and 3; PAD selection cannot replace it. */
     val original: ContinuousSource? = null,
     val originalPlaying: Boolean = false,

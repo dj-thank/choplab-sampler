@@ -6,6 +6,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.choplab.core.vocal.*
 import com.choplab.ui.resources.*
@@ -42,15 +45,31 @@ import org.jetbrains.compose.resources.stringResource
                         AlignmentStatus.MANUAL -> Res.string.punch_manual_active
                         else -> Res.string.punch_estimated
                     }))
-                    if (state.busy) Text(stringResource(Res.string.punch_progress, progress.pass, progress.total))
                     state.problem?.let { Text(stringResource(punchProblem(it)), color = MaterialTheme.colorScheme.error, modifier = Modifier.testTag("punch-problem")) }
                     if (state.saved > 0) Text(stringResource(Res.string.punch_saved, state.saved), modifier = Modifier.testTag("punch-saved"))
                     if (state.saved > 0) OutlinedButton(onChoices, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("punch-choices")) { Text(stringResource(Res.string.punch_choices)) }
                 }
             }
+            // Progress stays visible while the configuration fields scroll.
+            if (state.busy) {
+                Text(stringResource(when {
+                    state.closing -> Res.string.ce_punch_closing
+                    state.stopping -> Res.string.ce_punch_stopping
+                    state.saving -> Res.string.ce_punch_saving
+                    else -> when (progress.phase) {
+                        PunchPhase.OPENING -> Res.string.ce_punch_opening
+                        PunchPhase.PRE_ROLL -> Res.string.ce_punch_preroll
+                        PunchPhase.CAPTURING -> Res.string.ce_punch_capturing
+                        PunchPhase.SAVING -> Res.string.ce_punch_saving
+                        PunchPhase.IDLE -> Res.string.ce_punch_waiting
+                    }
+                }), Modifier.testTag("punch-phase").semantics { liveRegion = LiveRegionMode.Polite })
+                if (progress.pass > 0) Text(stringResource(Res.string.punch_progress, progress.pass, progress.total))
+            }
             Button({ scope.launch { controller.record() } }, enabled = !state.busy && !state.closed,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("punch-record")) { Text(stringResource(Res.string.punch_record)) }
-            OutlinedButton(controller::stop, enabled = state.busy, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("punch-stop")) { Text(stringResource(Res.string.punch_stop)) }
+            OutlinedButton(controller::stop, enabled = state.busy && !state.stopping && !state.saving && progress.phase != PunchPhase.SAVING,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("punch-stop")) { Text(stringResource(Res.string.punch_stop)) }
             OutlinedButton(controller::requestClose, enabled = !state.closing, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("punch-close")) { Text(stringResource(Res.string.punch_close)) }
         }
     }

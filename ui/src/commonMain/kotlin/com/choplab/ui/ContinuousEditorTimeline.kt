@@ -219,7 +219,9 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
             ContinuousEditorAction.AddDrum, state, ContinuousCapability.ADD_DRUM, onAction, modifier, tag = "ce-add-drums")
         @Composable fun Voice(modifier: Modifier) = if (state.recordingVoice || state.startingVoiceRecording) CEActionButton(stringResource(Res.string.ce_stop_voice), ContinuousEditorAction.StopVoice, state,
                 ContinuousCapability.STOP_ALL, onAction, modifier, primary = true, tag = "ce-record-voice")
-            else CEActionButton(stringResource(Res.string.ce_record_voice), ContinuousEditorAction.RecordVoice, state, ContinuousCapability.RECORD_VOICE, onAction, modifier, tag = "ce-record-voice")
+            else CEActionButton(stringResource(Res.string.ce_record_voice) + (state.voiceRecordingEstimateMillis?.let {
+                "\n" + stringResource(Res.string.ce_recording_estimate, ceRecordingTime(it))
+            } ?: ""), ContinuousEditorAction.RecordVoice, state, ContinuousCapability.RECORD_VOICE, onAction, modifier, tag = "ce-record-voice")
         @Composable fun Hits(modifier: Modifier) = if (state.recordingHits) CEActionButton(stringResource(if (state.loopOverdubBars > 0) Res.string.ce_overdub_finish else Res.string.ce_stop_hits), ContinuousEditorAction.StopHits, state,
                 ContinuousCapability.STOP_ALL, onAction, modifier, primary = true, tag = "ce-record-hits")
             else CEActionButton(stringResource(Res.string.ce_record_hits), ContinuousEditorAction.RecordHits, state, ContinuousCapability.RECORD_HITS, onAction, modifier, tag = "ce-record-hits")
