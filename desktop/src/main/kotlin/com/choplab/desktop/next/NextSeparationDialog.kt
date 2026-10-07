@@ -66,7 +66,7 @@ internal object NextSeparationDialog {
                     add(JPanel(GridLayout(2, 2, 8, 8)).apply { listOf(start, use, cancel, close).forEach { add(it) } }, BorderLayout.CENTER)
                 }, BorderLayout.SOUTH)
             }
-            dialog.minimumSize = Dimension(580, 300); dialog.setSize(640, 340); dialog.setLocationRelativeTo(parent)
+            configureNextDialog(dialog, Dimension(640, 380), Dimension(580, 340)) { finish(null) }
             refresh(); timer.start(); dialog.isVisible = true
         } }
     }

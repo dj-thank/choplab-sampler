@@ -119,7 +119,7 @@ internal object NextOnlineDialog {
                         add(JPanel(GridLayout(1, 4, 8, 8)).apply { listOf(acquire, useOriginal, cancel, close).forEach { add(it) } }, BorderLayout.SOUTH)
                     }, BorderLayout.SOUTH)
                 }
-                dialog.minimumSize = Dimension(720, 440); dialog.setSize(840, 580); dialog.setLocationRelativeTo(parent)
+                configureNextDialog(dialog, Dimension(840, 620), Dimension(720, 480)) { finishing(null) }
                 refresh(); timer.start(); dialog.isVisible = true
             }
         }

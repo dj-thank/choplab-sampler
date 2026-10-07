@@ -96,7 +96,7 @@ internal object NextSpotifyDialog {
                     add(row(close), BorderLayout.SOUTH)
                 }, BorderLayout.SOUTH)
             }
-            dialog.minimumSize = Dimension(760, 640); dialog.setSize(960, 780); dialog.setLocationRelativeTo(parent)
+            configureNextDialog(dialog, Dimension(960, 820), Dimension(760, 680)) { finish() }
             refresh(); timer.start()
             try { dialog.isVisible = true } finally { finish() }
         } }

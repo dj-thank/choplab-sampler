@@ -1,0 +1,5 @@
+<resources>
+    <string name="next_recording_retry_saved">Recover the preserved recording</string>
+    <string name="next_recording_discard_saved">Discard the preserved recording…</string>
+    <string name="next_recording_discard_question">Permanently discard the recording that could not be saved? Your current project stays unchanged.</string>
+</resources>

@@ -185,7 +185,7 @@ internal object NextLibraryDialog {
                         add(JPanel(GridLayout(0, 3, 8, 8)).apply { listOf(add, export, clear, retry, reload, cancel, close).forEach { add(it) } })
                     }, BorderLayout.SOUTH)
                 }
-                dialog.minimumSize = Dimension(680, 540); dialog.setSize(900, 700); dialog.setLocationRelativeTo(parent)
+                configureNextDialog(dialog, Dimension(900, 740), Dimension(680, 580)) { finish(null) }
                 refresh(); timer.start(); dialog.isVisible = true
             }
         }

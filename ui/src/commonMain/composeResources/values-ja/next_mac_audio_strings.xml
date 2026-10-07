@@ -1,0 +1,8 @@
+<resources>
+    <string name="next_mac_audio_input">マイク・入力</string>
+    <string name="next_mac_audio_output">スピーカー・出力</string>
+    <string name="next_mac_audio_default">システムの標準</string>
+    <string name="next_mac_audio_refresh">接続機器の一覧を更新</string>
+    <string name="next_mac_audio_loading">接続機器を確認中…</string>
+    <string name="next_mac_audio_failed">接続できません。機器を確認し、録音を終えて再試行してください。</string>
+</resources>

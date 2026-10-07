@@ -1,5 +1,6 @@
 package com.choplab.desktop
 
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -42,6 +43,11 @@ import com.choplab.sampler.ui.DocumentAction
 import com.choplab.sampler.ui.documentPickerCanceledMessage
 import com.choplab.sampler.ui.externalDocumentActionsEnabled
 import com.choplab.sampler.ui.theme.ChopLabTheme
+import com.choplab.ui.resources.*
+import org.jetbrains.compose.resources.stringResource
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import javax.swing.JOptionPane
 import java.awt.Desktop
 import java.awt.Dimension
 import java.awt.FileDialog
@@ -132,6 +138,10 @@ private fun runDesktopApplication(args: Array<String>) = application {
     }
     val audioDiagnostics = remember { WindowsAudioDiagnostics(controller::setStatus) }
     val state by controller.state.collectAsState()
+    val recoverableRecording by produceState(false, controller, state.statusMessage, state.recordingSession) {
+        value = withContext(Dispatchers.IO) { controller.pendingRecordingAvailable }
+    }
+
     val padKeyOwner = remember { DesktopPadKeyOwner() }
     val closeApplication = {
         padKeyOwner.releaseAll().forEach {
@@ -253,6 +263,9 @@ private fun runDesktopApplication(args: Array<String>) = application {
                 padKeyOwner.releaseAll()
             }
         }
+        val retryRecordingLabel = stringResource(Res.string.next_recording_retry_saved)
+        val discardRecordingLabel = stringResource(Res.string.next_recording_discard_saved)
+        val discardRecordingQuestion = stringResource(Res.string.next_recording_discard_question)
         MenuBar {
             Menu("ファイル") {
                 Item(
@@ -279,6 +292,14 @@ private fun runDesktopApplication(args: Array<String>) = application {
                     enabled = externalDocumentActionsEnabled(state),
                     onClick = { chooseExportWav(controller) },
                 )
+                Separator()
+                Item(retryRecordingLabel, enabled = recoverableRecording && externalDocumentActionsEnabled(state),
+                    onClick = controller::retryPendingRecording)
+                Item(discardRecordingLabel, enabled = recoverableRecording && externalDocumentActionsEnabled(state), onClick = {
+                    if (JOptionPane.showConfirmDialog(window, discardRecordingQuestion, discardRecordingLabel,
+                        JOptionPane.OK_CANCEL_OPTION, JOptionPane.WARNING_MESSAGE) == JOptionPane.OK_OPTION)
+                        controller.discardPendingRecording()
+                })
                 Separator()
                 Item("終了", shortcut = desktopMenuShortcut(DesktopMenuCommand.QUIT), onClick = closeApplication)
             }

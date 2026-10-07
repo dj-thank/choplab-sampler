@@ -34,13 +34,15 @@ import javax.swing.SwingUtilities
 /** Development Preview entry; the existing production/default launcher remains unchanged. */
 fun main() {
     check(java.lang.Boolean.getBoolean("choplab.preview")) { "Linked editor requires the isolated Preview profile" }
-    prepareDesktopOnnxRuntime()
     val title = if (Locale.getDefault().language == "ja") "おとひろい NEXT" else "Earth Song NEXT"
     applyMacOsHostProperties(title)
     val directory = DesktopProfile.dataDirectory(preview = true).toPath().resolve("next-v10")
-    val backend = if (java.lang.Boolean.getBoolean("choplab.silentSmoke"))
-        NextBackend.create(directory, sinkFactory = { error("Audio disabled for isolated lifecycle verification") }, microphone = { null })
+    val backend = startNextWithRecovery(directory) {
+        prepareDesktopOnnxRuntime()
+        if (java.lang.Boolean.getBoolean("choplab.silentSmoke"))
+            NextBackend.create(directory, sinkFactory = { error("Audio disabled for isolated lifecycle verification") }, microphone = { null })
         else NextBackend.create(directory)
+    } ?: return
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val parent = AtomicReference<AwtWindow?>(null)
     val ports = DesktopEditorPorts(backend) { parent.get() }
@@ -86,6 +88,10 @@ fun main() {
                 state = rememberWindowState(width = 1440.dp, height = 1024.dp),
                 onCloseRequest = requestClose) {
                 SideEffect { parent.set(window) }
+                DisposableEffect(window) {
+                    val dialogOwner = NextDialogOwners.register(window) { presenter.onAction(ContinuousEditorAction.StopAll) }
+                    onDispose { dialogOwner.close() }
+                }
                 var editorDialogOpen by remember { mutableStateOf(false) }
                 DisposableEffect(window) {
                     // Java Sound reports no device changes: coming back to the window tries a lost output once more.
@@ -115,7 +121,6 @@ fun main() {
                 val sourceAnalysis by presenter.sourceAnalysis.collectAsState()
                 val vocalTakes by presenter.vocalTakes.collectAsState()
                 val vocalPunch by presenter.vocalPunch.collectAsState()
-                val failed by backend.persistenceFailure.collectAsState()
                 val currentState by rememberUpdatedState(state)
                 val currentClosing by rememberUpdatedState(closing)
                 val dropHelp = stringResource(Res.string.next_drop_help)
@@ -129,10 +134,11 @@ fun main() {
                     onDispose { drop.close() }
                 }
                 MenuBar {
-                    NextDesktopMenus(state, closing || editorDialogOpen) { action ->
+                    NextDesktopMenus(state, closing, onAction = { action ->
                         // A text editor/dialog keeps its own shortcuts and pending edits.
-                        if (window.ownedWindows.filterIsInstance<java.awt.Dialog>().none { it.isVisible }) presenter.onAction(action)
-                    }
+                        if (action == ContinuousEditorAction.StopAll || window.ownedWindows.filterIsInstance<java.awt.Dialog>().none { it.isVisible }) presenter.onAction(action)
+                    }, dialogOpen = editorDialogOpen)
+                    NextMacAudioMenus(backend, state, closing || editorDialogOpen)
                     backend.windowsAudio?.let { audio ->
                         val route by audio.route.collectAsState()
                         var changing by remember { mutableStateOf(false) }
@@ -162,7 +168,7 @@ fun main() {
                         }
                     }
                 }
-                ContinuousEditor(if (failed) state.copy(status = ContinuousStatus.FAILED) else state,
+                ContinuousEditor(state,
                     presenter::onAction, presenter::readout, refresh, diagnostics = presenter::diagnostics, mixerReadout = presenter::readMixer,
                     lyricProposal = lyricProposal, stepPatterns = stepPatterns, vocalGuide = vocalGuide, fourStems = fourStems,
                     autoChop = autoChop, onlineSource = onlineSource, sourceAnalysis = sourceAnalysis, vocalTakes = vocalTakes, vocalPunch = vocalPunch, vocalPractice = vocalPractice, vocalPitch = vocalPitch, vocalCoach = vocalCoach, beatStretch = beatStretch, quickStart = quickStart)

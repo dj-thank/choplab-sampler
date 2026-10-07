@@ -1,0 +1,5 @@
+<resources>
+    <string name="next_recording_retry_saved">保全した録音の読込を再試行</string>
+    <string name="next_recording_discard_saved">保全した録音を破棄…</string>
+    <string name="next_recording_discard_question">保存できずに保全している録音を破棄しますか？この録音は元に戻せません。現在の制作は変わりません。</string>
+</resources>

@@ -1,0 +1,8 @@
+<resources>
+    <string name="next_mac_audio_input">Microphone / input</string>
+    <string name="next_mac_audio_output">Speakers / output</string>
+    <string name="next_mac_audio_default">System default</string>
+    <string name="next_mac_audio_refresh">Refresh device list</string>
+    <string name="next_mac_audio_loading">Checking connected devices…</string>
+    <string name="next_mac_audio_failed">Could not connect. Check the device, finish recording, then retry.</string>
+</resources>
