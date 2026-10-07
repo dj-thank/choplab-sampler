@@ -40,6 +40,9 @@ class DesktopSystemAudioRecorder internal constructor(
     override val isRecording: Boolean
         get() = active?.isRecording == true
 
+    override val completionMessage get() = active?.completionMessage
+    override val retainedFile get() = active?.retainedFile
+    override fun cancelOpening() { active?.cancelOpening() }
     override fun start(file: File): Result<Unit> {
         val recorder = synchronized(lifecycleLock) {
             if (active?.isRecording == true) return Result.failure(IllegalStateException("録音の停止処理中です"))
