@@ -2,6 +2,7 @@ package com.choplab.desktop.next
 
 import com.choplab.jvm.WavCodec
 import com.choplab.jvm.PcmMemoryBudget
+import com.choplab.desktop.audio.MacMicrophonePermission
 import com.choplab.ui.ContinuousEditorAction
 import com.choplab.ui.ContinuousEditorPresenter
 import java.nio.file.Files
@@ -15,7 +16,10 @@ object NextMicrophoneDeviceSelfTest {
         require(args.size == 2 && args[0] == "--record-microphone") { "Use --record-microphone <new-private-directory>" }
         val directory = Path.of(args[1])
         require(!Files.exists(directory)) { "A new private directory is required" }
-        val backend = NextBackend.create(directory, sinkFactory = { error("No speaker output in microphone probe") })
+        // Keep the real Mac authorization and selected-input route while prohibiting speaker output.
+        val macAudio = if (com.choplab.desktop.isMacOsHost()) NextMacAudio() else null
+        val backend = NextBackend.createWithRoutes(directory,
+            sinkFactory = { error("No speaker output in microphone probe") }, mac = macAudio)
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val ports = DesktopEditorPorts(backend) { null }
         val presenter = ContinuousEditorPresenter(backend.studio, scope, ports)
@@ -24,6 +28,7 @@ object NextMicrophoneDeviceSelfTest {
         var peak = 0f
         try {
             check(presenter.dispatch(ContinuousEditorAction.RecordSource)) { "Native microphone could not open; check permission and input route" }
+            check(macAudio == null || macAudio.microphonePermission == MacMicrophonePermission.Status.AUTHORIZED)
             withTimeout(10_000) { while (backend.voice.recordedMillis < 2_000) delay(20) }
             check(!backend.voice.interrupted) { "Microphone ended before the requested stop" }
             check(presenter.finishRecording())
@@ -46,6 +51,6 @@ object NextMicrophoneDeviceSelfTest {
             reopened.assets.openVerified(asset).close()
         } finally { reopened.shutdown() }
         withTimeout(5_000) { while (PcmMemoryBudget.shared.statistics().usedBytes != 0L) delay(10) }
-        println("""{"status":"DEVICE_CAPTURE_PASS","scope":"packaged-java-native-microphone-source","sampleRate":$rate,"channels":1,"frames":$frames,"peak":$peak,"undoRedo":true,"autosaveReopen":true,"listeningAndLatencyVerified":false}""")
+        println("""{"status":"DEVICE_CAPTURE_PASS","scope":"packaged-java-native-microphone-source","sampleRate":$rate,"channels":1,"frames":$frames,"peak":$peak,"undoRedo":true,"autosaveReopen":true,"nativePermissionRoute":${macAudio != null},"listeningAndLatencyVerified":false}""")
     }
 }
