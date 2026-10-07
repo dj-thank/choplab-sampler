@@ -612,7 +612,10 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         if (action != ContinuousEditorAction.StopOriginal) { voiceOpeningCancelled = true; ports.cancelVoiceOpening(); punchEditor.value?.stop() }
         if (action == ContinuousEditorAction.StopAll || action == ContinuousEditorAction.StopSourceRecording ||
             action == ContinuousEditorAction.DiscardSourceRecording) cancelSourceOpening()
-        if (action == ContinuousEditorAction.StopOriginal || action == ContinuousEditorAction.StopAll) ports.cancelOriginalPreparation()
+        // A preview owns both its decode and the SOURCE restoration. Its scoped stop above cancels
+        // safely; a concurrent unscoped cancellation would also kill the restoration another Stop awaits.
+        if ((action == ContinuousEditorAction.StopOriginal || action == ContinuousEditorAction.StopAll) &&
+            sourcePreview?.state?.value?.ownsSource != true) ports.cancelOriginalPreparation()
         // Nothing else runs while a take is added, and cancelling that edit would lose the take.
         if (action != ContinuousEditorAction.StopOriginal && !finishingTake &&
             !(view.value.punchRecording && ports.vocalPunch?.progress?.value?.phase in setOf(PunchPhase.SAVING, PunchPhase.IDLE))) studio.dispatch(Action.CancelWork)

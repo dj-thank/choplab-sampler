@@ -14,11 +14,15 @@ import com.choplab.core.edit.*
 import com.choplab.core.model.*
 import com.choplab.engine.Tempo
 import com.choplab.jvm.*
+import com.choplab.jvm.ai.SourceVocalPreview
 import com.choplab.ui.*
 import com.choplab.ui.stretch.*
 import kotlinx.coroutines.*
 import java.nio.file.Files
 import java.util.Locale
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.locks.LockSupport
 import java.util.zip.ZipFile
 import kotlin.math.*
@@ -26,6 +30,85 @@ import kotlin.test.*
 
 /** Actual BEAT controls, real worker/actor/SOURCE, PCM export and fresh archive/autosave; synthetic output only. */
 class BeatStretchHostIntegrationTest {
+    @Test fun overlappingStopsDoNotCancelTheSourceRestorationTheyAreWaitingFor() = runBlocking<Unit> {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val queued = ConcurrentLinkedQueue<Runnable>()
+        val previewScope = CoroutineScope(SupervisorJob() + object : CoroutineDispatcher() {
+            override fun dispatch(context: kotlin.coroutines.CoroutineContext, block: Runnable) { queued.add(block) }
+        })
+        val restoreEntered = CompletableDeferred<Unit>(); val releaseRestore = CompletableDeferred<Unit>()
+        val restoring = AtomicBoolean()
+        val source = Asset("a".repeat(64), "wav", 44, 48_000, 2, 48_000, "Original")
+        val processed = source.copy(hash = "c".repeat(64), role = AssetRole.RENDERED)
+        val pcm = object : PcmPort {
+            override suspend fun load(asset: Asset): com.choplab.engine.PcmAsset {
+                if (asset == source && restoring.get()) { restoreEntered.complete(Unit); releaseRestore.await() }
+                return com.choplab.engine.PcmAsset.fromInterleaved(FloatArray(asset.frames.toInt() * 2) { if (it % 2 == 0) .1f else -.03f })
+            }
+        }
+        val engine = StreamingEnginePort(ProgramCompiler(pcm), ::pacedSink)
+        val project = Project(assets = frozenListOf(source), source = Source(source.hash, FrameRange(0, source.frames)))
+        val studio = Studio(scope, Services(object : AssetStore {
+            override suspend fun containsVerified(asset: Asset) = true
+            override suspend fun write(asset: Asset, bytes: ByteArray) = Unit
+            override suspend fun read(asset: Asset) = byteArrayOf()
+        }, object : ImportPort { override suspend fun import(location: Location) = source }, object : ProjectPort {
+            override suspend fun save(project: Project, revision: Long, location: Location) = Unit
+            override suspend fun open(location: Location) = project
+        }, object : ExportPort {
+            override suspend fun export(project: Project, patternId: String, request: ExportRequest): ExportReceipt = error("Not used")
+        }, engine), project)
+        var audition: SourceAuditionController? = null
+        var preview: SourceVocalPreview? = null
+        var presenter: ContinuousEditorPresenter? = null
+        try {
+            until { engine.status.value.phase == DriverPhase.ATTACHED }
+            assertTrue(studio.dispatch(Action.New(project)).accepted)
+            val sourceAudition = SourceAuditionController(engine, pcm, scope).also { audition = it }
+            val sourcePreview = SourceVocalPreview(studio, engine, sourceAudition, previewScope).also { preview = it }
+            val editor = ContinuousEditorPresenter(studio, scope, object : ContinuousEditorPorts {
+                override val sourcePreview = sourcePreview
+                override val originalAvailable = true
+                override fun cancelOriginalPreparation() = sourceAudition.cancelPreparation()
+                override suspend fun stopOriginal() = sourceAudition.pause()
+                override suspend fun chooseAudio(): Location? = null
+                override suspend fun chooseOpen(): Location? = null
+                override suspend fun chooseSave(): Location? = null
+                override suspend fun chooseExport(frames: Long): ExportRequest? = null
+                override suspend fun peaks(asset: Asset) = emptyList<Float>()
+                override fun readout() = ContinuousEditorReadout()
+                override suspend fun setSongMonitorGain(gain: Float) = sourceAudition.songGain(gain)
+            }).also { presenter = it }
+            assertTrue(sourceAudition.seek(source, 5_000)); assertTrue(sourceAudition.originalGain(.25f))
+            assertIs<TtsResult.Success<Unit>>(sourcePreview.start(processed, studio.document.value.revision, true, VocalPreviewOwner.STRETCH))
+            withTimeout(10_000) {
+                while (sourcePreview.state.value.phase != VocalPreviewPhase.PLAYING) { repeat(100) { queued.poll()?.run() }; delay(1) }
+            }
+            val before = studio.document.value
+            restoring.set(true)
+            // Keep requestStop's background tasks queued so the first serialized Stop owns the real restore.
+            // A second interrupt then arrives exactly while that restore awaits SOURCE PCM, as can happen
+            // between onAction's immediate interrupt and its separately queued dispatch.
+            val first = async(start = CoroutineStart.UNDISPATCHED) { editor.dispatch(ContinuousEditorAction.StopAll) }
+            withTimeout(10_000) { restoreEntered.await() }
+            val second = async(start = CoroutineStart.UNDISPATCHED) { editor.dispatch(ContinuousEditorAction.StopAll) }
+            releaseRestore.complete(Unit)
+            assertTrue(withTimeout(10_000) { first.await() }, "The pending Stop must finish after SOURCE restoration")
+            assertTrue(withTimeout(10_000) { second.await() })
+            assertFalse(sourcePreview.state.value.ownsSource)
+            assertFalse(engine.originalPlayback().playing)
+            assertEquals(5_000L, sourceAudition.nativeFrame()); assertEquals(.25f, engine.originalPlayback().gain)
+            assertEquals(before, studio.document.value)
+            editor.onAction(ContinuousEditorAction.Navigate(ContinuousStage.BEAT))
+            until { editor.state.value.stage == ContinuousStage.BEAT }
+        } finally {
+            releaseRestore.complete(Unit)
+            presenter?.close(); preview?.close(); audition?.close()
+            previewScope.cancel(); repeat(100) { queued.poll()?.run() }
+            studio.dispatch(Action.Close); engine.close(); scope.cancel()
+        }
+    }
+
     @Test fun padAndClipStretchThroughActualPointersUndoWavArchiveAndFreshResumeInBothLayouts() = runBlocking<Unit> {
         val previous = Locale.getDefault()
         try {
@@ -42,10 +125,14 @@ class BeatStretchHostIntegrationTest {
                     override suspend fun chooseSave() = backend.files.register(archive)
                     override suspend fun chooseExport(frames: Long) = ExportRequest(backend.files.register(exported), frames.toInt(), bits = 24)
                 })
+                val stopInputs = AtomicInteger()
                 val scene = ImageComposeScene(width = width, height = height, density = Density(1f, font), coroutineContext = coroutineContext) {
                     val state by presenter.state.collectAsState()
                     val stretch by presenter.beatStretch.collectAsState()
-                    ContinuousEditor(state, presenter::onAction, presenter::readout, beatStretch = stretch)
+                    ContinuousEditor(state, { action ->
+                        if (action == ContinuousEditorAction.StopAll) stopInputs.incrementAndGet()
+                        presenter.onAction(action)
+                    }, presenter::readout, beatStretch = stretch)
                 }
                 var expected: Project? = null
                 try {
@@ -83,7 +170,14 @@ class BeatStretchHostIntegrationTest {
                     assertEquals(before, backend.studio.document.value)
                     scene.evidence(locale, width, font, "audition")
                     scene.pointer("ce-stretch-stop")
-                    until { !host.beatStretch.preview.state.value.ownsSource && !backend.engine.originalPlayback().playing }
+                    assertEquals(1, stopInputs.get(), "${locale.language}/$width: the single Stop pointer must reach the presenter")
+                    val stopped = withTimeoutOrNull(10_000) {
+                        while (host.beatStretch.preview.state.value.ownsSource || backend.engine.originalPlayback().playing) delay(5)
+                        true
+                    }
+                    assertEquals(true, stopped, "${locale.language}/$width: Stop did not restore SOURCE: " +
+                        "preview=${host.beatStretch.preview.state.value}, original=${backend.engine.originalPlayback()}, " +
+                        "stretch=${padEditor.state.value.phase}/${padEditor.state.value.audition}, status=${presenter.state.value.status}")
                     assertEquals(.25f, backend.engine.originalPlayback().gain); assertEquals(5000L, backend.audition.nativeFrame())
                     assertEquals(before, backend.studio.document.value)
                     scene.pointer("ce-stretch-prepare"); until { padEditor.state.value.prepared && padEditor.state.value.phase == StretchPhase.EDITING }
@@ -246,6 +340,8 @@ class BeatStretchHostIntegrationTest {
             suspend fun prepare(): BeatStretchController {
                 assertTrue(presenter.dispatch(ContinuousEditorAction.OpenBeatStretch(target)))
                 val controller = requireNotNull(presenter.beatStretch.value)
+                // Match the BPM field's enabled boundary after host import/work state propagation.
+                until { controller.state.value.editable }
                 if (controller.state.value.sourceBpm.isEmpty()) assertTrue(controller.dispatch(StretchAction.Bpm("120")))
                 else assertEquals(120_000, controller.state.value.milliBpm())
                 assertTrue(controller.dispatch(StretchAction.Prepare))
