@@ -14,6 +14,54 @@ import java.io.File
 import kotlin.test.*
 
 class ContinuousLyricsPanelTest {
+    @Test fun unappliedTextAndWordTimesRequireExplicitDiscardBeforeLeaving() = runBlocking<Unit> {
+        val line = LyricLine("one", "a b", 0, 1920, frozenListOf(LyricWord("a", 0, 960), LyricWord(" b", 960, 1920)))
+        val state = mutableStateOf(ContinuousEditorState(lyrics = ContinuousLyricsState(open = true,
+            lines = listOf(line, LyricLine("two", "next", 1920, 3840)), selectedId = "one"), capabilities = setOf(ContinuousCapability.LYRICS_EDIT)))
+        val actions = mutableListOf<ContinuousEditorAction>()
+        val scene = ImageComposeScene(width = 1200, height = 1000, coroutineContext = coroutineContext) {
+            CETheme { CELyricsPanel(state.value, actions::add, { ContinuousEditorReadout() }, 0) }
+        }
+        fun click(tag: String) { scene.tag(tag)!!.config[SemanticsActions.OnClick].action!!.invoke() }
+        try {
+            scene.settle()
+            scene.tag("ce-lyric-text")!!.config[SemanticsActions.SetText].action!!.invoke(AnnotatedString("draft")); scene.settle()
+            click("ce-lyric-two"); scene.settle(); assertTrue(actions.isEmpty())
+            click("ce-lyrics-keep-editing"); scene.settle()
+            assertEquals("draft", scene.tag("ce-lyric-text")!!.config[SemanticsProperties.EditableText].text)
+            click("ce-lyrics-close"); scene.settle(); assertTrue(actions.isEmpty())
+            click("ce-lyrics-discard-draft"); assertEquals(ContinuousEditorAction.Lyrics(LyricAction.Close), actions.single())
+            // Simulate a close/reopen and verify word drafts receive the same protection.
+            state.value = state.value.copy(lyrics = state.value.lyrics.copy(open = false)); scene.settle()
+            state.value = state.value.copy(lyrics = state.value.lyrics.copy(open = true)); scene.settle(); actions.clear()
+            scene.tag("ce-lyric-word-0-start")!!.config[SemanticsActions.SetText].action!!.invoke(AnnotatedString("12")); scene.settle()
+            click("ce-lyric-select-word-1"); scene.settle(); assertTrue(actions.isEmpty())
+            assertNotNull(scene.tag("ce-lyrics-keep-editing"))
+            click("ce-lyrics-keep-editing"); scene.settle()
+            assertEquals("12", scene.tag("ce-lyric-word-0-start")!!.config[SemanticsProperties.EditableText].text)
+        } finally { scene.close() }
+    }
+
+    @Test fun lyricDeleteConfirmationResetsWhenTheDisplayedRevisionChanges() = runBlocking<Unit> {
+        val line = LyricLine("one", "first", 0, 1920)
+        val state = mutableStateOf(ContinuousEditorState(documentRevision = 1, lyrics = ContinuousLyricsState(open = true,
+            lines = listOf(line), selectedId = "one"), capabilities = setOf(ContinuousCapability.LYRICS_EDIT)))
+        val actions = mutableListOf<ContinuousEditorAction>()
+        val scene = ImageComposeScene(width = 1200, height = 1000, coroutineContext = coroutineContext) {
+            CETheme { CELyricsPanel(state.value, actions::add, { ContinuousEditorReadout() }, 0) }
+        }
+        fun delete() { scene.tag("ce-lyric-delete")!!.config[SemanticsActions.OnClick].action!!.invoke() }
+        try {
+            scene.settle(); delete(); scene.settle(); assertTrue(actions.isEmpty())
+            val changed = line.copy(text = "changed")
+            state.value = state.value.copy(documentRevision = 2, lyrics = state.value.lyrics.copy(lines = listOf(changed)))
+            scene.settle(); delete(); scene.settle(); assertTrue(actions.isEmpty(), "Old confirmation cannot delete changed content")
+            delete(); scene.settle()
+            assertEquals(ContinuousEditorAction.Lyrics(LyricAction.Delete("one", changed, 2)), actions.single())
+        } finally { scene.close() }
+    }
+
+
     @Test fun beatEntryOpensAndClosesTheEditorAndReflectsEditingAvailability() = runBlocking<Unit> {
         val state = mutableStateOf(ContinuousEditorFixture.state().copy(capabilities = ContinuousCapability.entries.toSet()))
         val actions = mutableListOf<ContinuousEditorAction>()
@@ -71,6 +119,8 @@ class ContinuousLyricsPanelTest {
                 scene.tag("ce-lyric-tap")!!.config[SemanticsActions.OnClick].action!!.invoke()
                 assertEquals(ContinuousEditorAction.Lyrics(LyricAction.Tap("one", 48_000)), actions.single())
                 actions.clear()
+                state.value = state.value.copy(lyrics = state.value.lyrics.copy(lines = listOf(lines.first().copy(text = "新しい歌詞", words = frozenListOf()), lines.last())))
+                scene.settle()
                 state.value = state.value.copy(lyrics = state.value.lyrics.copy(preview = LyricImportPreview(listOf(lines.last()), 120_000)))
                 scene.settle()
                 assertTrue(actions.isEmpty())

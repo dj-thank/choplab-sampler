@@ -25,7 +25,7 @@ enum class ContinuousGrid(val ticks: Int) { BEAT(960), HALF(480), QUARTER(240), 
 enum class ContinuousCapability {
     BEAT_STRETCH,
     LYRICS_EDIT, LYRICS_FILES, LYRIC_PROPOSAL, STEP_PATTERNS, NOTE_REPEAT, LOOP_OVERDUB, VOCAL_GUIDE, VOCAL_TAKES, VOCAL_PUNCH, VOCAL_PRACTICE, VOCAL_PITCH, VOCAL_COACH, FOUR_STEMS, SOURCE_ANALYSIS,
-    RELOAD_AUDIO, IMPORT_AUDIO, IMPORT_LIBRARY, IMPORT_ONLINE, SPOTIFY_METADATA, SEPARATE_SOURCE, OPEN_PROJECT, SAVE_PROJECT, EXPORT_WAV, EXPORT_STEMS, MIXER, HISTORY,
+    NEW_PROJECT, RELOAD_AUDIO, IMPORT_AUDIO, IMPORT_LIBRARY, IMPORT_ONLINE, SPOTIFY_METADATA, SEPARATE_SOURCE, OPEN_PROJECT, SAVE_PROJECT, EXPORT_WAV, EXPORT_STEMS, MIXER, HISTORY,
     ORIGINAL_PLAYBACK, ORIGINAL_SEEK, ORIGINAL_MONITOR_GAIN, ORIGINAL_PITCH,
     SOURCE_RANGE, ASSIGN_SOURCE_RANGE, AUTO_CHOP, LIVE_CHOP,
     PAD_AUDITION, PAD_LOOP, PAD_PITCH, PAD_TONE, PAD_GAIN,
@@ -40,6 +40,7 @@ enum class ContinuousCapability {
 enum class ContinuousUnavailable { NOT_CONNECTED, BUSY, NO_SOURCE, EMPTY_PAD, NO_CLIP, NO_OUTPUT, NO_SONG, RECORDING }
 enum class ContinuousStatus {
     LOADING, SAVING, SAVED, EXPORTING, EXPORTED, CANCELLED, FAILED, NO_OUTPUT, COPIED,
+    IMPORT_FAILED, OPEN_FAILED, SAVE_FAILED, EXPORT_FAILED, BUSY, SOURCE_STOP_FAILED, SPLIT_POSITION,
     /**
      * A voice take went to a BANK D PAD and onto the song; with BANK D full, onto the song only; to the PAD only when
      * the song refused it; it stopped at its length limit, or because the microphone went away.
@@ -171,6 +172,13 @@ enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
     val bankPadBlocked: BankPadEditProblem? = null,
     val stage: ContinuousStage = ContinuousStage.CAPTURE,
     val projectTitle: String = "",
+    val documentRevision: Long = 0,
+    val newProjectRevision: Long? = null,
+    val autosaveFailed: Boolean = false,
+    val pendingRecording: Boolean = false,
+    val pendingRecordingApplied: Boolean = false,
+    val recordingPunch: Boolean = false,
+    val recordingInterruption: RecordingInterruption? = null,
     /** Same original source object/identity in stages 1, 2 and 3; PAD selection cannot replace it. */
     val original: ContinuousSource? = null,
     val originalPlaying: Boolean = false,
@@ -233,7 +241,7 @@ enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
 ) {
     init {
         require(selectedBank in 0..7 && selectedPadId in 0..127)
-        require(timelineDurationFrames > 0 && pixelsPerSecond.isFinite() && pixelsPerSecond in 4f..240f)
+        require(timelineDurationFrames > 0 && pixelsPerSecond.isFinite() && pixelsPerSecond in .01f..240f)
         require(paneFraction.isFinite() && paneFraction in 0.2f..0.8f)
         require(milliBpm in 40_000..240_000 && swingPermille in 500..750)
     }
@@ -285,6 +293,7 @@ class ContinuousHitGesture(val padId: Int, val songFrame: Long)
     /** Samples actually captured, not wall-clock time spent waiting for microphone permission. */
     val recordingMillis: Long = 0,
     val input: RecordingInputReadout = RecordingInputReadout(),
+    val punchPhase: com.choplab.core.vocal.PunchPhase? = null,
     /** Independent original HAND position in native source frames; -1 while inactive. */
     val handSourceFrame: Double = -1.0,
     val countInBeatsRemaining: Int = 0,
@@ -323,6 +332,9 @@ sealed interface ContinuousEditorAction {
     data object CloseSourceAnalysis : ContinuousEditorAction
     data class BankPadEdit(val action: BankPadEditAction) : ContinuousEditorAction
     data class Navigate(val stage: ContinuousStage) : ContinuousEditorAction
+    data object NewProject : ContinuousEditorAction
+    data class ConfirmNewProject(val saveCurrent: Boolean, val revision: Long) : ContinuousEditorAction
+    data object CancelNewProject : ContinuousEditorAction
     data object ImportAudio : ContinuousEditorAction
     /** A file explicitly selected by a platform drop/open event; uses the same import transaction. */
     data class ImportAudioFile(val location: com.choplab.core.Location) : ContinuousEditorAction
@@ -348,6 +360,7 @@ sealed interface ContinuousEditorAction {
     data object StopAll : ContinuousEditorAction
     data object ReloadAudio : ContinuousEditorAction
     data object PlayOriginal : ContinuousEditorAction
+    data object PlayOriginalFromStart : ContinuousEditorAction
     data object StopOriginal : ContinuousEditorAction
     data class SeekOriginal(val sourceFrame: Long) : ContinuousEditorAction
     /** Monitoring only; never alters PADs, arrangement, or exported audio. */
@@ -412,6 +425,7 @@ sealed interface ContinuousEditorAction {
     data class SetNoteRepeat(val rate: ContinuousNoteRepeat) : ContinuousEditorAction
     data class SetPixelsPerSecond(val value: Float) : ContinuousEditorAction
     data object FitTimeline : ContinuousEditorAction
+    data class FitTimelineWidth(val widthDp: Float) : ContinuousEditorAction
     data class ResizePanes(val fraction: Float) : ContinuousEditorAction
     data object ResetPanes : ContinuousEditorAction
     data class SelectCompactPane(val pane: ContinuousPane) : ContinuousEditorAction
@@ -422,6 +436,7 @@ sealed interface ContinuousEditorAction {
     /** Playback monitoring only, separate from track/clip/export gains. */
     data class SetSongMonitorGain(val gain: Float) : ContinuousEditorAction
     /** The song's tempo, with its swing in permille (500..750); null keeps the swing. */
+    data class SetTempoExact(val milliBpm: Int, val swingPermille: Int) : ContinuousEditorAction
     data class SetTempo(val bpm: Int, val swingPermille: Int? = null) : ContinuousEditorAction
     /** Opens the kit chooser; a kit fills the drum BANK only after [ChooseDrumKit]. */
     data object AddDrum : ContinuousEditorAction
@@ -432,6 +447,10 @@ sealed interface ContinuousEditorAction {
     /** Opens the microphone and plays the song; the take ends with [StopVoice] or when the song stops. */
     data object RecordVoice : ContinuousEditorAction
     data object StopVoice : ContinuousEditorAction
+    data object DiscardVoice : ContinuousEditorAction
+    data object DiscardHits : ContinuousEditorAction
+    data object RetryRecordingSave : ContinuousEditorAction
+    data object DiscardPendingRecording : ContinuousEditorAction
     /**
      * Plays the song on from where it stands (from the top once it has ended) and records what the PADs play into it;
      * [StopHits], pausing or stopping the song, or its end puts what was played onto the song as one Undo.

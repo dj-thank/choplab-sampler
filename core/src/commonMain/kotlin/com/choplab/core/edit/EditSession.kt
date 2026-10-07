@@ -37,6 +37,8 @@ class EditSession(initial: Project = Project(), initialRevision: Long = 0, val h
     val canRedo: Boolean get() = redo.isNotEmpty()
     val undoCount: Int get() = undo.size
     val redoCount: Int get() = redo.size
+    val undoSourceHash: String? get() = undo.lastOrNull()?.source?.assetHash
+    val redoSourceHash: String? get() = redo.lastOrNull()?.source?.assetHash
 
     fun plan(intent: Intent): EditPlan { invalidate(); return makePlan(Reducer.reduce(project, intent), Direction.EDIT) }
     fun planUndo(): EditPlan? {

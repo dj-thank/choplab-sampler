@@ -21,6 +21,7 @@ import com.choplab.core.lyrics.*
 import com.choplab.core.model.LyricLine
 import com.choplab.ui.resources.*
 import org.jetbrains.compose.resources.stringResource
+import kotlinx.coroutines.delay
 
 @Composable internal fun CELyricsButton(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit, modifier: Modifier = Modifier) {
     CEButton(stringResource(Res.string.ce_lyrics), { onAction(ContinuousEditorAction.Lyrics(LyricAction.Open)) }, modifier,
@@ -32,7 +33,24 @@ import org.jetbrains.compose.resources.stringResource
                                       readout: () -> ContinuousEditorReadout, refreshKey: Long) {
     val lyrics = state.lyrics
     if (!lyrics.open) return
-    val send = { action: LyricAction -> onAction(ContinuousEditorAction.Lyrics(action)) }
+    val dirty = remember { mutableStateMapOf<String, Boolean>() }
+    var draftEpoch by remember { mutableStateOf(0) }
+    var pendingLeave by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val leave: (() -> Unit) -> Unit = { action -> if (dirty.values.any { it }) pendingLeave = action else action() }
+    val send: (LyricAction) -> Unit = { action ->
+        val run = { onAction(ContinuousEditorAction.Lyrics(action)) }
+        if (action is LyricAction.Select || action is LyricAction.Add || action is LyricAction.Delete ||
+            action == LyricAction.Close || action == LyricAction.ApplyImport) leave(run) else run()
+    }
+    val mark: (String, Boolean?) -> Unit = { tag, value -> if (value == null) dirty.remove(tag) else dirty[tag] = value }
+    pendingLeave?.let { pending ->
+        AlertDialog(onDismissRequest = { pendingLeave = null }, title = { Text(stringResource(Res.string.ce_lyrics_draft_title)) },
+            text = { Text(stringResource(Res.string.ce_lyrics_draft_hint)) },
+            confirmButton = { CEButton(stringResource(Res.string.ce_discard_changes), {
+                dirty.clear(); draftEpoch++; pendingLeave = null; pending()
+            }, tag = "ce-lyrics-discard-draft") },
+            dismissButton = { CEButton(stringResource(Res.string.ce_keep_editing), { pendingLeave = null }, tag = "ce-lyrics-keep-editing") })
+    }
     val canEdit = state.permits(ContinuousCapability.LYRICS_EDIT)
     val files = state.permits(ContinuousCapability.LYRICS_FILES)
     val timing = remember(state.milliBpm) { LyricTiming(state.milliBpm) }
@@ -41,7 +59,7 @@ import org.jetbrains.compose.resources.stringResource
         text = {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(stringResource(Res.string.ce_lyrics_timing_hint, state.milliBpm / 1000f))
-                CEButton(stringResource(Res.string.pitch_title), { onAction(ContinuousEditorAction.OpenVocalPitch) }, Modifier.fillMaxWidth(),
+                CEButton(stringResource(Res.string.pitch_title), { leave { onAction(ContinuousEditorAction.OpenVocalPitch) } }, Modifier.fillMaxWidth(),
                     enabled = state.permits(ContinuousCapability.VOCAL_PITCH), tag = "ce-pitch-open")
                 CELyricFollow(lyrics.lines, state, readout, refreshKey)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -52,17 +70,17 @@ import org.jetbrains.compose.resources.stringResource
                 }
                 CEButton(stringResource(Res.string.ce_lyrics_add), { send(LyricAction.Add(readout().songFrame)) }, Modifier.fillMaxWidth(),
                     enabled = canEdit, tag = "ce-lyrics-add")
-                CEButton(stringResource(Res.string.ai_lyrics_title), { onAction(ContinuousEditorAction.OpenLyricProposal) }, Modifier.fillMaxWidth(),
+                CEButton(stringResource(Res.string.ai_lyrics_title), { leave { onAction(ContinuousEditorAction.OpenLyricProposal) } }, Modifier.fillMaxWidth(),
                     enabled = state.permits(ContinuousCapability.LYRIC_PROPOSAL), tag = "ce-lyrics-ai-open")
-                CEButton(stringResource(Res.string.vocal_guide_title), { onAction(ContinuousEditorAction.OpenVocalGuide) }, Modifier.fillMaxWidth(),
+                CEButton(stringResource(Res.string.vocal_guide_title), { leave { onAction(ContinuousEditorAction.OpenVocalGuide) } }, Modifier.fillMaxWidth(),
                     enabled = state.permits(ContinuousCapability.VOCAL_GUIDE), tag = "ce-vocal-guide-open")
-                CEButton(stringResource(Res.string.punch_title), { onAction(ContinuousEditorAction.OpenVocalPunch) }, Modifier.fillMaxWidth(),
+                CEButton(stringResource(Res.string.punch_title), { leave { onAction(ContinuousEditorAction.OpenVocalPunch) } }, Modifier.fillMaxWidth(),
                     enabled = state.permits(ContinuousCapability.VOCAL_PUNCH), tag = "ce-vocal-punch-open")
-                CEButton(stringResource(Res.string.vocal_take_title), { onAction(ContinuousEditorAction.OpenVocalTakes) }, Modifier.fillMaxWidth(),
+                CEButton(stringResource(Res.string.vocal_take_title), { leave { onAction(ContinuousEditorAction.OpenVocalTakes) } }, Modifier.fillMaxWidth(),
                     enabled = state.permits(ContinuousCapability.VOCAL_TAKES), tag = "ce-vocal-takes-open")
-                CEButton(stringResource(Res.string.practice_title), { onAction(ContinuousEditorAction.OpenVocalPractice) }, Modifier.fillMaxWidth(),
+                CEButton(stringResource(Res.string.practice_title), { leave { onAction(ContinuousEditorAction.OpenVocalPractice) } }, Modifier.fillMaxWidth(),
                     enabled = state.permits(ContinuousCapability.VOCAL_PRACTICE), tag = "ce-practice-open")
-                CEButton(stringResource(Res.string.coach_title), { onAction(ContinuousEditorAction.OpenVocalCoach) }, Modifier.fillMaxWidth(),
+                CEButton(stringResource(Res.string.coach_title), { leave { onAction(ContinuousEditorAction.OpenVocalCoach) } }, Modifier.fillMaxWidth(),
                     enabled = state.permits(ContinuousCapability.VOCAL_COACH), tag = "ce-coach-open")
                 if (lyrics.lines.isEmpty()) Text(stringResource(Res.string.ce_lyrics_empty))
                 else LazyColumn(Modifier.fillMaxWidth().height(160.dp).testTag("ce-lyrics-list")) {
@@ -73,7 +91,7 @@ import org.jetbrains.compose.resources.stringResource
                             fontWeight = if (line.id == lyrics.selectedId) FontWeight.Bold else FontWeight.Normal)
                     }
                 }
-                lyrics.lines.firstOrNull { it.id == lyrics.selectedId }?.let { line -> key(line.id) { CELyricEdit(line, timing, canEdit, readout, send) } }
+                lyrics.lines.firstOrNull { it.id == lyrics.selectedId }?.let { line -> key(line.id) { CELyricEdit(line, state.documentRevision, draftEpoch, timing, canEdit, readout, send, leave, mark) } }
                 CEButton(stringResource(Res.string.ce_lyrics_import), { send(LyricAction.Import) }, Modifier.fillMaxWidth(),
                     enabled = files, tag = "ce-lyrics-import")
                 lyrics.preview?.let { preview ->
@@ -116,15 +134,18 @@ import org.jetbrains.compose.resources.stringResource
     position?.next?.forEach { Text(it.text, Modifier.testTag("ce-lyric-next-${it.id}")) }
 }
 
-@Composable private fun CELyricEdit(line: LyricLine, timing: LyricTiming, enabled: Boolean,
-                                   readout: () -> ContinuousEditorReadout, send: (LyricAction) -> Unit) {
-    var text by remember(line.id, line.text) { mutableStateOf(line.text) }
+@Composable private fun CELyricEdit(line: LyricLine, revision: Long, draftEpoch: Int, timing: LyricTiming, enabled: Boolean,
+                                   readout: () -> ContinuousEditorReadout, send: (LyricAction) -> Unit,
+                                   leave: (() -> Unit) -> Unit, mark: (String, Boolean?) -> Unit) {
+    var text by remember(line.id, line.text, draftEpoch) { mutableStateOf(line.text) }
+    SideEffect { mark("text", text != line.text) }
+    DisposableEffect(Unit) { onDispose { mark("text", null) } }
     OutlinedTextField(text, { if (it.length <= 4096) text = it }, Modifier.fillMaxWidth().testTag("ce-lyric-text"),
         enabled = enabled, label = { Text(stringResource(Res.string.ce_lyrics_text)) }, singleLine = true)
     CEButton(stringResource(Res.string.ce_lyrics_apply_text), { send(LyricAction.Text(line.id, text)) }, Modifier.fillMaxWidth(),
         enabled = enabled && text != line.text, tag = "ce-lyric-apply-text")
     LyricTimeFields(timing.tickToMilliseconds(line.startTick), timing.tickToMilliseconds(line.endTick), enabled,
-        "ce-lyric-time") { from, to -> send(LyricAction.Timing(line.id, from, to)) }
+        "ce-lyric-time", draftEpoch, mark) { from, to -> send(LyricAction.Timing(line.id, from, to)) }
     CEButton(stringResource(Res.string.ce_lyrics_tap), { send(LyricAction.Tap(line.id, readout().songFrame)) }, Modifier.fillMaxWidth(),
         enabled = enabled, tag = "ce-lyric-tap")
     if (line.words.isNotEmpty()) {
@@ -134,24 +155,31 @@ import org.jetbrains.compose.resources.stringResource
         LazyColumn(Modifier.fillMaxWidth().height(120.dp)) {
             items(line.words.size) { item ->
                 Text(line.words[item].text, Modifier.fillMaxWidth().semantics { selected = item == index }
-                    .clickable { wordIndex = item }.padding(vertical = 12.dp).testTag("ce-lyric-select-word-$item"),
+                    .clickable { if (wordIndex != item) leave { wordIndex = item } }.padding(vertical = 12.dp).testTag("ce-lyric-select-word-$item"),
                     fontWeight = if (item == index) FontWeight.Bold else FontWeight.Normal)
             }
         }
         val word = line.words[index]
         key(index) {
             LyricTimeFields(timing.tickToMilliseconds(word.startTick), timing.tickToMilliseconds(word.endTick), enabled,
-                "ce-lyric-word-$index") { from, to -> send(LyricAction.WordTiming(line.id, index, from, to)) }
+                "ce-lyric-word-$index", draftEpoch, mark) { from, to -> send(LyricAction.WordTiming(line.id, index, from, to)) }
         }
     }
-    var deleting by remember(line.id) { mutableStateOf(false) }
+    var deleting by remember(line, revision) { mutableStateOf(false) }
+    val deleteClock = remember { kotlin.time.TimeSource.Monotonic.markNow() }
+    var deleteUntil by remember(line, revision) { mutableStateOf(0L) }
+    LaunchedEffect(deleting, line, revision) { if (deleting) { delay(5_000); deleting = false } }
     CEButton(stringResource(if (deleting) Res.string.ce_lyrics_delete_confirm else Res.string.ce_lyrics_delete),
-        { if (deleting) send(LyricAction.Delete(line.id)) else deleting = true }, Modifier.fillMaxWidth(), enabled = enabled, tag = "ce-lyric-delete")
+        { if (deleting && deleteClock.elapsedNow().inWholeMilliseconds < deleteUntil) {
+            deleting = false; send(LyricAction.Delete(line.id, line, revision))
+        } else { deleting = true; deleteUntil = deleteClock.elapsedNow().inWholeMilliseconds + 5_000 } }, Modifier.fillMaxWidth(), enabled = enabled, tag = "ce-lyric-delete")
 }
 
-@Composable private fun LyricTimeFields(start: Long, end: Long, enabled: Boolean, tag: String, apply: (Long, Long) -> Unit) {
-    var from by remember(start) { mutableStateOf(start.toString()) }
-    var to by remember(end) { mutableStateOf(end.toString()) }
+@Composable private fun LyricTimeFields(start: Long, end: Long, enabled: Boolean, tag: String, draftEpoch: Int, mark: (String, Boolean?) -> Unit, apply: (Long, Long) -> Unit) {
+    var from by remember(start, draftEpoch) { mutableStateOf(start.toString()) }
+    var to by remember(end, draftEpoch) { mutableStateOf(end.toString()) }
+    SideEffect { mark(tag, from != start.toString() || to != end.toString()) }
+    DisposableEffect(tag) { onDispose { mark(tag, null) } }
     OutlinedTextField(from, { if (it.length <= 12) from = it }, Modifier.fillMaxWidth().testTag("$tag-start"), enabled = enabled,
         singleLine = true, label = { Text(stringResource(Res.string.ce_lyrics_start_ms)) })
     OutlinedTextField(to, { if (it.length <= 12) to = it }, Modifier.fillMaxWidth().testTag("$tag-end"), enabled = enabled,

@@ -1,0 +1,74 @@
+package com.choplab.ui
+
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.*
+import androidx.compose.ui.unit.dp
+import com.choplab.core.vocal.PunchPhase
+import com.choplab.ui.resources.*
+import org.jetbrains.compose.resources.stringResource
+
+/** Input measurements come from the capture endpoint, independently of the output/song meter. */
+@Composable internal fun CERecordingStatus(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit,
+    readout: () -> ContinuousEditorReadout, refreshKey: Long) {
+    val active = state.recordingSource || state.recordingVoice || state.recordingHits || state.recordingPunch || state.startingVoiceRecording
+    val live by CELive(active, refreshKey, readout)
+    var discard by remember { mutableStateOf<ContinuousEditorAction?>(null) }
+    if (active || state.pendingRecording) Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (state.startingSourceRecording || state.startingVoiceRecording) {
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(stringResource(Res.string.ce_input_opening))
+                CEButton(stringResource(Res.string.ce_cancel), { onAction(if (state.startingSourceRecording) ContinuousEditorAction.StopSourceRecording else ContinuousEditorAction.StopVoice) },
+                    tag = "ce-cancel-input-open")
+            }
+        } else if (active) {
+            val input = live.input
+            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(Res.string.ce_recorded_time, ceRecordingTime(input.recordedMillis)), Modifier.testTag("ce-recorded-time"))
+                input.limitMillis?.let { limit -> Text(stringResource(Res.string.ce_recording_remaining,
+                    ceRecordingTime((limit - input.recordedMillis).coerceAtLeast(0))), Modifier.testTag("ce-recording-remaining")) }
+                input.peakLevel?.let { level ->
+                    val bounded = level.takeIf { it.isFinite() }?.coerceIn(0f, 1f) ?: 0f
+                    val label = stringResource(Res.string.ce_input_level)
+                    LinearProgressIndicator(progress = { bounded }, modifier = Modifier.width(140.dp).height(12.dp)
+                        .testTag("ce-input-level").semantics { contentDescription = label })
+                }
+                if (state.recordingPunch) Text(stringResource(when (live.punchPhase) {
+                    PunchPhase.OPENING -> Res.string.ce_punch_opening
+                    PunchPhase.PRE_ROLL -> Res.string.ce_punch_preroll
+                    PunchPhase.CAPTURING -> Res.string.ce_punch_capturing
+                    PunchPhase.SAVING -> Res.string.ce_punch_saving
+                    else -> Res.string.ce_punch_waiting
+                }), Modifier.testTag("ce-punch-phase").semantics { liveRegion = LiveRegionMode.Polite })
+                if (state.recordingVoice || (state.recordingHits && state.loopOverdubBars == 0)) CEButton(stringResource(Res.string.ce_discard_recording), {
+                    discard = if (state.recordingVoice) ContinuousEditorAction.DiscardVoice else ContinuousEditorAction.DiscardHits
+                }, tag = "ce-discard-recording")
+            }
+        }
+        if (state.pendingRecording && !active) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(stringResource(if (state.pendingRecordingApplied) Res.string.ce_recording_added_pending else Res.string.ce_recording_pending), Modifier.testTag("ce-recording-pending").semantics { liveRegion = LiveRegionMode.Polite })
+            CEButton(stringResource(Res.string.ce_retry_recording), { onAction(ContinuousEditorAction.RetryRecordingSave) }, tag = "ce-retry-recording")
+            if (!state.pendingRecordingApplied) CEButton(stringResource(Res.string.ce_discard_recording), { discard = ContinuousEditorAction.DiscardPendingRecording }, tag = "ce-discard-pending")
+        }
+    }
+    state.recordingInterruption?.let { reason -> Text(stringResource(when (reason) {
+        RecordingInterruption.DEVICE_LOST -> Res.string.ce_input_device_lost
+        RecordingInterruption.READ_FAILED -> Res.string.ce_input_read_failed
+        RecordingInterruption.STORAGE_FAILED -> Res.string.ce_input_storage_failed
+        RecordingInterruption.OUTPUT_LOST -> Res.string.ce_input_output_lost
+        RecordingInterruption.UNKNOWN -> Res.string.ce_input_interrupted
+    }), Modifier.testTag("ce-recording-interruption").semantics { liveRegion = LiveRegionMode.Polite }) }
+    discard?.let { action -> AlertDialog(onDismissRequest = { discard = null },
+        title = { Text(stringResource(Res.string.ce_discard_recording)) }, text = { Text(stringResource(Res.string.ce_discard_recording_hint)) },
+        confirmButton = { CEButton(stringResource(Res.string.ce_discard_recording), { discard = null; onAction(action) }, tag = "ce-confirm-discard-recording") },
+        dismissButton = { CEButton(stringResource(Res.string.ce_cancel), { discard = null }, tag = "ce-cancel-discard-recording") }) }
+}
+internal fun ceRecordingTime(milliseconds: Long): String {
+    val seconds = milliseconds.coerceAtLeast(0) / 1000
+    return "${seconds / 60}:${(seconds % 60).toString().padStart(2, '0')}"
+}

@@ -27,6 +27,264 @@ import kotlin.test.*
 
 /** Presenter/Studio contracts with fake platform ports; not physical audio evidence. */
 class ContinuousEditorPresenterTest {
+    @Test fun closeCancelsAnInputOpeningWithoutWaitingForTheChooserOrMutex() = runBlocking<Unit> {
+        val entered = CompletableDeferred<Unit>(); val answer = CompletableDeferred<VoiceStart>()
+        var cancellations = 0
+        val h = Harness(voice = true, decoratePorts = { base -> object : ContinuousEditorPorts by base {
+            override suspend fun startVoice(maxSeconds: Int): VoiceStart { entered.complete(Unit); return answer.await() }
+            override fun cancelVoiceOpening() { cancellations++; answer.complete(VoiceStart.UNAVAILABLE) }
+        } })
+        try {
+            val opening = async { h.presenter.dispatch(ContinuousEditorAction.RecordVoice) }
+            entered.await()
+            withTimeout(5_000) { h.presenter.close(); assertFalse(opening.await()) }
+            assertTrue(cancellations > 0)
+        } finally { answer.complete(VoiceStart.UNAVAILABLE); h.studio.dispatch(Action.Close); h.scope.cancel() }
+    }
+
+    @Test fun cancellingAnInputOpenNotifiesTheEndpointBeforeTheActionLockIsReleased() = runBlocking<Unit> {
+        for (voice in listOf(false, true)) {
+            val entered = CompletableDeferred<Unit>(); val answer = CompletableDeferred<VoiceStart>()
+            var cancellations = 0
+            val h = Harness(voice = true, decoratePorts = { base -> object : ContinuousEditorPorts by base {
+                override suspend fun startVoice(maxSeconds: Int): VoiceStart { entered.complete(Unit); return answer.await() }
+                override fun cancelVoiceOpening() { cancellations++; answer.complete(VoiceStart.UNAVAILABLE) }
+            } })
+            try {
+                val before = h.studio.document.value
+                val opening = async { h.presenter.dispatch(if (voice) ContinuousEditorAction.RecordVoice else ContinuousEditorAction.RecordSource) }
+                entered.await()
+                h.presenter.onAction(if (voice) ContinuousEditorAction.StopVoice else ContinuousEditorAction.StopSourceRecording)
+                assertFalse(withTimeout(5_000) { opening.await() })
+                assertTrue(cancellations > 0)
+                h.until { !it.startingVoiceRecording && !it.startingSourceRecording && !it.recordingSource && !it.recordingVoice }
+                assertEquals(before, h.studio.document.value)
+            } finally { answer.complete(VoiceStart.UNAVAILABLE); h.close() }
+        }
+    }
+
+    @Test fun failedRecordingAcknowledgementRetriesCleanupWithoutDuplicatingTheAcceptedTake() = runBlocking<Unit> {
+        var failAck = true
+        val h = Harness(voice = true, decoratePorts = { base -> object : ContinuousEditorPorts by base {
+            override suspend fun acknowledgeVoiceTake() { if (failAck) error("storage unavailable") else base.acknowledgeVoiceTake() }
+        } })
+        try {
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.StopVoice))
+            val accepted = h.studio.document.value
+            assertEquals(1, accepted.project.takes.size)
+            h.until { it.pendingRecording && it.pendingRecordingApplied && it.permits(ContinuousCapability.SAVE_PROJECT) }
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.DiscardPendingRecording), "Accepted but unflushed takes keep their recovery bytes")
+            val stops = h.ports.voiceNames.size
+            failAck = false
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RetryRecordingSave))
+            h.until { !it.pendingRecording }
+            assertEquals(accepted, h.studio.document.value)
+            assertEquals(stops, h.ports.voiceNames.size, "Cleanup retry never publishes another take")
+        } finally { failAck = false; h.close() }
+    }
+
+    @Test fun clipTrackSelectionFollowsMovesAndOpeningAProjectClearsThePriorDestination() = runBlocking<Unit> {
+        val h = Harness(adjust = { p -> p.copy(tracks = frozenListOf(Track("a", "A", TrackKind.BANK), Track("b", "B", TrackKind.BANK)),
+            clips = frozenListOf(Clip("first", "a", p.assets[1].hash, FrameRange(0, 48_000), timelineStartFrame = 0))) })
+        try {
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SelectClip("first")))
+            h.until { it.selectedTrackId == "a" }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.MoveClip("first", "b", 0)))
+            h.until { it.selectedTrackId == "b" }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            h.until { it.selectedTrackId == "a" }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenProjectFile(Location("project"))))
+            h.until { it.selectedClipId == null && it.selectedTrackId == null }
+        } finally { h.close() }
+    }
+
+
+    @Test fun stopAllStopsSourceAndSongWhileLibraryPickerStaysOpen() = runBlocking<Unit> {
+        val entered = CompletableDeferred<Unit>(); val closed = CompletableDeferred<Location?>()
+        val h = Harness(decoratePorts = { base -> object : ContinuousEditorPorts by base {
+            override suspend fun chooseLibrary(): Location? { entered.complete(Unit); return closed.await() }
+        } })
+        try {
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlayOriginal))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(0, null, 0)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlaySong))
+            val picking = async { h.presenter.dispatch(ContinuousEditorAction.ImportLibrary) }
+            entered.await()
+            val stops = h.ports.stops
+            h.presenter.onAction(ContinuousEditorAction.StopAll)
+            withTimeout(5_000) { while (h.ports.stops == stops || h.engine.transport.playing) delay(5) }
+            assertFalse(picking.isCompleted, "Stop leaves the picker and its draft open")
+            closed.complete(null)
+            assertFalse(picking.await())
+        } finally { closed.complete(null); h.close() }
+    }
+
+
+    @Test fun historyStopsSourceOnlyWhenAssetChangesAndRefusesFailedStop() = runBlocking<Unit> {
+        val h = Harness()
+        try {
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlayOriginal))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetTempo(130)))
+            val stops = h.ports.stops
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            assertEquals(stops, h.ports.stops, "Unrelated edits preserve independent SOURCE")
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetSourceRange(10, 48_000)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            assertEquals(stops, h.ports.stops, "Changing selection alone does not replace SOURCE bytes")
+            assertTrue(h.studio.dispatch(Action.Edit(Intent.ImportAsset(h.chopped))).accepted)
+            h.ports.refusesOriginalStop = true
+            val before = h.studio.document.value
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            assertEquals(before, h.studio.document.value)
+            h.until { it.status == ContinuousStatus.SOURCE_STOP_FAILED && it.originalPlaying }
+            h.ports.refusesOriginalStop = false
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            assertEquals(h.original.hash, h.studio.document.value.project.source?.assetHash)
+            h.until { !it.originalPlaying }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Redo))
+            assertEquals(h.chopped.hash, h.studio.document.value.project.source?.assetHash)
+        } finally { h.close() }
+    }
+
+    @Test fun failedSourceStopProtectsImportAndPlayFromStartRequiresSeek() = runBlocking<Unit> {
+        val h = Harness()
+        try {
+            h.ports.refusesOriginalStop = true
+            val before = h.studio.document.value
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.ImportAudioFile(Location("candidate"))))
+            assertEquals(before, h.studio.document.value)
+            h.ports.refusesOriginalStop = false
+            h.ports.refusesSeek = true
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.PlayOriginalFromStart))
+            assertEquals(0, h.ports.plays)
+            h.ports.refusesSeek = false
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlayOriginalFromStart))
+            assertEquals(0L, h.ports.seeks.last())
+            assertEquals(1, h.ports.plays)
+            assertFalse(h.engine.commands.any { it is EngineCommand.Resume }, "SOURCE start never starts song")
+        } finally { h.close() }
+    }
+
+    @Test fun busyFileEntriesDoNotOpenDialogsOrCancelSavingAndSaveHasSpecificStatus() = runBlocking<Unit> {
+        val h = Harness()
+        try {
+            h.saveGate = CompletableDeferred()
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SaveProject))
+            h.until { it.status == ContinuousStatus.SAVING }
+            val job = h.studio.work.value.jobId
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.ImportAudio))
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.OpenProject))
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.ImportAudioFile(Location("audio"))))
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.OpenProjectFile(Location("project"))))
+            assertEquals(0, h.ports.audioPicks); assertEquals(0, h.ports.openPicks)
+            assertEquals(job, h.studio.work.value.jobId)
+            assertFalse(h.presenter.state.value.permits(ContinuousCapability.IMPORT_AUDIO))
+            h.saveGate!!.complete(Unit)
+            h.until { it.status == ContinuousStatus.SAVED }
+        } finally { h.saveGate?.complete(Unit); h.close() }
+    }
+
+    @Test fun newProjectSaveFailureCancellationAndRevisionFenceKeepTheCurrentDocument() = runBlocking<Unit> {
+        val h = Harness()
+        try {
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetTempo(123)))
+            val before = h.studio.document.value
+            // A prior successful save must not authorize replacement after this save fails.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SaveProject)); h.until { it.status == ContinuousStatus.SAVED }
+            h.saveFails = true
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.NewProject))
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.ConfirmNewProject(true, before.revision)))
+            assertEquals(before.project, h.studio.document.value.project)
+            h.until { it.status == ContinuousStatus.SAVE_FAILED }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.CancelNewProject))
+            h.until { it.newProjectRevision == null }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.NewProject))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetTempo(124)))
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.ConfirmNewProject(false, before.revision)))
+            assertEquals(124_000, h.studio.document.value.project.tempo.milliBpm)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.NewProject))
+            h.saveFails = false
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ConfirmNewProject(true, h.studio.document.value.revision)))
+            h.until { it.newProjectRevision == null && it.original == null }
+            assertEquals(3, h.saveCount)
+        } finally { h.close() }
+    }
+
+    @Test fun autosaveFailurePersistsAcrossSuccessfulEditsAndClearsOnlyOnRecovery() = runBlocking<Unit> {
+        val failure = MutableStateFlow(true)
+        val h = Harness(decoratePorts = { base -> object : ContinuousEditorPorts by base { override val autosaveFailure = failure } })
+        try {
+            h.until { it.autosaveFailed }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetTempo(123)))
+            h.until { it.milliBpm == 123_000 && it.autosaveFailed }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SaveProject))
+            h.until { it.status == ContinuousStatus.SAVED && it.autosaveFailed }
+            failure.value = false
+            h.until { !it.autosaveFailed }
+        } finally { h.close() }
+    }
+
+    @Test fun fitUsesActualViewportExactTempoSurvivesAndEmptyExportExplainsSong() = runBlocking<Unit> {
+        val h = Harness()
+        try {
+            h.until { it.original != null }
+            assertEquals(ContinuousUnavailable.NO_SONG, h.presenter.state.value.unavailable[ContinuousCapability.EXPORT_WAV])
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.SetTempoExact(123_456, 580)))
+            h.until { it.milliBpm == 123_456 }
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            assertEquals(120_000, h.studio.document.value.project.tempo.milliBpm)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Redo))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.PlacePad(0, null, 48_000L * 1700)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.FitTimelineWidth(320f)))
+            h.until { it.pixelsPerSecond < 4f }
+            val state = h.presenter.state.value
+            assertTrue(state.timelineDurationFrames / 48_000f * state.pixelsPerSecond + 80 <= 320.01f)
+            assertEquals(123_456, h.studio.document.value.project.tempo.milliBpm)
+        } finally { h.close() }
+    }
+
+    @Test fun recordingSaveRetriesWithOneUndoAndAcknowledgesOnlyAfterDocumentAccepts() = runBlocking<Unit> {
+        val h = Harness(voice = true)
+        try {
+            val before = h.studio.document.value
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordSource))
+            h.ports.storeFails = true
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.StopSourceRecording))
+            h.until { it.pendingRecording && !it.recordingSource }
+            assertEquals(before, h.studio.document.value)
+            assertEquals(0, h.ports.acknowledgements)
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.RecordSource))
+            h.ports.storeFails = false
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RetryRecordingSave))
+            h.until { !it.pendingRecording && it.status == ContinuousStatus.SOURCE_RECORDED }
+            assertEquals(1, h.ports.acknowledgements)
+            assertEquals(before.revision + 1, h.studio.document.value.revision)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
+            assertEquals(before.project, h.studio.document.value.project)
+        } finally { h.close() }
+    }
+
+    @Test fun emptySongRecordingUsesActualLongClockAndDiscardCreatesNoPlacement() = runBlocking<Unit> {
+        val input = RecordingInputReadout(1500, 31_000, .7f)
+        val h = Harness(voice = true, decoratePorts = { base -> object : ContinuousEditorPorts by base { override fun voiceInputReadout() = input } })
+        try {
+            val before = h.studio.document.value
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
+            h.until { it.recordingVoice }
+            assertTrue(h.presenter.state.value.timelineDurationFrames > 48_000 * 8L)
+            assertEquals(input, h.presenter.readout().input)
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.DiscardVoice))
+            h.until { !it.recordingVoice }
+            assertEquals(before, h.studio.document.value)
+            assertTrue(h.ports.voiceNames.isEmpty())
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordHits))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.DiscardHits))
+            assertEquals(before, h.studio.document.value)
+        } finally { h.close() }
+    }
+
+
     @Test fun autoChopAndOtherSourceToolsTransferOnePreviewOwnerWithoutEditing() = runBlocking<Unit> {
         for (target in listOf(ContinuousEditorAction.OpenSourceAnalysis, ContinuousEditorAction.OpenVocalCoach,
             ContinuousEditorAction.OpenVocalPitch, ContinuousEditorAction.OpenVocalGuide,
@@ -1112,6 +1370,8 @@ class ContinuousEditorPresenterTest {
             assertEquals(before, h.studio.document.value.project)
             h.ports.storeFails = false
             h.ports.takeFrames = 96_000
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.RecordSource), "A failed take cannot be overwritten")
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.DiscardPendingRecording))
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordSource))
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.Navigate(ContinuousStage.CHOP)))
             h.until { it.stage == ContinuousStage.CHOP && !it.recordingSource }
@@ -1918,9 +2178,10 @@ class ContinuousEditorPresenterTest {
             assertEquals(before, h.studio.document.value.project)
             assertEquals(PlaybackTarget.Arrangement(), h.studio.selection.value.playbackTarget)
 
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.DiscardPendingRecording))
             h.engine.refuseResume = true
             assertFalse(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
-            assertEquals(1, h.ports.discards)
+            assertEquals(2, h.ports.discards)
             assertEquals(PlaybackTarget.Arrangement(), h.studio.selection.value.playbackTarget)
             assertFalse(h.presenter.dispatch(ContinuousEditorAction.RecordHits))
             assertEquals(PlaybackTarget.Arrangement(), h.studio.selection.value.playbackTarget)
@@ -1928,7 +2189,7 @@ class ContinuousEditorPresenterTest {
             h.ports.duringVoiceStart = { h.engine.transport = h.engine.transport.copy(outputAttached = false) }
             assertFalse(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
             h.until { it.status == ContinuousStatus.NO_OUTPUT }
-            assertEquals(2, h.ports.discards)
+            assertEquals(3, h.ports.discards)
             assertEquals(PlaybackTarget.Arrangement(), h.studio.selection.value.playbackTarget)
             val attempts = h.ports.voiceStarts.size
             assertFalse(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
@@ -2282,6 +2543,7 @@ class ContinuousEditorPresenterTest {
                 assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
                 assertTrue(h.presenter.dispatch(ContinuousEditorAction.StopVoice))
                 h.until { it.status == status }
+                if (status == ContinuousStatus.VOICE_TOO_SHORT) assertTrue(h.presenter.dispatch(ContinuousEditorAction.DiscardPendingRecording))
                 assertTrue(h.presenter.dispatch(ContinuousEditorAction.SelectPad(0)), "Clears the status")
             }
             // Storage failed: said so, and the editor records again afterwards.
@@ -2878,13 +3140,16 @@ class ContinuousEditorPresenterTest {
             pads = (0..127).map { if (it < 2) Pad(it, chopped.hash, FrameRange(0, 48_000), mode = PlayMode.GATE) else Pad(it) }.frozen()))
         val engine = FakeEngine()
         @Volatile var exportTarget: PlaybackTarget? = null
+        @Volatile var saveFails = false
+        @Volatile var saveGate: CompletableDeferred<Unit>? = null
+        @Volatile var saveCount = 0
         val studio = Studio(scope, Services(object : AssetStore {
             override suspend fun containsVerified(asset: Asset) = true
             override suspend fun write(asset: Asset, bytes: ByteArray) = Unit
             override suspend fun read(asset: Asset) = byteArrayOf()
         }, object : ImportPort { override suspend fun import(location: Location) = original },
             object : ProjectPort {
-                override suspend fun save(project: Project, revision: Long, location: Location) = Unit
+                override suspend fun save(project: Project, revision: Long, location: Location) { saveCount++; saveGate?.await(); check(!saveFails) }
                 override suspend fun open(location: Location) = initial
                 /** With [rescue], every file opens as the earlier app's project file it was rescued from. */
                 override suspend fun openDocument(location: Location) = OpenedProject(initial, rescue)
@@ -3020,9 +3285,11 @@ class ContinuousEditorPresenterTest {
         var spotifyViews = 0
         override val spotifyMetadataAvailable get() = spotifyAvailable
         override suspend fun openSpotifyMetadata() { spotifyViews++ }
-        override suspend fun chooseAudio(): Location? = null
+        var audioPicks = 0
+        override suspend fun chooseAudio(): Location? { audioPicks++; return null }
         @Volatile var openLocation: Location? = null
-        override suspend fun chooseOpen(): Location? = openLocation
+        var openPicks = 0
+        override suspend fun chooseOpen(): Location? { openPicks++; return openLocation }
         override suspend fun chooseSave() = Location("save")
         override suspend fun chooseExport(frames: Long): ExportRequest {
             exportFrames = frames
@@ -3058,8 +3325,10 @@ class ContinuousEditorPresenterTest {
         override suspend fun scratchOriginalTo(position: Double, durationFrames: Int): Boolean { scratchMoves += position to durationFrames; handFrame = position; return true }
         override suspend fun scratchOriginalCut(gain: Float): Boolean { scratchCuts += gain; return true }
         override suspend fun scratchOriginalEnd(): Boolean { scratchEnds++; handFrame = -1.0; return true }
-        override suspend fun stopOriginal(): Boolean { stops++; handFrame = -1.0; return true }
-        override suspend fun seekOriginal(frame: Long): Boolean { seeks += frame; return true }
+        var refusesOriginalStop = false
+        override suspend fun stopOriginal(): Boolean { stops++; if (refusesOriginalStop) return false; handFrame = -1.0; return true }
+        var refusesSeek = false
+        override suspend fun seekOriginal(frame: Long): Boolean { seeks += frame; return !refusesSeek }
         val copied = java.util.concurrent.CopyOnWriteArrayList<String>()
         @Volatile var clipboardWorks = true
         override fun diagnostics() = ContinuousDiagnostics(outputAttached = true, underruns = 4, pendingFrames = outputDelay)
@@ -3101,6 +3370,8 @@ class ContinuousEditorPresenterTest {
             val frames = takeFrames ?: return null
             return VoiceTake(Asset((voiceNames.size + 0xA0).toString(16).padStart(64, '0'), "wav", 44 + frames * 4, 48_000, 1, frames, name), takeLead)
         }
+        var acknowledgements = 0
+        override suspend fun acknowledgeVoiceTake() { acknowledgements++ }
         override suspend fun discardVoice() { discards++ }
         fun kitHash(kitId: String, slot: Int) = (DrumKits.catalog.indexOfFirst { it.id == kitId } * 16 + slot + 1).toString(16).padStart(64, '0')
         override suspend fun drumKit(kitId: String): List<Asset>? = if (!kits) null else (0 until 16).map { slot ->

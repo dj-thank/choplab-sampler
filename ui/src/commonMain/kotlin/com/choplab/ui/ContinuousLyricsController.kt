@@ -32,7 +32,7 @@ sealed interface LyricAction {
     data class Timing(val id: String, val startMilliseconds: Long, val endMilliseconds: Long) : LyricAction
     data class WordTiming(val id: String, val word: Int, val startMilliseconds: Long, val endMilliseconds: Long) : LyricAction
     data class Tap(val id: String, val songFrame: Long) : LyricAction
-    data class Delete(val id: String) : LyricAction
+    data class Delete(val id: String, val expectedLine: LyricLine? = null, val expectedRevision: Long? = null) : LyricAction
     data object Import : LyricAction
     data object ApplyImport : LyricAction
     data object CancelImport : LyricAction
@@ -67,7 +67,9 @@ internal class ContinuousLyricsController(private val studio: Studio, private va
                 else changed(LyricEdits.insertLine(project.lyrics, LyricLine(id, "", from, end)), id, snapshot.revision)
             }
             is LyricAction.Text -> changed(LyricEdits.replaceText(project.lyrics, action.id, action.text), action.id, snapshot.revision)
-            is LyricAction.Delete -> changed(LyricEdits.removeLine(project.lyrics, action.id), null, snapshot.revision)
+            is LyricAction.Delete -> if ((action.expectedRevision != null && action.expectedRevision != snapshot.revision) ||
+                (action.expectedLine != null && action.expectedLine != project.lyrics.firstOrNull { it.id == action.id })) notice(LyricEditorNotice.STALE, false)
+                else changed(LyricEdits.removeLine(project.lyrics, action.id), null, snapshot.revision)
             is LyricAction.Tap -> tick(action.songFrame, project.tempo.milliBpm)?.let { changed(LyricEdits.tapLineStart(project.lyrics, action.id, it), action.id, snapshot.revision) }
                 ?: issue(LyricIssue(LyricProblem.TIME_OUT_OF_RANGE))
             is LyricAction.Timing -> times(timing, action.startMilliseconds, action.endMilliseconds) { from, to ->
