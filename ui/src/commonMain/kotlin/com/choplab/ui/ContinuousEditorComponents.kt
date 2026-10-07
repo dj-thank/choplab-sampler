@@ -14,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -145,8 +146,36 @@ internal object CEColor {
     position: () -> Float = { 0f }, range: ClosedFloatingPointRange<Float>? = null,
     color: Color = CEColor.Green, onSeek: ((Float) -> Unit)? = null, tag: String = "", markers: List<Float> = emptyList()) {
     val latestSeek by rememberUpdatedState(onSeek)
-    Canvas(modifier.clip(RoundedCornerShape(8.dp)).background(CEColor.Deep).border(2.dp, CEColor.Ink, RoundedCornerShape(8.dp))
-        .testTag(tag).semantics { contentDescription = label }
+    var focused by remember { mutableStateOf(false) }
+    fun current() = position().takeIf { it.isFinite() }?.coerceIn(0f, 1f) ?: 0f
+    fun seek(value: Float): Boolean {
+        if (!value.isFinite()) return false
+        val action = latestSeek ?: return false
+        action(value.coerceIn(0f, 1f)); return true
+    }
+    Canvas(modifier.clip(RoundedCornerShape(8.dp)).background(CEColor.Deep)
+        .border(if (focused) 3.dp else 2.dp, if (focused) CEColor.Cream else CEColor.Ink, RoundedCornerShape(8.dp))
+        .testTag(tag).semantics {
+            contentDescription = label
+            if (onSeek != null) {
+                progressBarRangeInfo = ProgressBarRangeInfo(current(), 0f..1f)
+                setProgress { seek(it) }
+            }
+        }.onFocusChanged { focused = it.isFocused }
+        .onKeyEvent { event ->
+            if (onSeek == null || event.isCtrlPressed || event.isMetaPressed || event.isAltPressed) false
+            else when (event.key) {
+                Key.DirectionLeft, Key.DirectionRight, Key.MoveHome, Key.MoveEnd -> {
+                    if (event.type == KeyEventType.KeyDown) seek(when (event.key) {
+                        Key.MoveHome -> 0f; Key.MoveEnd -> 1f
+                        Key.DirectionLeft -> current() - .01f
+                        else -> current() + .01f
+                    })
+                    true
+                }
+                else -> false
+            }
+        }.focusable(enabled = onSeek != null)
         .pointerInput(onSeek != null) {
             if (latestSeek != null) detectTapGestures { offset -> latestSeek?.invoke((offset.x / size.width).coerceIn(0f, 1f)) }
         }) {
@@ -237,8 +266,19 @@ internal data class CEPaddedDrag(val padId: Int, val rootPosition: Offset)
                     val description = stringResource(Res.string.ce_pad_semantics, ('A' + state.selectedBank).toString(), id % 16 + 1, name, mode) + " · " + bankDescription
                     val selected = id == state.selectedPadId
                     val filled = pad.kind != ContinuousPadKind.EMPTY
+                    val keyboardMode = capture != null || hit != null || state.noteRepeat != ContinuousNoteRepeat.OFF
+                    val keyboardAllowed = capture != null || (filled && state.permits(ContinuousCapability.PAD_AUDITION))
+                    val keyboard = remember(id, capture != null, hit != null, filled, pad.mode, state.noteRepeat, keyboardAllowed) {
+                        CEPadKeyGesture(id, capture != null, pad.mode == ContinuousPadMode.GATE,
+                            state.noteRepeat != ContinuousNoteRepeat.OFF,
+                            { latestCapture?.invoke() }, { latestHit?.invoke() }, { latestAction(it) })
+                    }
+                    DisposableEffect(keyboard) { onDispose { keyboard.cancel() } }
+                    var focused by remember(id) { mutableStateOf(false) }
                     Box(Modifier.size(side).clip(RoundedCornerShape(8.dp)).background(if (filled) CEColor.FilledPad else CEColor.Empty)
                         .border(if (selected) 3.dp else 2.dp, if (selected) CEColor.Orange else CEColor.Ink, RoundedCornerShape(8.dp))
+                        .then(if (focused) Modifier.border(2.dp, CEColor.Cream, RoundedCornerShape(6.dp)) else Modifier)
+                        .onFocusChanged { focused = it.isFocused; if (!it.isFocused) { keyboard.cancel(); release() } }
                         .onGloballyPositioned { rootOrigin = it.positionInRoot() }
                         .testTag("ce-pad-$id")
                         .then(if (capture != null) Modifier.pointerInput(id) {
@@ -263,19 +303,9 @@ internal data class CEPaddedDrag(val padId: Int, val rootPosition: Offset)
                         } else Modifier.combinedClickable(interactionSource = interaction, indication = null,
                             onClick = { onAction(ContinuousEditorAction.SelectPad(id)); if (filled && state.permits(ContinuousCapability.PAD_AUDITION)) onAction(ContinuousEditorAction.TapPad(id)) },
                             onLongClick = if (filled && state.permits(ContinuousCapability.PAD_AUDITION)) ({ if (!held) { held = true; onAction(ContinuousEditorAction.HoldPad(id)) } }) else null))
-                        .then(if (capture == null && filled && state.noteRepeat != ContinuousNoteRepeat.OFF && state.permits(ContinuousCapability.PAD_AUDITION))
-                            Modifier.onKeyEvent { event ->
-                                if (event.key != Key.Spacebar && event.key != Key.Enter && event.key != Key.NumPadEnter) false
-                                else {
-                                    // A key activation, like a screen-reader click, is one engine-timed beat.
-                                    // Holding a keyboard key cannot accumulate autorepeat commands or a stuck PAD.
-                                    if (event.type == KeyEventType.KeyUp) {
-                                        latestHit?.invoke()?.let { latestAction(ContinuousEditorAction.BeginHit(ContinuousHitGesture(id, it))) }
-                                        latestAction(ContinuousEditorAction.TapPad(id))
-                                    }
-                                    true
-                                }
-                            }.focusable() else Modifier)
+                        .then(if (keyboardMode) Modifier.onKeyEvent { event ->
+                            keyboardAllowed && keyboard.key(event)
+                        }.focusable(enabled = keyboardAllowed) else Modifier)
                         .pointerInput(id, filled, state.permits(ContinuousCapability.PLACE_PAD), capture != null, hit != null, onPadDrag != null, state.noteRepeat) {
                             // A compact pane has no visible drop target: its vertical gestures belong to scrolling.
                             if (onPadDrag != null && onPadDrop != null && capture == null && hit == null && state.noteRepeat == ContinuousNoteRepeat.OFF && filled && state.permits(ContinuousCapability.PLACE_PAD)) {
