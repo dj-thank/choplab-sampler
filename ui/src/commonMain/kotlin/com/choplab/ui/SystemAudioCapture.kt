@@ -10,6 +10,8 @@ interface SystemAudioCapture {
     val full: Boolean
     val interrupted: Boolean
     val recordedMillis: Long
+    val inputReadout: RecordingInputReadout get() = RecordingInputReadout(recordedMillis = recordedMillis)
+    suspend fun acknowledgeTake() {}
     suspend fun stop(name: String): Asset?
     suspend fun discard()
     suspend fun close()

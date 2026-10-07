@@ -35,6 +35,8 @@ import kotlin.time.TimeSource
 
 /** Platform dialogs, monitoring and waveform decoding. No filesystem paths enter UI/document state. */
 interface ContinuousEditorPorts {
+    /** Persistent autosave failure, independent from the latest edit's transient status. */
+    val autosaveFailure: StateFlow<Boolean>? get() = null
     val vocalPractice: VocalPracticePort? get() = null
     val autoChop: AutoChopPort? get() = null
     val sourcePreview: VocalPreviewPort? get() = vocalGuide?.preview
@@ -106,6 +108,11 @@ interface ContinuousEditorPorts {
     /** The running take reached its length limit and records nothing more. */
     fun voiceFull(): Boolean = false
     fun voiceRecordedMillis(): Long = 0
+    /** Cancels a pending input open without waiting for the serialized editor action. */
+    fun cancelVoiceOpening() {}
+    fun voiceInputReadout(): RecordingInputReadout = RecordingInputReadout(recordedMillis = voiceRecordedMillis())
+    /** Called only after the take was accepted into the document; stop alone must not erase a recoverable take. */
+    suspend fun acknowledgeVoiceTake() {}
     /** The running take stopped by itself: the microphone went away or the take could not be written. */
     fun voiceInterrupted(): Boolean = false
     /** Ends the take and stores it as [name]; null when nothing was recorded. */

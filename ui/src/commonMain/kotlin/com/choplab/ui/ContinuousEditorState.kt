@@ -284,6 +284,7 @@ class ContinuousHitGesture(val padId: Int, val songFrame: Long)
     val scratchFraction: Float = 0f,
     /** Samples actually captured, not wall-clock time spent waiting for microphone permission. */
     val recordingMillis: Long = 0,
+    val input: RecordingInputReadout = RecordingInputReadout(),
     /** Independent original HAND position in native source frames; -1 while inactive. */
     val handSourceFrame: Double = -1.0,
     val countInBeatsRemaining: Int = 0,
