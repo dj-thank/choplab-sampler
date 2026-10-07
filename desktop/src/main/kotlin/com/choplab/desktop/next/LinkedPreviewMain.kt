@@ -109,12 +109,16 @@ fun main() {
                 state = rememberWindowState(width = 1440.dp, height = 1024.dp),
                 onCloseRequest = requestClose) {
                 SideEffect { parent.set(window) }
-                var editorFocused by remember { mutableStateOf(window.isFocused) }
+                var editorDialogOpen by remember { mutableStateOf(false) }
                 DisposableEffect(window) {
                     // Java Sound reports no device changes: coming back to the window tries a lost output once more.
                     val focus = object : WindowAdapter() {
-                        override fun windowGainedFocus(event: WindowEvent) { editorFocused = true; recovery?.retry() }
-                        override fun windowLostFocus(event: WindowEvent) { editorFocused = false }
+                        override fun windowGainedFocus(event: WindowEvent) { editorDialogOpen = false; recovery?.retry() }
+                        override fun windowLostFocus(event: WindowEvent) {
+                            // A background launch can have no focus event at all. Only an owned dialog
+                            // suppresses the editor's commands; switching apps does not change readiness.
+                            editorDialogOpen = window.ownedWindows.filterIsInstance<java.awt.Dialog>().any { it.isVisible }
+                        }
                     }
                     window.addWindowFocusListener(focus)
                     onDispose { window.removeWindowFocusListener(focus) }
@@ -148,7 +152,7 @@ fun main() {
                     onDispose { drop.close() }
                 }
                 MenuBar {
-                    NextDesktopMenus(state, closing || !editorFocused) { action ->
+                    NextDesktopMenus(state, closing || editorDialogOpen) { action ->
                         // A text editor/dialog keeps its own shortcuts and pending edits.
                         if (window.ownedWindows.filterIsInstance<java.awt.Dialog>().none { it.isVisible }) presenter.onAction(action)
                     }

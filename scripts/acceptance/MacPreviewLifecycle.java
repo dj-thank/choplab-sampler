@@ -43,7 +43,9 @@ public final class MacPreviewLifecycle {
             boolean importEnabled = awt != null ? awt.getMenu(0).getItem(0).isEnabled()
                 : swing.getMenu(0).getItem(0).isEnabled();
             if (!importEnabled)
-              throw new IllegalStateException("Idle NEXT window must enable file import");
+              throw new IllegalStateException("Idle NEXT window must enable file import; focused=" + owned.isFocused()
+                  + " active=" + owned.isActive() + " visibleDialogs="
+                  + java.util.Arrays.stream(owned.getOwnedWindows()).filter(w -> w instanceof java.awt.Dialog && w.isVisible()).count());
             System.out.println("NATIVE_NEXT_MENUS_AND_FILE_DROP_READY");
           }
           System.out.println(
