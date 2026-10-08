@@ -24,7 +24,11 @@
 
 ### 現在の修正対象と再開点
 
-現在のMac配布済みsourceは[PR236](https://github.com/dj-thank/choplab-sampler/pull/236)を統合したmain `a56972ff`、build33。5人の65指摘から重複と実機/provider条件を分けた60件を実装し、検証head `5ee5b279` の必須3job・Mac配布・Apple共通基盤が成功した後に統合した。NEXT/Previewの両DMGをread-only mount・同梱Javaで受け入れ、同梱installerからapp/manifestを対で更新した。旧app/manifestと利用者dataを保全し、導入済みの通常起動/終了/再開も両app各2回成功した。以下の候補/初回CI記録は経緯であり、現在の受入を上書きしない。
+現在の導入済みMacは[PR237](https://github.com/dj-thank/choplab-sampler/pull/237)統合main `a6a8c455` のbuild34（NEXT/Preview）。2026-10-08の追加監査は同sourceを基準に5人から57件を受領し、重複整理後に実装を開始した。利用者の追記により50件未満でも確認された残件を全て扱う。rootが統合・Mac導入を所有し、各項目を実装・検証・統合・配布へ対応させる。現在は独立worktreeで修正中であり、57件の配布完了とはしない。
+
+最初の候補はLibrary/Onlineの14件（実装 `8412c836`）。FLAC/MP3の観測タグでartist/album/曲順を分類し、同じ音源の再追加は保存bytesを検証する。破損は明示修復まで保全し、部分取込は成功・再利用・失敗を残す。Library/Spotifyの一覧位置を維持し、読めないcatalog項目と空一覧を区別する。Online詳細への移動/戻る、任意画像の待機取消、保存済み音源の再取得防止、未知進捗・過大形式・再試行案内を整える。表示だけで音源取得や制作適用を起こさない。関連85試験、実FLAC/MP3のタグ・原本hash確認、Android Preview compileがLOCAL_PASS。最後の旧adapter修正後も関連5試験を再実行して成功。必須CI・main統合・同sourceの新DMG導入はこれから照合する。rollbackは限定PRのrevertと保全済みbuild34 app/manifestへの復帰。実Spotify API、物理操作・VoiceOver、聴感/遅延、Developer ID/公証、PUBLIC_PASS/HUMAN_GOは未確認。
+
+前回build33の配布sourceは[PR236](https://github.com/dj-thank/choplab-sampler/pull/236)を統合したmain `a56972ff`、build33。5人の65指摘から重複と実機/provider条件を分けた60件を実装し、検証head `5ee5b279` の必須3job・Mac配布・Apple共通基盤が成功した後に統合した。NEXT/Previewの両DMGをread-only mount・同梱Javaで受け入れ、同梱installerからapp/manifestを対で更新した。旧app/manifestと利用者dataを保全し、導入済みの通常起動/終了/再開も両app各2回成功した。以下の候補/初回CI記録は経緯であり、現在の受入を上書きしない。
 
 2026-10-08 UTC、画面解除後に同じbuild33 NEXTの275fileと署名を照合し、同梱Java/helperで実システム音のPCM16/float32、左右分離、親Javaの自音除外が成功した。スピーカーをミュートにしたままの再確認でも成功し、自音除外は各-91.39/-80.58dB。OS音量設定は変更せず、生音声は残していない。これは出力ミュート下の内部音声取得の受入であり、マイク入力gainや聴感/遅延の合格を意味しない。実Finderで合成保存fileの選択表示も成功した。native key入力の試験は前面/フォーカスの安定確認ができず未受入。物理操作・VoiceOver、実Spotify API、許可変更/機器抜き差し、聴感/遅延、Developer ID/公証とPUBLIC_PASS/HUMAN_GOは引き続き別条件。
 
