@@ -98,6 +98,7 @@ import kotlin.math.roundToLong
                                     maximumPadSide = maximumPadSide)
                             }
                             CEStatus(state.status)
+                            CEWaveformStatus(state, onAction)
                         }
                     }
                 } else {
@@ -112,7 +113,7 @@ import kotlin.math.roundToLong
                     }
                 }
                 if (state.stage == ContinuousStage.BEAT || state.stage == ContinuousStage.SAVE) CESongTransport(state, onAction, readout, refreshKey)
-                if (!compact || state.stage != ContinuousStage.BEAT) CEStatus(state.status)
+                if (!compact || state.stage != ContinuousStage.BEAT) { CEStatus(state.status); CEWaveformStatus(state, onAction) }
             }
         }
         autoChop?.let { CEAutoChopDialog(it, { onAction(ContinuousEditorAction.CloseAutoChop) }, { onAction(ContinuousEditorAction.StopAll) }) }
@@ -179,7 +180,7 @@ import kotlin.math.roundToLong
     val count = copied.size
     val outlasting = copied.any { it.timelineDurationFrames > section.last + 1 - section.first }
     val after = ContinuousClipEdits.barsFrames(from, state.tempo, bars, 1).first..ContinuousClipEdits.barsFrames(from, state.tempo, bars, times).last
-    val occupied = state.clips.any { it.timelineStartFrame in after }
+    val occupied = state.clips.any { ContinuousClipEdits.overlapsFrames(it.timelineStartFrame, it.timelineDurationFrames, after) }
     val (fromBar, toBar) = first + bars to first + bars.toLong() * (times + 1) - 1
     val refused = count == 0 || outlasting || occupied
     val plan = when {

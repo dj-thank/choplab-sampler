@@ -7,4 +7,11 @@
     <string name="ce_input_permission_lost">収録の許可が終了しました。録れた部分は保全しています。</string>
     <string name="ce_recover_as_source">SOURCEとして回収</string>
     <string name="ce_recover_as_source_hint">パンチ録音後に制作が変わりました。録音全体をSOURCEとして回収しますか？ 元のパンチの配置は適用しません。</string>
+    <string name="ce_waveforms_failed">波形を表示できない音源：%1$d件 — 確認・再試行</string>
+    <string name="ce_waveforms_loading">波形を準備中：%1$d件</string>
+    <string name="ce_waveforms_title">音源の波形</string>
+    <string name="ce_waveforms_ready">すべての波形を表示できました。</string>
+    <string name="ce_waveform_unnamed">名前のない音源</string>
+    <string name="ce_waveform_retry">この波形を再試行</string>
+    <string name="ce_waveform_preparing">波形を準備中…</string>
 </resources>

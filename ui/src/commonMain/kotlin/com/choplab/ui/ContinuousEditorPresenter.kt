@@ -1400,13 +1400,14 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
             if (controller.state.value.phase == VocalPhase.CLOSED || vocalGuard(revision) is TtsResult.Failure) false
             else {
                 releaseHeld(); letGoScratch(); endLiveChop()
-                port.preview.start(asset, revision) is TtsResult.Success
+                port.preview.start(asset, revision, false, VocalPreviewOwner.TAKE) is TtsResult.Success
             }
         }
         controller = VocalTakeController(studio.document, takeAvailability, object : VocalTakePorts {
+            override val previewState = port.preview.state
             override suspend fun render(project: Project, draft: VocalCompDraft, name: String) = port.render(project, draft, name)
             override suspend fun apply(intent: Intent, expectedRevision: Long): Boolean {
-                if (port.preview.stop() is TtsResult.Failure) return false
+                if (port.preview.stop(VocalPreviewOwner.TAKE) is TtsResult.Failure) return false
                 return applyPreparedEdit(intent, expectedRevision)
             }
             override suspend fun previewTake(project: Project, takeId: String): Boolean {
@@ -1416,7 +1417,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 return preview(asset, revision)
             }
             override suspend fun previewComp(asset: Asset) = preview(asset, controller.state.value.revision)
-            override fun stopPreview() = port.preview.requestStop()
+            override fun stopPreview() = port.preview.requestStop(VocalPreviewOwner.TAKE)
         }, jobs, lastPunchRange)
         takeEditor.value = controller
         jobs.launch { controller.state.first { it.phase == VocalPhase.CLOSED }; takeEditor.compareAndSet(controller, null) }
@@ -1425,7 +1426,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     private suspend fun closeVocalTakes(): Boolean {
         if (takeEditor.value?.state?.value?.phase == VocalPhase.APPLYING) return false
         takeEditor.getAndUpdate { null }?.close()
-        return sourcePreview?.stop() !is TtsResult.Failure
+        return sourcePreview?.stop(VocalPreviewOwner.TAKE) !is TtsResult.Failure
     }
 
     private fun exportTailMode() = if (view.value.exportTail) ExportTailMode.INCLUDE_GRAPH_TAIL else ExportTailMode.EXACT

@@ -7,4 +7,11 @@
     <string name="ce_input_permission_lost">Capture permission ended. The recorded portion is kept.</string>
     <string name="ce_recover_as_source">Recover as SOURCE</string>
     <string name="ce_recover_as_source_hint">The project changed after the punch recording. Recover the whole recording as SOURCE? The previous punch placement will not be applied.</string>
+    <string name="ce_waveforms_failed">Waveform unavailable for %1$d audio files — review and retry</string>
+    <string name="ce_waveforms_loading">Preparing waveforms: %1$d</string>
+    <string name="ce_waveforms_title">Audio waveforms</string>
+    <string name="ce_waveforms_ready">All waveforms are available.</string>
+    <string name="ce_waveform_unnamed">Untitled audio</string>
+    <string name="ce_waveform_retry">Retry this waveform</string>
+    <string name="ce_waveform_preparing">Preparing waveform…</string>
 </resources>
