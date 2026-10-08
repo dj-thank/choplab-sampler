@@ -132,7 +132,12 @@ class BankPadEditorIntegrationTest {
                         assertEquals(0, fresh.store.storedBytes())
                         reopenedScene.settle()
                         reopenedScene.click("ce-open")
+                        fresh.until { it.openProjectRevision != null }
+                        // Even this empty unsaved editor follows the real replacement confirmation.
+                        reopenedScene.settle()
+                        reopenedScene.click("ce-open-discard")
                         fresh.until { it.banks[0].name == "低音" && it.bankPadBlocked == null }
+                        reopenedScene.awaitBankPadDialogClosed()
                         assertEquals(changed, fresh.studio.document.value.project)
                         assertContentEquals(h.bytes, fresh.store.read(changed.assets.single()))
                         assertFalse(fresh.studio.document.value.canUndo)

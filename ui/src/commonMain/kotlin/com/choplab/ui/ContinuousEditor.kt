@@ -201,14 +201,19 @@ import kotlin.math.roundToLong
     val section = ContinuousClipEdits.barsFrames(from, state.tempo, bars)
     // The same checks as the edit, so the panel says what applying does or why it cannot.
     val copied = state.clips.filter { it.timelineStartFrame in section && ContinuousClipEdits.sounds(it) }
+    val copiedIds = copied.mapTo(mutableSetOf()) { it.id }
     val count = copied.size
     val outlasting = copied.any { it.timelineDurationFrames > section.last + 1 - section.first }
     val after = ContinuousClipEdits.barsFrames(from, state.tempo, bars, 1).first..ContinuousClipEdits.barsFrames(from, state.tempo, bars, times).last
     val occupied = state.clips.any { ContinuousClipEdits.overlapsFrames(it.timelineStartFrame, it.timelineDurationFrames, after) }
+    val occupiedByOther = state.clips.any { it.id !in copiedIds && ContinuousClipEdits.overlapsFrames(it.timelineStartFrame, it.timelineDurationFrames, after) }
     val (fromBar, toBar) = first + bars to first + bars.toLong() * (times + 1) - 1
     val refused = count == 0 || outlasting || occupied
     val plan = when {
         count == 0 -> stringResource(Res.string.ce_repeat_empty)
+        // A source clip can occupy its own destination. Explain its length unless another
+        // placement also blocks the destination; that placement still needs attention.
+        outlasting && !occupiedByOther -> stringResource(Res.string.ce_repeat_outlasting)
         occupied && fromBar == toBar -> stringResource(Res.string.ce_repeat_occupied_one, fromBar)
         occupied -> stringResource(Res.string.ce_repeat_occupied, fromBar, toBar)
         outlasting -> stringResource(Res.string.ce_repeat_outlasting)
