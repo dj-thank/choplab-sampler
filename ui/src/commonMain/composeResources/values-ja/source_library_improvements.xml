@@ -1,0 +1,11 @@
+<resources>
+    <string name="online_failed_search">候補の検索に失敗しました。</string>
+    <string name="online_failed_details">音源の詳細確認に失敗しました。</string>
+    <string name="online_failed_download">音源の取得に失敗しました。</string>
+    <string name="online_failed_saving">音源の確認またはライブラリ保存に失敗しました。</string>
+    <string name="online_retry_hint">検索の再試行、詳細の再確認、選択形式の再保存ができます。</string>
+    <string name="online_back_candidates">候補一覧へ戻る</string>
+    <string name="online_recheck">この候補の詳細を再確認</string>
+    <string name="online_progress_unknown">音源を受信中です。全体サイズは不明です。</string>
+    <string name="online_artwork_loading">ジャケットを読み込み中…</string>
+</resources>

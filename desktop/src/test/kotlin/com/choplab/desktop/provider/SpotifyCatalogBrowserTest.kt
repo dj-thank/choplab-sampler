@@ -61,6 +61,33 @@ class SpotifyCatalogBrowserTest {
         }
     }
 
+    @Test fun viewportUsesRequestIdentityAndCachedPreviousThenDiscardsPositionsOnAccountChange() {
+        val requests = mutableListOf<Int>()
+        session { request ->
+            requests += request.offset
+            SpotifyApiResponse(200, """{"items":[{"track":${track(request.offset + 1)}}],"next":"bounded"}""")
+        }.use { session ->
+            connect(session)
+            SpotifyCatalogBrowser(session).use { browser ->
+                assertNull(browser.page); assertTrue(requests.isEmpty())
+                browser.root(SpotifyCatalogKind.TRACK); idle(session); assertNotNull(browser.page)
+                val first = browser.request!!; val account = browser.accountRevision
+                browser.rememberViewport(first, account, 8, 22)
+                browser.next(); idle(session); assertNotNull(browser.page)
+                assertEquals(SpotifyCatalogBrowser.Viewport(), browser.viewport(browser.request))
+                browser.rememberViewport(browser.request, account, 4, 11)
+                browser.previous()
+                assertEquals(SpotifyCatalogBrowser.Viewport(8, 22), browser.viewport(browser.request))
+                assertEquals(listOf(0, 20), requests)
+                session.disconnect(); connect(session)
+                assertNull(browser.page); assertTrue(browser.selectedTracks.isEmpty())
+                assertEquals(SpotifyCatalogBrowser.Viewport(), browser.viewport(first))
+                browser.rememberViewport(first, account, 99, 99)
+                assertEquals(SpotifyCatalogBrowser.Viewport(), browser.viewport(first))
+            }
+        }
+    }
+
     @Test fun missingRefreshTokenExpiresIntoARecoverableLoginStateWithoutAnyApiRequest() {
         var now = Instant.parse("2026-10-08T00:00:00Z")
         val tokens = SpotifyTokens("synthetic-token", "Bearer", 120, null, "user-library-read")

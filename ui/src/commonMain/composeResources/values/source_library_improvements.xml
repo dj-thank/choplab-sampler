@@ -1,0 +1,11 @@
+<resources>
+    <string name="online_failed_search">Candidate search failed.</string>
+    <string name="online_failed_details">Audio detail check failed.</string>
+    <string name="online_failed_download">Audio download failed.</string>
+    <string name="online_failed_saving">Audio validation or library save failed.</string>
+    <string name="online_retry_hint">Retry the search, recheck details, or save the selected format again.</string>
+    <string name="online_back_candidates">Back to candidates</string>
+    <string name="online_recheck">Recheck this candidate</string>
+    <string name="online_progress_unknown">Receiving audio; total size is unknown.</string>
+    <string name="online_artwork_loading">Loading optional artwork…</string>
+</resources>

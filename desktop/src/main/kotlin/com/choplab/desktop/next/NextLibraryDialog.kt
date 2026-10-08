@@ -63,13 +63,18 @@ internal object NextLibraryDialog {
             "failure_EMPTY" to getString(LibraryRes.string.music_failure_empty),
             "failure_TOO_LARGE" to getString(LibraryRes.string.music_failure_large),
             "failure_INVALID_AUDIO" to getString(LibraryRes.string.music_failure_invalid),
+            "failure_CORRUPT" to getString(LibraryRes.string.music_failure_corrupt),
+            "repair" to getString(LibraryRes.string.music_repair_original),
+            "repaired" to getString(LibraryRes.string.music_repaired_count),
+            "tag_fallback" to getString(LibraryRes.string.music_tag_fallback),
             "failure_CAPACITY" to getString(LibraryRes.string.music_failure_capacity))
         fun label(key: String, vararg args: Any) = String.format(Locale.getDefault(), labels.getValue(key), *args)
         return suspendCancellableCoroutine { answer ->
             SwingUtilities.invokeLater {
                 if (!answer.isActive) return@invokeLater
                 val dialog = JDialog(parent, label("title"), Dialog.ModalityType.DOCUMENT_MODAL)
-                val library = NextLibrary(directory, validate)
+                val browsing = NextLibraryBrowseSessions.forDirectory(directory)
+                val library = NextLibrary(directory, browsing.catalogOffset, validate)
                 val content = androidx.compose.ui.awt.ComposePanel().apply {
                     name = "next-library-browser"
                     setContent {
@@ -77,10 +82,11 @@ internal object NextLibraryDialog {
                         val state by library.state.collectAsState()
                         androidx.compose.runtime.SideEffect(onRendered)
                         com.choplab.sampler.ui.theme.ChopLabTheme {
-                            androidx.compose.runtime.key(state.catalogOffset) {
+                            if (state.status != NextLibrary.Status.LOADING || state.items.isNotEmpty()) androidx.compose.runtime.key(state.catalogOffset) {
                                 com.choplab.sampler.ui.LibraryBrowserPanel(state.items, !state.busy, { library.select(it) },
                                     exportSelection = state.exportItems.map { it.id }.toSet(),
-                                    onExportToggle = { library.toggleExport(it) }, onExportPage = { library.addExportItems(it) })
+                                    onExportToggle = { library.toggleExport(it) }, onExportPage = { library.addExportItems(it) },
+                                    browser = browsing.browser(state.catalogOffset))
                             }
                         }
                         }
@@ -89,6 +95,8 @@ internal object NextLibraryDialog {
                 fun wrapped() = JTextArea().apply { isEditable = false; lineWrap = true; wrapStyleWord = true; isOpaque = false; rows = 2 }
                 val status = wrapped()
                 val readNotice = wrapped().apply { name = "next-library-read-notice" }
+                val metadataNotice = wrapped().apply { name = "next-library-tag-notice" }
+                val repair = JButton(label("repair"))
                 val failures = wrapped().apply { name = "next-library-failures"; rows = 3 }
                 val failureScroll = JScrollPane(failures)
                 fun button(label: String, id: String) = JButton(label).apply {
@@ -115,6 +123,9 @@ internal object NextLibraryDialog {
                     export.text = label("export_selected", state.exportItems.size)
                     clear.isEnabled = !state.busy && state.exportItems.isNotEmpty()
                     retry.isEnabled = !state.busy && state.failures.isNotEmpty()
+                    repair.isEnabled = !state.busy && state.failures.any { it.reason == NextLibrary.FailureReason.CORRUPT && it.entryTitle == null }
+                    repair.isVisible = state.failures.any { it.reason == NextLibrary.FailureReason.CORRUPT && it.entryTitle == null }
+                    if (!state.busy && !state.readFailed) browsing.catalogOffset = state.catalogOffset
                     reload.isEnabled = !state.busy
                     older.isEnabled = !state.busy && state.hasOlder; newer.isEnabled = !state.busy && state.hasNewer
                     catalogWindow.isVisible = state.catalogTotal > LocalAudioLibrary.MAX_ITEMS
@@ -122,6 +133,9 @@ internal object NextLibraryDialog {
                         minOf(state.catalogOffset + LocalAudioLibrary.MAX_ITEMS, state.catalogTotal), state.catalogTotal)
                     readNotice.isVisible = state.readFailed || state.unreadable > 0
                     readNotice.text = if (state.readFailed) label("read_failed") else label("unreadable", state.unreadable)
+                    metadataNotice.isVisible = state.tagFallbacks > 0 || state.repaired > 0
+                    metadataNotice.text = listOfNotNull(if (state.tagFallbacks > 0) label("tag_fallback", state.tagFallbacks) else null,
+                        if (state.repaired > 0) label("repaired", state.repaired) else null).joinToString("\n")
                     failureScroll.isVisible = state.failures.isNotEmpty()
                     failures.text = state.failures.joinToString("\n") { "${it.name} — ${label("failure_${it.reason}")}" }
                     cancel.isEnabled = state.busy
@@ -168,6 +182,7 @@ internal object NextLibraryDialog {
                 }
                 cancel.addActionListener { library.cancel(); refresh() }
                 retry.addActionListener { library.retryFailures(); refresh() }
+                repair.addActionListener { library.repairFailures(); refresh() }
                 reload.addActionListener { library.refresh(); refresh() }
                 clear.addActionListener { library.clearExportSelection(); refresh() }
                 older.addActionListener { library.refresh(library.state.value.catalogOffset + LocalAudioLibrary.MAX_ITEMS); refresh() }
@@ -183,7 +198,7 @@ internal object NextLibraryDialog {
                     add(JPanel().apply {
                         layout = BoxLayout(this, BoxLayout.Y_AXIS)
                         add(wrapped().apply { text = label("export_hint") })
-                        add(status); add(readNotice); add(failureScroll)
+                        add(status); add(readNotice); add(metadataNotice); add(failureScroll); add(repair)
                         add(JPanel(GridLayout(0, 3, 8, 8)).apply { listOf(add, export, clear, retry, reload, cancel, close).forEach { add(it) } })
                     }, BorderLayout.SOUTH)
                 }

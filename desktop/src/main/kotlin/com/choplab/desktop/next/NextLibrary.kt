@@ -13,18 +13,19 @@ import java.util.concurrent.Future
 import java.util.concurrent.atomic.AtomicLong
 
 /** One library job, independent from the editor document. Only explicit Use opens an original. */
-internal class NextLibrary(directory: Path, validate: (java.io.File) -> Unit) : AutoCloseable {
+internal class NextLibrary(directory: Path, initialOffset: Int, validate: (java.io.File) -> Unit) : AutoCloseable {
+    constructor(directory: Path, validate: (java.io.File) -> Unit) : this(directory, 0, validate)
     enum class Status { READY, LOADING, LOAD_FAILED, IMPORTING, ADDED, PARTLY_ADDED, FAILED, CANCELLED, EXPORTING, EXPORTED, SELECTING, SELECTED, BUNDLE_LIMIT }
-    enum class FailureReason { MISSING, ACCESS, EMPTY, TOO_LARGE, INVALID_AUDIO, CAPACITY }
-    data class Failure(val path: Path, val reason: FailureReason) {
-        val name get() = path.fileName.toString().filter { it.code >= 32 }.take(240)
+    enum class FailureReason { MISSING, ACCESS, EMPTY, TOO_LARGE, INVALID_AUDIO, CAPACITY, CORRUPT }
+    data class Failure(val path: Path, val reason: FailureReason, val entryTitle: String? = null) {
+        val name get() = listOfNotNull(path.fileName.toString(), entryTitle).joinToString(" / ").filter { it.code >= 32 }.take(480)
     }
     data class Selection(val path: Path, val title: String, val hash: String)
     data class State(val items: List<AudioLibraryItem> = emptyList(), val status: Status = Status.LOADING,
         val busy: Boolean = false, val selection: Selection? = null, val completed: Int = 0, val reused: Int = 0,
         val total: Int = 0, val position: Int = 0, val failures: List<Failure> = emptyList(),
         val readFailed: Boolean = false, val unreadable: Int = 0, val catalogTotal: Int = 0, val catalogOffset: Int = 0,
-        val exportItems: List<AudioLibraryItem> = emptyList()) {
+        val exportItems: List<AudioLibraryItem> = emptyList(), val repaired: Int = 0, val tagFallbacks: Int = 0) {
         val failed get() = failures.size
         val hasOlder get() = catalogOffset + LocalAudioLibrary.MAX_ITEMS < catalogTotal
         val hasNewer get() = catalogOffset > 0
@@ -37,7 +38,7 @@ internal class NextLibrary(directory: Path, validate: (java.io.File) -> Unit) : 
     private var future: Future<*>? = null
     private var closed = false
 
-    init { refresh() }
+    init { refresh(initialOffset) }
 
     fun refresh(offset: Int = state.value.catalogOffset): Boolean = start(Status.LOADING, resetResults = false) { lease ->
         if (readListing(lease, offset)) publish(lease) { it.copy(status = Status.READY) }
@@ -78,7 +79,7 @@ internal class NextLibrary(directory: Path, validate: (java.io.File) -> Unit) : 
         val lease = generation.incrementAndGet()
         mutable.update { previous ->
             val next = previous.copy(status = status, busy = true, selection = null)
-            if (resetResults) next.copy(completed = 0, reused = 0, total = 0, position = 0, failures = emptyList()) else next
+            if (resetResults) next.copy(completed = 0, reused = 0, repaired = 0, tagFallbacks = 0, total = 0, position = 0, failures = emptyList()) else next
         }
         future = executor.submit {
             try { action(lease) }
@@ -96,12 +97,19 @@ internal class NextLibrary(directory: Path, validate: (java.io.File) -> Unit) : 
     private fun publish(lease: Long, transform: (State) -> State) {
         mutable.update { if (generation.get() == lease) transform(it) else it }
     }
-    fun retryFailures(): Boolean = state.value.failures.map { it.path }.takeIf { it.isNotEmpty() }?.let(::add) ?: false
-    fun add(paths: List<Path>): Boolean {
+    fun retryFailures(): Boolean = state.value.failures.map { it.path }.distinct().takeIf { it.isNotEmpty() }?.let(::add) ?: false
+    fun repairFailures(): Boolean = state.value.failures.filter { it.reason == FailureReason.CORRUPT && it.entryTitle == null }
+        .map { it.path }.distinct().takeIf { it.isNotEmpty() }?.let { add(it, repair = true) } ?: false
+    fun add(paths: List<Path>): Boolean = add(paths, repair = false)
+    private fun add(paths: List<Path>, repair: Boolean): Boolean {
         require(paths.isNotEmpty() && paths.size <= 128)
         return start(Status.IMPORTING) { lease ->
             publish(lease) { it.copy(total = paths.size) }
-            var added = 0; var reused = 0
+            var added = 0; var reused = 0; var repaired = 0; var tagFallbacks = 0
+            fun count(results: List<LocalAudioLibrary.ImportResult>) {
+                added += results.count { it.added }; reused += results.count { !it.added && !it.repaired }
+                repaired += results.count { it.repaired }; tagFallbacks += results.count { it.tagProblem != null }
+            }
             val failures = mutableListOf<Failure>()
             for ((index, path) in paths.withIndex()) {
                 current(lease)
@@ -109,24 +117,29 @@ internal class NextLibrary(directory: Path, validate: (java.io.File) -> Unit) : 
                 try {
                     val results = if (path.fileName.toString().substringAfterLast('.').lowercase() in setOf("zip", "choplib"))
                         library.importBundleResults(path.toFile())
-                    else listOf(library.importFileResult(path.toFile(), checkCancelled = { current(lease) }))
-                    added += results.count { it.added }; reused += results.count { !it.added }
+                    else listOf(if (repair) library.repairFromOriginal(path.toFile()) { current(lease) }
+                        else library.importFileResult(path.toFile(), checkCancelled = { current(lease) }))
+                    count(results)
                 } catch (error: Exception) {
                     current(lease)
+                    if (error is LocalAudioLibrary.PartialBundle) count(error.completed)
                     val size = runCatching { Files.size(path) }.getOrDefault(-1)
-                    failures += Failure(path, when {
-                        error is LocalAudioLibrary.CapacityExceeded -> FailureReason.CAPACITY
+                    fun failure(cause: Exception, title: String? = null) = Failure(path, when {
+                        cause is LocalAudioLibrary.CorruptPayload -> FailureReason.CORRUPT
+                        cause is LocalAudioLibrary.CapacityExceeded -> FailureReason.CAPACITY
                         !Files.exists(path) -> FailureReason.MISSING
-                        !Files.isReadable(path) || error is java.io.IOException -> FailureReason.ACCESS
+                        !Files.isReadable(path) || cause is java.io.IOException -> FailureReason.ACCESS
                         Files.isRegularFile(path) && size == 0L -> FailureReason.EMPTY
                         Files.isRegularFile(path) && size > LocalAudioLibrary.MAX_FILE_BYTES && path.toFile().extension.lowercase() !in setOf("zip", "choplib") -> FailureReason.TOO_LARGE
                         else -> FailureReason.INVALID_AUDIO
-                    })
+                    }, title)
+                    if (error is LocalAudioLibrary.PartialBundle) failures += error.failures.map { failure(it.error, it.title) }
+                    else failures += failure(error)
                 }
-                publish(lease) { it.copy(completed = added, reused = reused, failures = failures.toList()) }
+                publish(lease) { it.copy(completed = added, reused = reused, repaired = repaired, tagFallbacks = tagFallbacks, failures = failures.toList()) }
             }
             current(lease)
-            publish(lease) { it.copy(status = when { failures.isEmpty() -> Status.ADDED; added + reused > 0 -> Status.PARTLY_ADDED; else -> Status.FAILED }) }
+            publish(lease) { it.copy(status = when { failures.isEmpty() -> Status.ADDED; added + reused + repaired > 0 -> Status.PARTLY_ADDED; else -> Status.FAILED }) }
         }
     }
 

@@ -38,6 +38,6 @@ object SpotifyCatalogJson {
         }.getOrNull() }.distinctBy { it.kind to it.id }
         return SpotifyCatalogPage(request, entries,
             raw.isNotEmpty() && paging["next"] != null && paging["next"] !is JsonNull && request.offset + request.pageSize <= request.maximumOffset,
-            paging["total"]?.jsonPrimitive?.intOrNull?.takeIf { it >= 0 })
+            paging["total"]?.jsonPrimitive?.intOrNull?.takeIf { it >= 0 }, minOf(raw.size, request.pageSize) - entries.size)
     }
 }

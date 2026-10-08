@@ -47,7 +47,7 @@ internal class NewPipeHttp(
 ) {
     companion object {
         const val METADATA_LIMIT = 8 * 1024 * 1024
-        const val AUDIO_LIMIT = 256L * 1024 * 1024
+        const val AUDIO_LIMIT = com.choplab.sampler.source.OnlineSourceLimits.MAX_AUDIO_BYTES
         const val ARTWORK_LIMIT = 1024 * 1024
         private const val REQUEST_LIMIT = 64
         private const val REDIRECT_LIMIT = 4

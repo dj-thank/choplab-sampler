@@ -10,4 +10,4 @@ data class SpotifyCatalogRequest(val route: SpotifyCatalogRoute, val kind: Spoti
 data class SpotifyCatalogEntry(val id: String, val title: String, val artist: String,
     val kind: SpotifyCatalogKind, val track: SourceTrack? = null)
 data class SpotifyCatalogPage(val request: SpotifyCatalogRequest, val entries: List<SpotifyCatalogEntry>,
-    val hasMore: Boolean, val total: Int?)
+    val hasMore: Boolean, val total: Int?, val unreadable: Int = 0)

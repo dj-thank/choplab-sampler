@@ -61,6 +61,76 @@ class NextLibraryTest {
         root.toFile().deleteRecursively()
     }
 
+    @Test fun partialBundleAdoptionCountsMatchTheVisibleLibraryAndRetryHasNoPhantomAdds() = runBlocking<Unit> {
+        val root = Files.createTempDirectory("next-library-bundle-partial-")
+        try {
+            val source = root.resolve("set.choplib")
+            java.util.zip.ZipOutputStream(Files.newOutputStream(source)).use { output -> repeat(3) { n ->
+                output.putNextEntry(java.util.zip.ZipEntry("Song $n.wav")); output.write(byteArrayOf(n.toByte(), 2, 3)); output.closeEntry()
+            } }
+            val directory = root.resolve("library")
+            var commits = 0; var fail = true
+            NextLibrary(directory) { file ->
+                if (file.parentFile.toPath() == directory && ++commits == 2 && fail) throw java.io.IOException("Injected adoption failure")
+            }.use { library ->
+                idle(library); library.add(listOf(source)); idle(library)
+                assertEquals(NextLibrary.Status.PARTLY_ADDED, library.state.value.status)
+                assertEquals(2, library.state.value.completed); assertEquals(2, library.state.value.items.size)
+                assertEquals(1, library.state.value.failed); assertNotNull(library.state.value.failures.single().entryTitle)
+                fail = false; assertTrue(library.retryFailures()); idle(library)
+                assertEquals(1, library.state.value.completed); assertEquals(2, library.state.value.reused)
+                assertEquals(3, library.state.value.items.size); assertEquals(0, library.state.value.failed)
+                assertNull(library.state.value.selection)
+            }
+        } finally { root.toFile().deleteRecursively() }
+    }
+
+    @Test fun damagedDuplicatesOfferExplicitRepairAndRetainTheDamagedBytes() = runBlocking<Unit> {
+        val root = Files.createTempDirectory("next-library-repair-")
+        try {
+            val source = root.resolve("original.wav").also { Files.write(it, byteArrayOf(1, 2, 3)) }
+            val directory = root.resolve("library")
+            NextLibrary(directory) {}.use { library ->
+                idle(library); library.add(listOf(source)); idle(library)
+                val id = library.state.value.items.single().id
+                val saved = directory.resolve("$id.wav")
+                Files.write(saved, byteArrayOf(3, 2, 1))
+                library.add(listOf(source)); idle(library)
+                assertEquals(NextLibrary.Status.FAILED, library.state.value.status)
+                assertEquals(0, library.state.value.completed); assertEquals(0, library.state.value.reused)
+                assertEquals(NextLibrary.FailureReason.CORRUPT, library.state.value.failures.single().reason)
+                assertContentEquals(byteArrayOf(3, 2, 1), Files.readAllBytes(saved))
+                assertTrue(library.repairFailures()); idle(library)
+                assertEquals(1, library.state.value.repaired); assertEquals(0, library.state.value.reused)
+                assertContentEquals(Files.readAllBytes(source), Files.readAllBytes(saved))
+                assertTrue(directory.resolve(".recovery").toFile().listFiles()!!.any { it.readBytes().contentEquals(byteArrayOf(3, 2, 1)) })
+                assertTrue(library.select(id)); idle(library); assertNotNull(library.state.value.selection)
+            }
+        } finally { root.toFile().deleteRecursively() }
+    }
+
+    @Test fun browseSessionSurvivesDialogWorkerRecreationAndSeparatesProfilesAndCatalogWindows() {
+        val root = Files.createTempDirectory("next-library-navigation-")
+        try {
+            val directory = root.resolve("library")
+            val session = NextLibraryBrowseSessions.forDirectory(directory)
+            val browser = session.browser(0)
+            val items = (0..80).map { com.choplab.sampler.source.AudioLibraryItem("id$it", "Song $it", "file", 10, "Artist", "Album") }
+            browser.open(browser.page(items).groups.single()); browser.open(browser.page(items).groups.single())
+            browser.search("Song"); browser.next(items)
+            browser.rememberViewport(browser.location, 7, 18)
+            val again = NextLibraryBrowseSessions.forDirectory(directory)
+            assertSame(session, again); assertSame(browser, again.browser(0))
+            assertEquals(40, again.browser(0).page(items).offset)
+            assertEquals(com.choplab.sampler.source.LibraryBrowser.Viewport(7, 18), again.browser(0).viewport(browser.location))
+            assertEquals("Song", again.browser(0).query)
+            assertNotSame(browser, again.browser(2000)); assertNotSame(session, NextLibraryBrowseSessions.forDirectory(root.resolve("other")))
+            browser.page(emptyList())
+            assertEquals(com.choplab.sampler.source.LibraryBrowser.Section.ARTISTS, browser.section)
+            assertEquals(0, browser.location.offset)
+        } finally { root.toFile().deleteRecursively() }
+    }
+
     @Test fun selectedBundleRemainsBoundedAcrossListsAndAnOversizedSelectionPreservesTheExistingChoice() = runBlocking<Unit> {
         val root = Files.createTempDirectory("next-library-selection-")
         val sources = (0 until 40).map { n -> root.resolve("$n.wav").also { Files.writeString(it, "bytes $n") } }

@@ -9,12 +9,23 @@ internal class SpotifyCatalogBrowser(private val session: SpotifyDesktopSession)
     private val history = ArrayDeque<SpotifyCatalogRequest?>()
     private val cache = linkedMapOf<SpotifyCatalogRequest, SpotifyCatalogPage>()
     private val selection = linkedSetOf<String>()
+    data class Viewport(val index: Int = 0, val offset: Int = 0)
+    private val viewports = linkedMapOf<SpotifyCatalogRequest, Viewport>()
+    var navigationRevision = 0L; private set
+    val accountRevision get(): Long { ensureAccount(); return account }
+    fun viewport(request: SpotifyCatalogRequest?): Viewport { ensureAccount(); return viewports[request] ?: Viewport() }
+    fun rememberViewport(request: SpotifyCatalogRequest?, revision: Long, index: Int, offset: Int, navigation: Long = navigationRevision) {
+        ensureAccount()
+        if (closed || request == null || account != revision || navigation != navigationRevision) return
+        viewports[request] = Viewport(index.coerceAtLeast(0), offset.coerceAtLeast(0))
+        while (viewports.size > 32) viewports.remove(viewports.keys.first())
+    }
     private var closed = false
     private var account = session.state.value.connectionRevision
     private fun ensureAccount() {
         val current = session.state.value.connectionRevision
         if (current != account) {
-            account = current; cache.clear(); history.clear(); selection.clear(); request = null
+            account = current; cache.clear(); history.clear(); selection.clear(); viewports.clear(); request = null
         }
     }
     val canFetch get(): Boolean {
@@ -32,7 +43,7 @@ internal class SpotifyCatalogBrowser(private val session: SpotifyDesktopSession)
     val query get() = session.state.value.searchQuery
     val page: SpotifyCatalogPage? get() {
         ensureAccount()
-        if (closed || !session.connected) { cache.clear(); history.clear(); selection.clear(); return null }
+        if (closed || !session.connected) { cache.clear(); history.clear(); selection.clear(); viewports.clear(); return null }
         val selected = request ?: return null
         val fetched = session.state.value.catalogPage?.takeIf { it.request == selected }
         if (fetched != null) {
@@ -78,7 +89,7 @@ internal class SpotifyCatalogBrowser(private val session: SpotifyDesktopSession)
         session.cancelPendingOperations(); selection.clear()
         request = history.removeLast()
         session.clearCatalogProblem()
-        request?.takeIf { it !in cache }?.let(::load)
+        request?.takeIf { it !in cache }?.let { load(it, restoreViewport = true) }
     }
     fun next() { if (canFetch) page?.takeIf { it.hasMore }?.request?.let { load(it.copy(offset = it.offset + it.pageSize)) } }
     fun previous() {
@@ -87,7 +98,7 @@ internal class SpotifyCatalogBrowser(private val session: SpotifyDesktopSession)
         if (previous in cache) {
             session.cancelPendingOperations(); selection.clear(); request = previous
             session.clearCatalogProblem()
-        } else load(previous)
+        } else load(previous, restoreViewport = true)
     }
     private fun previousRequest() = request?.takeIf { it.offset > 0 }?.let { it.copy(offset = (it.offset - it.pageSize).coerceAtLeast(0)) }
     fun toggle(track: SourceTrack) {
@@ -100,7 +111,10 @@ internal class SpotifyCatalogBrowser(private val session: SpotifyDesktopSession)
         if (!canFetch || selectedTracks.isEmpty()) return false
         return add(selectedTracks).also { if (it) selection.clear() }
     }
-    fun retry() { if (canFetch) request?.let(::load) }
-    private fun load(value: SpotifyCatalogRequest) { selection.clear(); request = value; cache.remove(value); session.browse(value) }
-    override fun close() { if (!closed) { closed = true; cache.clear(); history.clear(); selection.clear(); session.cancelPendingOperations() } }
+    fun retry() { if (canFetch) request?.let { load(it, restoreViewport = true) } }
+    private fun load(value: SpotifyCatalogRequest, restoreViewport: Boolean = false) {
+        if (!restoreViewport) { viewports.remove(value); navigationRevision++ }
+        selection.clear(); request = value; cache.remove(value); session.browse(value)
+    }
+    override fun close() { if (!closed) { closed = true; cache.clear(); history.clear(); selection.clear(); viewports.clear(); session.cancelPendingOperations() } }
 }

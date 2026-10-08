@@ -21,10 +21,12 @@ data class OnlineSourceState(
     val busy: Boolean = false,
     val candidates: List<YoutubeSource> = emptyList(),
     val details: YoutubeSource? = null,
-    val progress: Int = 0,
+    val progress: Int? = null,
     val saved: OnlineLibrarySelection? = null,
     val problem: OnlineSourceProblem? = null,
     val artwork: ByteArray? = null,
+    val artworkLoading: Boolean = false,
+    val failedOperation: OnlineSourcePhase? = null,
 )
 
 /** One owned provider/library worker. Saving here never changes the active Studio document. */
@@ -45,18 +47,26 @@ class OnlineSourceSession(directory: Path, validate: (File) -> Unit,
     private val generation = AtomicLong()
     private var future: Future<*>? = null
     private var jobId: String? = null
+    private var artworkId: String? = null
+    private var artworkFuture: Future<*>? = null
+    private var artworkCancellation: Future<*>? = null
+    private data class SavedIdentity(val sourceId: String, val formatId: String?)
+    private var savedIdentity: SavedIdentity? = null
     private var closed = false
 
     @Synchronized private fun start(phase: OnlineSourcePhase, action: (Long, String) -> Unit): Boolean {
         if (closed || mutable.value.busy) return false
+        stopArtwork()
+        val artworkBarrier = artworkCancellation
         val lease = generation.incrementAndGet()
         val id = UUID.randomUUID().toString(); jobId = id
-        mutable.update { it.copy(phase = phase, busy = true, saved = null, progress = 0, problem = null,
+        savedIdentity = null
+        mutable.update { it.copy(phase = phase, busy = true, saved = null, progress = null, problem = null, artworkLoading = false, failedOperation = null,
             candidates = if (phase == OnlineSourcePhase.SEARCHING) emptyList() else it.candidates,
             details = if (phase in setOf(OnlineSourcePhase.SEARCHING, OnlineSourcePhase.INSPECTING)) null else it.details,
             artwork = if (phase in setOf(OnlineSourcePhase.SEARCHING, OnlineSourcePhase.INSPECTING)) null else it.artwork) }
         future = executor.submit {
-            try { current(lease); action(lease, id) }
+            try { artworkBarrier?.get(); current(lease); action(lease, id) }
             catch (error: Exception) {
                 val problem = when (error) {
                     is OnlineSourceException -> error.problem
@@ -64,7 +74,8 @@ class OnlineSourceSession(directory: Path, validate: (File) -> Unit,
                     is IllegalArgumentException -> OnlineSourceProblem.INVALID_INPUT
                     else -> OnlineSourceProblem.NETWORK
                 }
-                publish(lease) { it.copy(phase = OnlineSourcePhase.FAILED, problem = problem) }
+                publish(lease) { it.copy(phase = if (problem == OnlineSourceProblem.CANCELLED) OnlineSourcePhase.CANCELLED else OnlineSourcePhase.FAILED,
+                    problem = problem, progress = null, failedOperation = it.phase) }
             } finally {
                 synchronized(this) { if (generation.get() == lease) jobId = null }
                 publish(lease) { it.copy(busy = false) }
@@ -102,18 +113,21 @@ class OnlineSourceSession(directory: Path, validate: (File) -> Unit,
             val checked = backend.info(selected.url, id)
             current(lease)
             require(checked.id == selected.id && checked.durationSeconds.isFinite() && checked.durationSeconds in 0.01..600.0)
-            // Artwork is optional metadata; an unavailable image does not change or downgrade the chosen audio.
-            val artwork = runCatching { (backend as? DetailedYoutubeBackend)?.artwork(checked, id) }.getOrNull()
-                ?.takeIf { it.size in 1..1_048_576 }
-            current(lease)
-            publish(lease) { it.copy(phase = OnlineSourcePhase.DETAILS, details = checked.copy(selectedFormat = null), artwork = artwork) }
+            synchronized(this) {
+                current(lease)
+                publish(lease) { it.copy(phase = OnlineSourcePhase.DETAILS, details = checked.copy(selectedFormat = null), busy = false) }
+                scheduleArtwork(lease, checked)
+            }
         }
     }
 
     @Synchronized fun selectFormat(formatId: String): Boolean {
         if (closed || mutable.value.busy) return false
         val details = mutable.value.details ?: return false
-        if (details.metadata?.formats?.count { it.id == formatId } != 1) return false
+        val format = details.metadata?.formats?.singleOrNull { it.id == formatId } ?: return false
+        format.acquisitionProblem()?.let { problem -> mutable.update { it.copy(problem = problem) }; return false }
+        if (details.selectedFormat == formatId) return true
+        savedIdentity = null
         mutable.update { it.copy(phase = OnlineSourcePhase.DETAILS, details = details.copy(selectedFormat = formatId), saved = null, problem = null) }
         return true
     }
@@ -122,6 +136,10 @@ class OnlineSourceSession(directory: Path, validate: (File) -> Unit,
         val selected = mutable.value.candidates.firstOrNull { it.id == sourceId } ?: return false
         val confirmed = mutable.value.details?.takeIf { it.id == sourceId }
         if (detailed && (confirmed?.selectedFormat == null || confirmed.metadata?.formats?.count { it.id == confirmed.selectedFormat } != 1)) return false
+        if (mutable.value.saved != null && savedIdentity == SavedIdentity(sourceId, confirmed?.selectedFormat)) return false
+        confirmed?.metadata?.formats?.singleOrNull { it.id == confirmed.selectedFormat }?.acquisitionProblem()?.let { problem ->
+            mutable.update { it.copy(phase = OnlineSourcePhase.FAILED, problem = problem, progress = null) }; return false
+        }
         return start(OnlineSourcePhase.DOWNLOADING) { lease, id ->
             val checked = if (detailed) requireNotNull(confirmed) else backend.info(selected.url, id)
             current(lease)
@@ -133,7 +151,7 @@ class OnlineSourceSession(directory: Path, validate: (File) -> Unit,
                 }
                 current(lease)
                 require(file.toPath().toRealPath().startsWith(temporary.toRealPath()))
-                publish(lease) { it.copy(phase = OnlineSourcePhase.SAVING) }
+                publish(lease) { it.copy(phase = OnlineSourcePhase.SAVING, progress = null) }
                 val item = try { library.importFileResult(file, checked.title, checked.url,
                     AudioLibraryMetadata(checked.metadata?.artist.orEmpty(), checked.metadata?.album.orEmpty())) { current(lease) }.item }
                     catch (error: InterruptedException) { throw error }
@@ -142,17 +160,51 @@ class OnlineSourceSession(directory: Path, validate: (File) -> Unit,
                     catch (_: IOException) { throw OnlineSourceException(OnlineSourceProblem.STORAGE) }
                     catch (_: IllegalStateException) { throw OnlineSourceException(OnlineSourceProblem.STORAGE) }
                 current(lease)
-                publish(lease) { it.copy(phase = OnlineSourcePhase.SAVED,
-                    saved = OnlineLibrarySelection(library.resolve(item.id).toPath(), item.title, item.id)) }
+                synchronized(this) {
+                    current(lease)
+                    savedIdentity = SavedIdentity(sourceId, checked.selectedFormat)
+                    publish(lease) { it.copy(phase = OnlineSourcePhase.SAVED,
+                        saved = OnlineLibrarySelection(library.resolve(item.id).toPath(), item.title, item.id)) }
+                }
             } finally { temporary.toFile().deleteRecursively() }
         }
     }
 
+    /** Optional image work shares the provider queue. A required action cancels it, then waits for actual release. */
+    @Synchronized private fun scheduleArtwork(lease: Long, source: YoutubeSource) {
+        val provider = backend as? DetailedYoutubeBackend ?: return
+        if (closed || generation.get() != lease) return
+        val id = UUID.randomUUID().toString()
+        artworkId = id
+        publish(lease) { it.copy(artworkLoading = true) }
+        artworkFuture = executor.submit {
+            try {
+                current(lease)
+                val bytes = runCatching { provider.artwork(source, id) }.getOrNull()?.takeIf { it.size in 1..1_048_576 }
+                current(lease)
+                publish(lease) { if (it.details?.id == source.id) it.copy(artwork = bytes) else it }
+            } catch (_: InterruptedException) { /* obsolete optional result */ }
+            finally {
+                synchronized(this) { if (artworkId == id) artworkId = null }
+                publish(lease) { it.copy(artworkLoading = false) }
+            }
+        }
+    }
+    @Synchronized private fun stopArtwork() {
+        val id = artworkId ?: return
+        artworkId = null; artworkFuture?.cancel(true)
+        artworkCancellation = cancellation.submit { runCatching { backend.cancel(id) } }
+    }
+
     @Synchronized fun cancel() {
-        if (closed || !mutable.value.busy || mutable.value.phase == OnlineSourcePhase.CANCELLED) return
+        if (closed || mutable.value.phase == OnlineSourcePhase.CANCELLED) return
+        if (!mutable.value.busy) {
+            if (artworkId != null) { generation.incrementAndGet(); stopArtwork(); mutable.update { it.copy(artworkLoading = false) } }
+            return
+        }
         generation.incrementAndGet(); future?.cancel(true)
         val cancel = jobId?.let { id -> cancellation.submit { runCatching { backend.cancel(id) } } }
-        mutable.update { it.copy(phase = OnlineSourcePhase.CANCELLED, busy = true, saved = null, details = null,
+        mutable.update { it.copy(phase = OnlineSourcePhase.CANCELLED, busy = true, saved = null, details = null, progress = null,
             problem = OnlineSourceProblem.CANCELLED) }
         val lease = generation.get()
         future = executor.submit {
@@ -165,13 +217,13 @@ class OnlineSourceSession(directory: Path, validate: (File) -> Unit,
 
     @Synchronized override fun close() {
         if (closed) return
-        closed = true; generation.incrementAndGet(); future?.cancel(true); executor.shutdownNow()
+        closed = true; generation.incrementAndGet(); stopArtwork(); future?.cancel(true); executor.shutdownNow()
         val id = jobId
         cancellation.execute {
             if (id != null) runCatching { backend.cancel(id) }
             runCatching { (backend as? AutoCloseable)?.close() }
         }
         cancellation.shutdown()
-        mutable.update { it.copy(phase = OnlineSourcePhase.CLOSED, busy = false, saved = null, artwork = null) }
+        mutable.update { it.copy(phase = OnlineSourcePhase.CLOSED, busy = false, saved = null, artwork = null, artworkLoading = false, progress = null) }
     }
 }

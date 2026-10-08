@@ -1,0 +1,8 @@
+<resources>
+    <string name="music_failure_corrupt">Stored audio is damaged. Add its original file, then explicitly repair it; the damaged bytes will be kept.</string>
+    <string name="music_repair_original">Repair from the original file</string>
+    <string name="music_repaired_count">Repaired: %1$d. Previous bytes are kept in the library recovery folder.</string>
+    <string name="music_tag_fallback">Tags could not be read for %1$d file(s). The audio was saved unchanged with filename/available metadata.</string>
+    <string name="music_catalog_unreadable">This page contains %1$d item(s) that cannot be displayed. Try another page or retry.</string>
+    <string name="music_catalog_partial">%1$d item(s) could not be displayed. The remaining items can be used.</string>
+</resources>

@@ -20,7 +20,14 @@ data class OnlineAudioFormat(
     val id: String, val container: String, val codec: String?, val sampleRate: Int?, val channels: Int?,
     val bitrate: Int?, val approximateBitrate: Boolean, val bytes: Long?, val language: String?,
     val trackName: String?, val trackType: String?, val dynamicRangeCompressed: Boolean?,
-)
+) {
+    fun problem(maxBytes: Long?): OnlineProblem? = when {
+        bytes == null -> null
+        bytes <= 0 -> OnlineProblem.MALFORMED_RESPONSE
+        maxBytes != null && bytes > maxBytes -> OnlineProblem.TOO_LARGE
+        else -> null
+    }
+}
 data class OnlineCandidate(
     val id: String, val title: String, val uploader: String, val durationSeconds: Double,
     val artist: String? = null, val album: String? = null, val uploaderVerified: Boolean? = null,
@@ -32,8 +39,8 @@ data class OnlineSaved(val id: String, val title: String)
 data class OnlineWorkerState(
     val phase: OnlinePhase = OnlinePhase.READY, val busy: Boolean = false,
     val candidates: List<OnlineCandidate> = emptyList(), val details: OnlineCandidate? = null,
-    val progress: Int = 0, val saved: OnlineSaved? = null, val problem: OnlineProblem? = null,
-    val artworkUnavailable: Boolean = false,
+    val progress: Int? = null, val saved: OnlineSaved? = null, val problem: OnlineProblem? = null,
+    val artworkUnavailable: Boolean = false, val artworkLoading: Boolean = false, val maxDownloadBytes: Long? = null, val failedOperation: OnlinePhase? = null,
 )
 interface OnlineSourcePort {
     val state: StateFlow<OnlineWorkerState>
@@ -56,6 +63,7 @@ sealed interface OnlineSourceAction {
     data object Search : OnlineSourceAction
     data class Inspect(val id: String) : OnlineSourceAction
     data class Format(val id: String) : OnlineSourceAction
+    data object BackToCandidates : OnlineSourceAction
     data object Save : OnlineSourceAction
     data object UseOriginal : OnlineSourceAction
     data object Cancel : OnlineSourceAction
@@ -66,13 +74,15 @@ data class OnlineSourceView(
     val submittedCatalog: OnlineCatalog? = null, val selectedId: String? = null,
     val applying: Boolean = false, val applied: Boolean = false, val closed: Boolean = false,
     val availability: OnlineAvailability = OnlineAvailability.EDITABLE, val issue: OnlineProblem? = null,
+    val showingDetails: Boolean = false,
 ) {
     val inputMatches: Boolean get() = query.trim() == submittedQuery && catalog == submittedCatalog
     val editable: Boolean get() = !closed && !applying && !applied && !worker.busy
     val canSearch: Boolean get() = editable && query.trim().length in 1..240 && query.none { it.code < 32 }
     val canInspect: Boolean get() = editable && inputMatches
-    val canSave: Boolean get() = canInspect && worker.details?.id == selectedId &&
-        worker.details?.selectedFormat != null && worker.details.formats.count { it.id == worker.details.selectedFormat } == 1
+    val selectedFormat get() = worker.details?.formats?.singleOrNull { it.id == worker.details.selectedFormat }
+    val canSave: Boolean get() = canInspect && worker.saved == null && worker.details?.id == selectedId &&
+        selectedFormat != null && selectedFormat?.problem(worker.maxDownloadBytes) == null
     val canUse: Boolean get() = editable && inputMatches && worker.saved != null &&
         availability == OnlineAvailability.EDITABLE && issue != OnlineProblem.STALE_DOCUMENT
 }
@@ -103,30 +113,47 @@ class OnlineSourceController(
         when (action) {
             is OnlineSourceAction.Query -> {
                 if (!current.editable) return@withLock false
-                mutable.update { it.copy(query = action.value.take(240), submittedQuery = null, submittedCatalog = null, selectedId = null, issue = null) }; true
+                val value = action.value.take(241)
+                if (value == current.query) return@withLock true
+                if (value.trim() == current.query.trim() && value.none { it.code < 32 } && value.length <= 240) {
+                    mutable.update { it.copy(query = value) }; return@withLock true
+                }
+                mutable.update { it.copy(query = value, submittedQuery = null, submittedCatalog = null, selectedId = null,
+                    showingDetails = false, issue = if (value.any { char -> char.code < 32 } || value.length > 240) OnlineProblem.INVALID_INPUT else null) }; true
             }
             is OnlineSourceAction.Catalog -> {
                 if (!current.editable) return@withLock false
-                mutable.update { it.copy(catalog = action.value, submittedQuery = null, submittedCatalog = null, selectedId = null, issue = null) }; true
+                if (action.value == current.catalog) return@withLock true
+                mutable.update { it.copy(catalog = action.value, submittedQuery = null, submittedCatalog = null, selectedId = null, showingDetails = false, issue = null) }; true
             }
             OnlineSourceAction.Search -> {
                 if (!current.canSearch || !port.search(current.query.trim(), current.catalog)) return@withLock false
-                mutable.update { it.copy(submittedQuery = current.query.trim(), submittedCatalog = current.catalog, selectedId = null, issue = null) }; true
+                mutable.update { it.copy(submittedQuery = current.query.trim(), submittedCatalog = current.catalog, selectedId = null, showingDetails = false, issue = null) }; true
             }
             is OnlineSourceAction.Inspect -> {
-                if (!current.canInspect || current.worker.candidates.none { it.id == action.id } || !port.inspect(action.id)) return@withLock false
-                mutable.update { it.copy(selectedId = action.id, issue = null) }; true
+                if (!current.canInspect || current.worker.candidates.none { it.id == action.id }) return@withLock false
+                if (current.worker.details?.id == action.id && current.selectedId == action.id && current.worker.phase != OnlinePhase.FAILED) {
+                    mutable.update { it.copy(showingDetails = true) }; return@withLock true
+                }
+                if (!port.inspect(action.id)) return@withLock false
+                mutable.update { it.copy(selectedId = action.id, showingDetails = true, issue = null) }; true
             }
+            OnlineSourceAction.BackToCandidates -> { mutable.update { it.copy(showingDetails = false) }; true }
             is OnlineSourceAction.Format -> {
-                if (!current.canInspect || current.worker.details?.id != current.selectedId || !port.selectFormat(action.id)) return@withLock false
+                val format = current.worker.details?.formats?.singleOrNull { it.id == action.id } ?: return@withLock false
+                if (!current.canInspect || current.worker.details?.id != current.selectedId) return@withLock false
+                format.problem(current.worker.maxDownloadBytes)?.let { issue -> mutable.update { it.copy(issue = issue) }; return@withLock false }
+                if (current.worker.details?.selectedFormat == action.id) return@withLock true
+                if (!port.selectFormat(action.id)) return@withLock false
                 mutable.update { it.copy(issue = null) }; true
             }
             OnlineSourceAction.Save -> {
+                current.selectedFormat?.problem(current.worker.maxDownloadBytes)?.let { issue -> mutable.update { it.copy(issue = issue) }; return@withLock false }
                 if (!current.canSave || !port.save(requireNotNull(current.selectedId))) return@withLock false
                 mutable.update { it.copy(issue = null) }; true
             }
             OnlineSourceAction.Cancel -> {
-                if (!current.worker.busy) return@withLock false
+                if (!current.worker.busy && !current.worker.artworkLoading) return@withLock false
                 port.cancel(); true
             }
             OnlineSourceAction.UseOriginal -> {

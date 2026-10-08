@@ -26,8 +26,13 @@ class LocalAudioLibrary(val directory: File, private val validateAudio: (File)->
         val hasPrevious get() = offset > 0
         val hasNext get() = offset + MAX_ITEMS < total
     }
-    data class ImportResult(val item: AudioLibraryItem, val added: Boolean)
+    data class ImportResult(val item: AudioLibraryItem, val added: Boolean, val repaired: Boolean = false,
+                            val tagProblem: LocalAudioTags.Problem? = null)
     class CapacityExceeded : IllegalStateException("Library has reached its item limit")
+    class CorruptPayload : IOException("Stored audio differs from its content identity; explicitly repair from the original")
+    data class BundleFailure(val title: String, val error: Exception)
+    class PartialBundle(val completed: List<ImportResult>, val failures: List<BundleFailure>) :
+        IOException("Some bundle items were not saved", failures.first().error)
 
     private fun metadataFiles(): List<File> = (directory.listFiles() ?: throw IOException("Cannot read audio library"))
         .filter { it.extension == "properties" && idPattern.matches(it.nameWithoutExtension) }
@@ -63,15 +68,24 @@ class LocalAudioLibrary(val directory: File, private val validateAudio: (File)->
         return File(directory, "$id.$extension").also { check(it.isFile) { "音源ファイルが見つかりません" } }
     }
 
-    fun importFile(file: File, title: String = file.nameWithoutExtension, origin: String = "ファイル",
+    fun importFile(file: File, title: String? = null, origin: String = "ファイル",
                    checkCancelled: () -> Unit = {}): AudioLibraryItem = importFileResult(file, title, origin, checkCancelled = checkCancelled).item
 
-    fun importFileResult(file: File, title: String = file.nameWithoutExtension, origin: String = "ファイル",
-                         metadata: AudioLibraryMetadata = AudioLibraryMetadata(), checkCancelled: () -> Unit = {}): ImportResult {
+    fun importFileResult(file: File, title: String? = null, origin: String = "ファイル",
+                         metadata: AudioLibraryMetadata = AudioLibraryMetadata(), checkCancelled: () -> Unit = {}): ImportResult =
+        importFileObserved(file, title, origin, metadata, false, checkCancelled)
+
+    /** Only this explicit action may replace corrupt content. The old bytes remain in a private recovery folder. */
+    fun repairFromOriginal(file: File, checkCancelled: () -> Unit = {}): ImportResult =
+        importFileObserved(file, null, "ファイル", AudioLibraryMetadata(), true, checkCancelled)
+
+    private fun importFileObserved(file: File, title: String?, origin: String, metadata: AudioLibraryMetadata,
+                                   repair: Boolean, checkCancelled: () -> Unit): ImportResult {
         checkCancelled()
         require(file.isFile && file.extension.lowercase() in extensions) { "対応する音声・動画ファイルを選んでください" }
         require(file.length() in 1..MAX_FILE_BYTES) { "音源ファイルが大きすぎるか空です" }
-        return file.inputStream().use { importStreamResult(it, file.extension.lowercase(), title, origin, metadata, checkCancelled) }
+        return file.inputStream().use { importStreamResult(it, file.extension.lowercase(), title ?: file.nameWithoutExtension,
+            origin, metadata, checkCancelled, repair, readTags = true, preferEmbeddedTitle = title == null) }
     }
 
     private fun spotifyLink(url: String): File {
@@ -124,7 +138,8 @@ class LocalAudioLibrary(val directory: File, private val validateAudio: (File)->
         importStreamResult(input, extension, title, origin, checkCancelled = checkCancelled).item
 
     @Synchronized private fun importStreamResult(input: InputStream, extension: String, title: String, origin: String,
-                                   observed: AudioLibraryMetadata = AudioLibraryMetadata(), checkCancelled: () -> Unit = {}): ImportResult {
+                                   observed: AudioLibraryMetadata = AudioLibraryMetadata(), checkCancelled: () -> Unit = {}, repair: Boolean = false,
+                                   readTags: Boolean = false, preferEmbeddedTitle: Boolean = false): ImportResult {
         checkCancelled()
         require(extension in extensions) { "未対応の音源形式です" }
         val temp = File(directory, ".import-${UUID.randomUUID()}.$extension")
@@ -148,23 +163,42 @@ class LocalAudioLibrary(val directory: File, private val validateAudio: (File)->
             checkCancelled()
             require(count > 0) { "音源が空です" }
             val id = hash.digest().joinToString("") { "%02x".format(it.toInt() and 255) }
+            // Observe the exact private copy that was hashed, even if the selected source changes during import.
+            val tags = if (readTags) LocalAudioTags.read(temp, checkCancelled) else LocalAudioTags.Result()
+            val combined = AudioLibraryMetadata(observed.artist.ifBlank { tags.metadata.artist }, observed.album.ifBlank { tags.metadata.album },
+                observed.trackNumber ?: tags.metadata.trackNumber, observed.discNumber ?: tags.metadata.discNumber)
             val metadata = File(directory, "$id.properties")
             if (metadata.isFile) {
-                runCatching {
-                    val known = readProperties(metadata)
-                    item(id, known, resolve(id))
-                }.getOrNull()?.let { checkCancelled(); return ImportResult(enrich(it.id, observed), false) }
+                val known = readProperties(metadata)
+                val extensionKnown = known.getProperty("extension").also { require(it in extensions) }
+                val payload = File(directory, "$id.$extensionKnown")
+                try { verifyPayload(payload, id, checkCancelled) }
+                catch (error: CorruptPayload) {
+                    if (!repair) throw error
+                    validateAudio(temp); checkCancelled()
+                    val recovery = File(directory, ".recovery").apply { check(isDirectory || mkdir()) }
+                    check(recovery.canonicalFile.parentFile == directory.canonicalFile)
+                    val backup = File(recovery, "$id-${UUID.randomUUID()}.$extensionKnown")
+                    if (payload.exists()) Files.move(payload.toPath(), backup.toPath())
+                    try { Files.move(temp.toPath(), payload.toPath(), StandardCopyOption.ATOMIC_MOVE) }
+                    catch (failure: Exception) {
+                        if (backup.exists() && !payload.exists()) Files.move(backup.toPath(), payload.toPath())
+                        throw failure
+                    }
+                    return ImportResult(item(id, known, payload), added = false, repaired = true, tagProblem = tags.problem)
+                }
+                checkCancelled(); return ImportResult(enrich(id, combined), false, tagProblem = tags.problem)
             }
             ensureCapacity(if (metadata.isFile) 0 else 1)
             validateAudio(temp)
             checkCancelled()
             if(Thread.currentThread().isInterrupted) throw InterruptedException()
             val destination = File(directory, "$id.$extension")
-            val cleanTitle = title.filter { it.code >= 32 }.take(240).ifBlank { "音源" }
+            val cleanTitle = (if (preferEmbeddedTitle) tags.title ?: title else title).filter { it.code >= 32 }.take(240).ifBlank { "音源" }
             val properties = Properties().apply {
                 setProperty("title", cleanTitle); setProperty("extension", extension)
                 setProperty("origin", origin.filter { it.code >= 32 }.take(1024))
-                putMetadata(this, observed)
+                putMetadata(this, combined)
             }
             val metaTemp = File(directory, ".$id-${UUID.randomUUID()}.metadata")
             var createdAudio = false
@@ -206,7 +240,7 @@ class LocalAudioLibrary(val directory: File, private val validateAudio: (File)->
                 metaTemp.delete()
                 if (createdAudio && !committed) destination.delete()
             }
-            return ImportResult(item(id, properties, destination), true)
+            return ImportResult(item(id, properties, destination), true, tagProblem = tags.problem)
         } finally { temp.delete() }
     }
 
@@ -255,15 +289,39 @@ class LocalAudioLibrary(val directory: File, private val validateAudio: (File)->
             manifest?.let { require(it.keys == items.map { item -> item.id }.toSet()) { "Library manifest does not match audio" } }
             ensureCapacity(items.count { !File(directory, "${it.id}.properties").isFile })
             // Validation/ZIP failures cannot publish any of the staged items.
-            return items.map { item ->
+            val completed = mutableListOf<ImportResult>()
+            val failures = mutableListOf<BundleFailure>()
+            for (item in items) {
                 val record = manifest?.get(item.id)
-                importFileResult(prepared.resolve(item.id), record?.title ?: item.title, item.origin,
-                    record?.metadata ?: AudioLibraryMetadata())
+                try {
+                    completed += importFileResult(prepared.resolve(item.id), record?.title ?: item.title, item.origin,
+                        record?.metadata ?: AudioLibraryMetadata())
+                } catch (error: InterruptedException) { throw error }
+                catch (error: Exception) { failures += BundleFailure(record?.title ?: item.title, error) }
             }
+            if (failures.isNotEmpty()) throw PartialBundle(completed.toList(), failures.toList())
+            return completed
         } finally {
             check(staging.canonicalFile.parentFile==root)
             staging.deleteRecursively()
         }
+    }
+
+    private fun verifyPayload(file: File, id: String, checkCancelled: () -> Unit) {
+        if (!file.isFile || file.length() !in 1..MAX_FILE_BYTES) throw CorruptPayload()
+        val hash = MessageDigest.getInstance("SHA-256")
+        var total = 0L
+        file.inputStream().use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                checkCancelled()
+                if (Thread.currentThread().isInterrupted) throw InterruptedException()
+                val n = input.read(buffer); if (n < 0) break
+                total += n; if (total > MAX_FILE_BYTES) throw CorruptPayload()
+                hash.update(buffer, 0, n)
+            }
+        }
+        if (hash.digest().joinToString("") { "%02x".format(it.toInt() and 255) } != id) throw CorruptPayload()
     }
 
     fun exportBundle(target: File, selectedIds: List<String>? = null) {

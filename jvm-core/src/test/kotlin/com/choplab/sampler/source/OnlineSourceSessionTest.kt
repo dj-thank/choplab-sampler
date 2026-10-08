@@ -82,6 +82,117 @@ class OnlineSourceSessionTest {
         } finally { root.toFile().deleteRecursively() }
     }
 
+    @Test fun savedIdentityRejectsSecondDownloadAndSameFormatSelectionKeepsReceipt() {
+        val root = Files.createTempDirectory("online-reuse-")
+        val backend = Backend()
+        try {
+            OnlineSourceSession(root, {}, backend).use { session ->
+                ready(session); assertTrue(session.acquire(candidate.id)); idle(session)
+                val receipt = session.state.value.saved
+                assertFalse(session.acquire(candidate.id)); assertEquals(1, backend.downloads.get())
+                assertTrue(session.selectFormat(format.id)); assertEquals(receipt, session.state.value.saved)
+                assertFalse(session.acquire(candidate.id)); assertEquals(receipt, session.state.value.saved)
+            }
+        } finally { root.toFile().deleteRecursively() }
+    }
+
+    @Test fun slowArtworkPublishesDetailsFirstAndRequiredDownloadWaitsForItsActualRelease() {
+        val root = Files.createTempDirectory("online-artwork-")
+        val entered = CountDownLatch(1); val release = CountDownLatch(1)
+        val active = AtomicInteger(); val maximum = AtomicInteger()
+        val backend = object : Backend() {
+            override fun artwork(source: YoutubeSource, jobId: String): ByteArray {
+                maximum.accumulateAndGet(active.incrementAndGet(), ::maxOf)
+                try { entered.countDown(); holdIgnoringInterrupts(release); return byteArrayOf(1, 2, 3) }
+                finally { active.decrementAndGet() }
+            }
+            override fun download(source: YoutubeSource, folder: File, jobId: String, progress: (Float) -> Unit): File {
+                maximum.accumulateAndGet(active.incrementAndGet(), ::maxOf)
+                try { return super.download(source, folder, jobId, progress) } finally { active.decrementAndGet() }
+            }
+        }
+        try {
+            OnlineSourceSession(root, {}, backend).use { session ->
+                ready(session); assertTrue(entered.await(5, TimeUnit.SECONDS))
+                assertNotNull(session.state.value.details); assertFalse(session.state.value.busy)
+                assertTrue(session.state.value.artworkLoading); assertEquals(format.id, session.state.value.details!!.selectedFormat)
+                assertTrue(session.acquire(candidate.id))
+                assertEquals(0, backend.downloads.get())
+                release.countDown(); idle(session)
+                assertEquals(OnlineSourcePhase.SAVED, session.state.value.phase)
+                assertNull(session.state.value.artwork); assertFalse(session.state.value.artworkLoading)
+                assertEquals(1, maximum.get()); assertEquals(1, backend.downloads.get())
+            }
+        } finally { release.countDown(); root.toFile().deleteRecursively() }
+    }
+
+    @Test fun cancellingOptionalArtworkRetainsConfirmedDetailsAndRejectsLateImage() {
+        val root = Files.createTempDirectory("online-artwork-cancel-")
+        val entered = CountDownLatch(1); val release = CountDownLatch(1)
+        val backend = object : Backend() {
+            override fun artwork(source: YoutubeSource, jobId: String): ByteArray {
+                entered.countDown(); holdIgnoringInterrupts(release); return byteArrayOf(9)
+            }
+        }
+        try {
+            OnlineSourceSession(root, {}, backend).use { session ->
+                ready(session); assertTrue(entered.await(5, TimeUnit.SECONDS))
+                val detail = session.state.value.details
+                session.cancel(); assertEquals(detail, session.state.value.details)
+                assertFalse(session.state.value.artworkLoading); assertFalse(session.state.value.busy)
+                release.countDown()
+                assertTrue(session.acquire(candidate.id)); idle(session)
+                assertNull(session.state.value.artwork); assertNotNull(session.state.value.saved)
+            }
+        } finally { release.countDown(); root.toFile().deleteRecursively() }
+    }
+
+    @Test fun unknownTransferProgressStaysUnknownUntilObservedAndSavingHasItsOwnPhase() {
+        val root = Files.createTempDirectory("online-progress-")
+        val receiving = CountDownLatch(1); val received = CountDownLatch(1)
+        val measured = CountDownLatch(1); val downloadFinish = CountDownLatch(1)
+        val saving = CountDownLatch(1); val saveFinish = CountDownLatch(1)
+        val backend = object : Backend() {
+            override fun download(source: YoutubeSource, folder: File, jobId: String, progress: (Float) -> Unit): File {
+                progress(Float.NaN); receiving.countDown(); received.await(5, TimeUnit.SECONDS)
+                progress(42f); measured.countDown(); downloadFinish.await(5, TimeUnit.SECONDS)
+                progress(100f); return folder.resolve("audio.webm").also { it.writeBytes(audio) }
+            }
+        }
+        try {
+            OnlineSourceSession(root, { saving.countDown(); saveFinish.await(5, TimeUnit.SECONDS) }, backend).use { session ->
+                ready(session); session.acquire(candidate.id); assertTrue(receiving.await(5, TimeUnit.SECONDS))
+                assertNull(session.state.value.progress)
+                received.countDown(); assertTrue(measured.await(5, TimeUnit.SECONDS)); assertEquals(42, session.state.value.progress)
+                downloadFinish.countDown(); assertTrue(saving.await(5, TimeUnit.SECONDS))
+                assertEquals(OnlineSourcePhase.SAVING, session.state.value.phase); assertNull(session.state.value.progress)
+                saveFinish.countDown(); idle(session); assertNull(session.state.value.progress)
+            }
+        } finally { received.countDown(); downloadFinish.countDown(); saveFinish.countDown(); root.toFile().deleteRecursively() }
+    }
+
+    @Test fun knownOversizeAndInvalidFormatsAreRefusedBeforeProviderDownloadButUnknownAndBoundaryStaySelectable() {
+        val root = Files.createTempDirectory("online-capability-")
+        val observed = listOf(format.copy(id = "large", bytes = OnlineSourceLimits.MAX_AUDIO_BYTES + 1),
+            format.copy(id = "zero", bytes = 0), format.copy(id = "negative", bytes = -1),
+            format.copy(id = "boundary", bytes = OnlineSourceLimits.MAX_AUDIO_BYTES), format.copy(id = "unknown", bytes = null))
+        val backend = object : Backend() {
+            override fun info(url: String, jobId: String) = candidate.copy(metadata = YoutubeMetadata(formats = observed))
+        }
+        try {
+            OnlineSourceSession(root, {}, backend).use { session ->
+                session.search("synthetic"); idle(session); session.inspect(candidate.id); idle(session)
+                assertFalse(session.selectFormat("large")); assertEquals(OnlineSourceProblem.TOO_LARGE, session.state.value.problem)
+                assertFalse(session.acquire(candidate.id))
+                for (id in listOf("zero", "negative")) {
+                    assertFalse(session.selectFormat(id)); assertEquals(OnlineSourceProblem.MALFORMED_RESPONSE, session.state.value.problem)
+                }
+                assertTrue(session.selectFormat("boundary")); assertTrue(session.selectFormat("unknown"))
+                assertNull(session.state.value.problem); assertEquals(0, backend.downloads.get())
+            }
+        } finally { root.toFile().deleteRecursively() }
+    }
+
     @Test fun cancellationWaitsForBothWriterAndDisconnectAndRejectsLateResults() {
         val root = Files.createTempDirectory("online-cancel-")
         val entered = CountDownLatch(1); val writerRelease = CountDownLatch(1)

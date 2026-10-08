@@ -26,6 +26,15 @@ data class YoutubeAudioFormat(
 
 enum class YoutubeSearchKind { VIDEOS, MUSIC }
 
+/** Shared provider capability; UI projections carry this limit instead of guessing from displayed text. */
+object OnlineSourceLimits { const val MAX_AUDIO_BYTES = 256L * 1024 * 1024 }
+fun YoutubeAudioFormat.acquisitionProblem(): OnlineSourceProblem? = when {
+    bytes == null -> null
+    bytes <= 0 -> OnlineSourceProblem.MALFORMED_RESPONSE
+    bytes > OnlineSourceLimits.MAX_AUDIO_BYTES -> OnlineSourceProblem.TOO_LARGE
+    else -> null
+}
+
 enum class OnlineSourceProblem {
     INVALID_INPUT, UNAVAILABLE, RESTRICTED, RATE_LIMITED, TOO_LARGE, MALFORMED_RESPONSE,
     NETWORK, TIMED_OUT, CANCELLED, CLOSED, BUSY, UNSUPPORTED_FORMAT, FORMAT_CHANGED, INVALID_AUDIO, STORAGE,

@@ -3,6 +3,9 @@
 package com.choplab.ui.source
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.focusable
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -10,6 +13,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.selected
@@ -25,27 +34,16 @@ import org.jetbrains.compose.resources.stringResource
 fun OnlineSourcePanel(controller: OnlineSourceController, onClose: () -> Unit, modifier: Modifier = Modifier) {
     val state by controller.state.collectAsState()
     val scope = rememberCoroutineScope()
+    val candidateScroll = rememberScrollState()
+    val detailScroll = key(state.selectedId) { rememberScrollState() }
+    val detailFocus = remember { FocusRequester() }
+    LaunchedEffect(state.showingDetails, state.worker.details?.id) {
+        if (state.showingDetails && state.worker.details != null) detailFocus.requestFocus()
+    }
     fun action(value: OnlineSourceAction) { scope.launch { controller.dispatch(value) } }
     DisposableEffect(controller) { onDispose { controller.close() } }
     Surface(modifier.fillMaxSize().testTag("online-panel")) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).testTag("online-scroll"),
-                verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(stringResource(Res.string.online_title), style = MaterialTheme.typography.headlineSmall)
-                Text(stringResource(Res.string.online_intro))
-                OutlinedTextField(state.query, { action(OnlineSourceAction.Query(it)) }, enabled = state.editable,
-                    label = { Text(stringResource(Res.string.online_query)) }, maxLines = 3,
-                    modifier = Modifier.fillMaxWidth().testTag("online-query"))
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    for (catalog in OnlineCatalog.entries) FilterChip(state.catalog == catalog,
-                        { action(OnlineSourceAction.Catalog(catalog)) }, enabled = state.editable,
-                        label = { Text(stringResource(if (catalog == OnlineCatalog.VIDEOS) Res.string.online_videos else Res.string.online_music)) },
-                        modifier = Modifier.heightIn(min = 48.dp).testTag("online-catalog-${catalog.name.lowercase()}"))
-                }
-                Button({ action(OnlineSourceAction.Search) }, enabled = state.canSearch,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("online-search")) {
-                    Text(stringResource(Res.string.online_search))
-                }
                 val phase = state.worker.phase
                 val status = when {
                     state.applied -> Res.string.online_applied
@@ -57,14 +55,52 @@ fun OnlineSourcePanel(controller: OnlineSourceController, onClose: () -> Unit, m
                     phase == OnlinePhase.DOWNLOADING -> Res.string.online_downloading
                     phase == OnlinePhase.SAVING -> Res.string.online_saving
                     phase == OnlinePhase.SAVED -> Res.string.online_saved
+                    phase == OnlinePhase.FAILED -> when (state.worker.failedOperation) {
+                        OnlinePhase.SEARCHING -> Res.string.online_failed_search
+                        OnlinePhase.INSPECTING -> Res.string.online_failed_details
+                        OnlinePhase.SAVING -> Res.string.online_failed_saving
+                        else -> Res.string.online_failed_download
+                    }
                     phase == OnlinePhase.CANCELLED -> Res.string.online_cancelled
                     phase == OnlinePhase.DETAILS -> Res.string.online_choose_format
                     else -> Res.string.online_ready
                 }
-                Text(stringResource(status), Modifier.testTag("online-status"))
+                Text(stringResource(status), Modifier.testTag("online-status").semantics { liveRegion = LiveRegionMode.Polite })
                 if (state.worker.busy) {
-                    LinearProgressIndicator(Modifier.fillMaxWidth())
-                    if (phase == OnlinePhase.DOWNLOADING) Text("${state.worker.progress}%")
+                    val progress = state.worker.progress?.coerceIn(0, 100)
+                    if (phase == OnlinePhase.DOWNLOADING && progress != null) {
+                        LinearProgressIndicator(progress = { progress / 100f }, modifier = Modifier.fillMaxWidth())
+                        Text("$progress%", Modifier.testTag("online-progress"))
+                    } else {
+                        LinearProgressIndicator(Modifier.fillMaxWidth())
+                        if (phase == OnlinePhase.DOWNLOADING) Text(stringResource(Res.string.online_progress_unknown), Modifier.testTag("online-progress"))
+                    }
+                }
+
+                (state.issue ?: state.worker.problem)?.let {
+                    Text(stringResource(onlineProblemText(it)), color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.testTag("online-problem"))
+                }
+                if (phase == OnlinePhase.FAILED) Text(stringResource(Res.string.online_retry_hint), style = MaterialTheme.typography.bodySmall)
+            Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(if (state.showingDetails) detailScroll else candidateScroll).testTag("online-scroll"),
+                verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (!state.showingDetails) {
+                Text(stringResource(Res.string.online_title), style = MaterialTheme.typography.headlineSmall)
+                Text(stringResource(Res.string.online_intro))
+                OutlinedTextField(state.query, { action(OnlineSourceAction.Query(it)) }, enabled = state.editable,
+                    label = { Text(stringResource(Res.string.online_query)) }, singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = { action(OnlineSourceAction.Search) }),
+                    modifier = Modifier.fillMaxWidth().testTag("online-query"))
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for (catalog in OnlineCatalog.entries) FilterChip(state.catalog == catalog,
+                        { action(OnlineSourceAction.Catalog(catalog)) }, enabled = state.editable,
+                        label = { Text(stringResource(if (catalog == OnlineCatalog.VIDEOS) Res.string.online_videos else Res.string.online_music)) },
+                        modifier = Modifier.heightIn(min = 48.dp).testTag("online-catalog-${catalog.name.lowercase()}"))
+                }
+                Button({ action(OnlineSourceAction.Search) }, enabled = state.canSearch,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("online-search")) {
+                    Text(stringResource(Res.string.online_search))
                 }
                 if (!state.inputMatches && state.worker.candidates.isNotEmpty()) Text(stringResource(Res.string.online_query_changed))
                 for ((index, candidate) in state.worker.candidates.withIndex()) {
@@ -78,12 +114,21 @@ fun OnlineSourcePanel(controller: OnlineSourceController, onClose: () -> Unit, m
                         }
                     }
                 }
+                }
+                if (state.showingDetails) {
+                TextButton({ action(OnlineSourceAction.BackToCandidates) }, Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("online-back")) {
+                    Text(stringResource(Res.string.online_back_candidates))
+                }
+                if (state.worker.phase == OnlinePhase.FAILED && state.selectedId != null) OutlinedButton(
+                    { action(OnlineSourceAction.Inspect(requireNotNull(state.selectedId))) }, enabled = state.canInspect,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("online-recheck")) { Text(stringResource(Res.string.online_recheck)) }
                 state.worker.details?.let { detail ->
                     HorizontalDivider()
-                    Text(detail.title, style = MaterialTheme.typography.titleLarge)
+                    Text(detail.title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.testTag("online-detail-heading")
+                        .focusRequester(detailFocus).focusable().semantics { heading() })
                     if (detail.artwork != null) Image(detail.artwork, stringResource(Res.string.online_artwork),
                         Modifier.fillMaxWidth().heightIn(max = 180.dp).testTag("online-artwork"), contentScale = ContentScale.Fit)
-                    else Text(stringResource(Res.string.online_artwork_unavailable))
+                    else Text(stringResource(if (state.worker.artworkLoading) Res.string.online_artwork_loading else Res.string.online_artwork_unavailable))
                     val unknown = stringResource(Res.string.online_unknown)
                     Text(stringResource(Res.string.online_artist, detail.artist ?: unknown))
                     Text(stringResource(Res.string.online_album, detail.album ?: unknown))
@@ -97,7 +142,7 @@ fun OnlineSourcePanel(controller: OnlineSourceController, onClose: () -> Unit, m
                     Text(stringResource(Res.string.online_format_observations), style = MaterialTheme.typography.bodySmall)
                     for ((index, format) in detail.formats.withIndex()) {
                         OutlinedButton({ action(OnlineSourceAction.Format(format.id)) },
-                            enabled = state.canInspect && detail.id == state.selectedId, shape = RoundedCornerShape(12.dp),
+                            enabled = state.canInspect && detail.id == state.selectedId && format.problem(state.worker.maxDownloadBytes) == null, shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("online-format-$index")
                                 .semantics { selected = detail.selectedFormat == format.id }) {
                             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -109,6 +154,7 @@ fun OnlineSourcePanel(controller: OnlineSourceController, onClose: () -> Unit, m
                                 } ?: stringResource(Res.string.online_bitrate_unknown)
                                 Text(bitrate)
                                 Text(stringResource(Res.string.online_format_bytes, format.bytes?.toString() ?: unknown))
+                                format.problem(state.worker.maxDownloadBytes)?.let { Text(stringResource(onlineProblemText(it)), Modifier.testTag("online-format-problem-$index")) }
                                 Text(stringResource(Res.string.online_track, format.trackName ?: unknown, format.language ?: unknown,
                                     format.trackType ?: unknown))
                                 Text(stringResource(Res.string.online_drc, stringResource(when (format.dynamicRangeCompressed) {
@@ -134,13 +180,10 @@ fun OnlineSourcePanel(controller: OnlineSourceController, onClose: () -> Unit, m
                     if (state.availability != OnlineAvailability.EDITABLE) Text(stringResource(if (state.availability == OnlineAvailability.RECORDING)
                         Res.string.online_problem_recording else Res.string.online_problem_busy))
                 }
-                (state.issue ?: state.worker.problem)?.let {
-                    Text(stringResource(onlineProblemText(it)), color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.testTag("online-problem"))
                 }
             }
             HorizontalDivider()
-            if (state.worker.busy) OutlinedButton({ action(OnlineSourceAction.Cancel) },
+            if (state.worker.busy || state.worker.artworkLoading) OutlinedButton({ action(OnlineSourceAction.Cancel) },
                 enabled = !state.applying && state.worker.phase != OnlinePhase.CANCELLED,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("online-cancel")) {
                 Text(stringResource(Res.string.online_cancel))

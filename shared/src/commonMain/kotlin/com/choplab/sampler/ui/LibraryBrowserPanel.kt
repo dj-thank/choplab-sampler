@@ -25,8 +25,8 @@ import org.jetbrains.compose.resources.stringResource
 @Composable
 fun LibraryBrowserPanel(items: List<AudioLibraryItem>, enabled: Boolean, onUse: (String) -> Unit, modifier: Modifier = Modifier,
                         exportSelection: Set<String> = emptySet(), onExportToggle: ((AudioLibraryItem) -> Unit)? = null,
-                        onExportPage: ((List<AudioLibraryItem>) -> Unit)? = null) {
-    val browser = remember { LibraryBrowser() }
+                        onExportPage: ((List<AudioLibraryItem>) -> Unit)? = null,
+                        browser: LibraryBrowser = remember { LibraryBrowser() }) {
     var revision by remember { mutableIntStateOf(0) }
     val page = remember(items, revision) { browser.page(items) }
     val location = remember(items, revision) { browser.location }
@@ -35,6 +35,13 @@ fun LibraryBrowserPanel(items: List<AudioLibraryItem>, enabled: Boolean, onUse: 
     val position = browser.viewport(location)
     val listState = key(location) { rememberLazyListState(position.index, position.scrollOffset) }
     val gridState = key(location) { rememberLazyGridState(position.index, position.scrollOffset) }
+    DisposableEffect(browser, location, listState, gridState) {
+        onDispose {
+            browser.rememberViewport(location,
+                if (location.section == LibraryBrowser.Section.TRACKS) listState.firstVisibleItemIndex else gridState.firstVisibleItemIndex,
+                if (location.section == LibraryBrowser.Section.TRACKS) listState.firstVisibleItemScrollOffset else gridState.firstVisibleItemScrollOffset)
+        }
+    }
     fun navigate(action: () -> Unit) {
         val index = if (location.section == LibraryBrowser.Section.TRACKS) listState.firstVisibleItemIndex else gridState.firstVisibleItemIndex
         val scroll = if (location.section == LibraryBrowser.Section.TRACKS) listState.firstVisibleItemScrollOffset else gridState.firstVisibleItemScrollOffset

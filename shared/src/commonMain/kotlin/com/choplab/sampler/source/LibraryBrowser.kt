@@ -39,6 +39,11 @@ class LibraryBrowser {
     fun next(items: List<AudioLibraryItem>) { if (page(items).hasNext) offset += PAGE_SIZE }
     fun previous() { offset = (offset - PAGE_SIZE).coerceAtLeast(0) }
     fun page(items: List<AudioLibraryItem>): Page {
+        if (artist != null && items.none { it.artist == artist }) {
+            section = Section.ARTISTS; artist = null; album = null; offset = 0; history.clear()
+        } else if (album != null && items.none { it.artist == artist && it.album == album }) {
+            section = Section.ALBUMS; album = null; offset = 0
+        }
         val words = query.trim().split(Regex("\\s+")).filter(String::isNotBlank)
         val filtered = items.filter { item ->
             (artist == null || item.artist == artist) && (album == null || item.album == album) &&

@@ -60,7 +60,9 @@ private fun OnlineSourceState.toUi(image: androidx.compose.ui.graphics.ImageBitm
     phase = OnlinePhase.valueOf(phase.name), busy = busy, candidates = candidates.map { it.toUi(null) },
     details = details?.toUi(image), progress = progress,
     saved = saved?.let { OnlineSaved(it.hash, it.title) }, problem = problem?.let { OnlineProblem.valueOf(it.name) },
-    artworkUnavailable = details != null && image == null,
+    artworkUnavailable = details != null && image == null && !artworkLoading,
+    artworkLoading = artworkLoading, maxDownloadBytes = OnlineSourceLimits.MAX_AUDIO_BYTES,
+    failedOperation = failedOperation?.let { OnlinePhase.valueOf(it.name) },
 )
 private fun YoutubeSource.toUi(image: androidx.compose.ui.graphics.ImageBitmap?) = OnlineCandidate(id, title, author, durationSeconds,
     metadata?.artist, metadata?.album, metadata?.uploaderVerified, metadata?.formats.orEmpty().map {
