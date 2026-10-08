@@ -63,7 +63,11 @@ class VocalCoachController(private val document: StateFlow<DocumentState>, priva
     private val mutable = MutableStateFlow(snapshot())
     val state = mutable.asStateFlow()
     init {
-        jobs.launch { document.collect { if (it.revision != state.value.revision) stop(CoachProblem.STALE) } }
+        jobs.launch { document.collect { mutex.withLock {
+            // Reload may already have adopted a newer document while this notification was queued.
+            // Check the current document and stop under the same lock as Reload/analysis admission.
+            if (document.value.revision != state.value.revision) stopLocked(CoachProblem.STALE)
+        } } }
         jobs.launch { availability.collect { if (it != VocalAvailability.EDITABLE) stop(blocked(it)) } }
         jobs.launch { host.preview.state.collect { preview -> mutex.withLock {
             if (state.value.phase == CoachPhase.LISTENING && preview.owner != VocalPreviewOwner.COACH && !preview.ownsSource) {
@@ -197,7 +201,8 @@ class VocalCoachController(private val document: StateFlow<DocumentState>, priva
     }
     private fun blocked(value: VocalAvailability) = if (value == VocalAvailability.RECORDING) CoachProblem.RECORDING else CoachProblem.BUSY
     private fun invalidate() { generation.update { it + 1 }; work?.cancel(); work = null; host.preview.requestStop(VocalPreviewOwner.COACH) }
-    private suspend fun stop(problem: CoachProblem) = mutex.withLock {
+    private suspend fun stop(problem: CoachProblem) = mutex.withLock { stopLocked(problem) }
+    private fun stopLocked(problem: CoachProblem) {
         if (state.value.phase != CoachPhase.CLOSED) {
             invalidate(); mutable.update { it.copy(phase = CoachPhase.EDITING, heardLine = null, problem = problem,
                 report = if (problem == CoachProblem.STALE || problem == CoachProblem.RECORDING) null else it.report) }

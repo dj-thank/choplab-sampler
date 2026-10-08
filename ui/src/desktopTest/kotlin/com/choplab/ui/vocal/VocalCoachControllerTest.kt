@@ -9,6 +9,46 @@ import kotlinx.coroutines.flow.*
 import kotlin.test.*
 
 class VocalCoachControllerTest {
+    @OptIn(InternalCoroutinesApi::class)
+    @Test fun anOldDocumentNotificationCannotCancelAnalysisAfterReloadAdoptsTheCurrentRevision() = runBlocking {
+        val captured = CompletableDeferred<Unit>(); val releaseNotification = CompletableDeferred<Unit>()
+        val delivered = CompletableDeferred<Unit>()
+        val analyzing = CompletableDeferred<Unit>(); val finishAnalysis = CompletableDeferred<Unit>()
+        val f = Fixture(observeDocument = { current ->
+            object : StateFlow<DocumentState> by current {
+                override suspend fun collect(collector: FlowCollector<DocumentState>): Nothing = current.collect { document ->
+                    if (document.revision == 0L) {
+                        captured.complete(Unit); releaseNotification.await()
+                        collector.emit(document); delivered.complete(Unit)
+                    } else collector.emit(document)
+                }
+            }
+        }, analyze = { project, revision, request ->
+            analyzing.complete(Unit)
+            withContext(NonCancellable) { finishAnalysis.await() }
+            Fixture.report(project, revision, request)
+        })
+        try {
+            withTimeout(5000) { captured.await() }
+            f.document.value = f.document.value.copy(revision = 1)
+            assertTrue(f.controller.dispatch(CoachAction.Reload))
+            assertEquals(1L, f.controller.state.value.revision)
+            val pending = async { f.controller.dispatch(CoachAction.Analyze) }
+            withTimeout(5000) { analyzing.await() }
+            // The observer receives the old revision after Reload has explicitly adopted the new one.
+            releaseNotification.complete(Unit)
+            withTimeout(5000) { delivered.await() }
+            assertEquals(CoachPhase.ANALYZING, f.controller.state.value.phase,
+                "An old notification must not invalidate the current revision's analysis")
+            assertNull(f.controller.state.value.problem)
+            finishAnalysis.complete(Unit)
+            assertTrue(withTimeout(5000) { pending.await() })
+            assertEquals(1L, assertNotNull(f.controller.state.value.report).revision)
+            assertEquals(1L, f.document.value.revision)
+            assertFalse(f.document.value.canUndo)
+        } finally { releaseNotification.complete(Unit); finishAnalysis.complete(Unit); f.close() }
+    }
+
     @Test fun takeHistoryReferenceAndExplicitListeningResponseNeverEditTheDocument() = runBlocking {
         // Deliver this instantaneous fake's PLAYING before finish restores the same IDLE value.
         val f = Fixture(Dispatchers.Unconfined)
@@ -121,6 +161,7 @@ class VocalCoachControllerTest {
     }
 
     private class Fixture(dispatcher: CoroutineDispatcher = Dispatchers.Default,
+                          observeDocument: (StateFlow<DocumentState>) -> StateFlow<DocumentState> = { it },
                           private val analyze: suspend (Project, Long, VocalCoachRequest) -> CoachResult<VocalCoachReport> = ::report) {
         val source = Asset("a".repeat(64), "wav", 384_044, 48_000, 2, 48_000, "Voice")
         val guide = Asset("b".repeat(64), "wav", 384_044, 48_000, 2, 48_000, "Guide", AssetRole.RENDERED)
@@ -137,7 +178,7 @@ class VocalCoachControllerTest {
         var guideProject: Project? = null
         var guideRequest: VocalPracticeRequest? = null
         var responses = 0; var practices = 0
-        val controller = VocalCoachController(document, availability, object : VocalCoachHost {
+        val controller = VocalCoachController(observeDocument(document), availability, object : VocalCoachHost {
             override val preview = this@Fixture.preview
             override val analyzer = object : VocalCoachAnalyzer {
                 override suspend fun analyze(project: Project, revision: Long, request: VocalCoachRequest): CoachResult<VocalCoachReport> {
