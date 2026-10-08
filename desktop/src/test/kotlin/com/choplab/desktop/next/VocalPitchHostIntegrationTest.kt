@@ -162,7 +162,7 @@ class VocalPitchHostIntegrationTest {
                     val restored = NextBackend.create(directory.resolve("restored"), sinkFactory = { error("No native device") }, microphone = { null })
                     try {
                         assertTrue(restored.openProject(archive).accepted)
-                        until { restored.studio.work.value.jobId == null }
+                        awaitIdle(restored.studio, "restored ${locale.language}/${width}px/font$font")
                         assertEquals(applied.project, restored.studio.document.value.project)
                         assertContentEquals(Files.readAllBytes(sourcePath), restored.assets.read(source))
                         assertContentEquals(backend.assets.read(applied.project.asset(applied.project.clips.single().assetHash)),
@@ -221,7 +221,10 @@ class VocalPitchHostIntegrationTest {
                 val editor = requireNotNull(presenter.vocalPitch.value)
                 val before = backend.studio.document.value
                 val pending = async { editor.dispatch(PitchAction.Apply) }
-                withTimeout(10_000) { rendered.await() }
+                // Same 10 s bound; a timeout reports why Apply stopped, instead of a bare timeout.
+                val renderStarted = withTimeoutOrNull(10_000) { rendered.await(); true } == true
+                assertTrue(renderStarted, "$case: render did not start in 10 s; Apply=" +
+                    if (pending.isCompleted) runCatching { pending.getCompleted() }.toString() else "still running")
                 var saveJob: Deferred<Boolean>? = null
                 when (case) {
                     "cancel" -> assertTrue(editor.dispatch(PitchAction.Cancel))
@@ -300,6 +303,11 @@ class VocalPitchHostIntegrationTest {
     }
 
     private suspend fun until(ready: () -> Boolean) = withTimeout(10_000) { while (!ready()) delay(5) }
+    /** Same 10 s bound as [until]; a timeout names the Studio work still running, so the stalled stage is visible. */
+    private suspend fun awaitIdle(studio: Studio, label: String) {
+        val idle = withTimeoutOrNull(10_000) { while (studio.work.value.jobId != null) delay(5); true }
+        assertTrue(idle == true, "$label still busy after 10 s: ${studio.work.value}")
+    }
     private fun ImageComposeScene.nodes(): List<SemanticsNode> = buildList {
         fun visit(node: SemanticsNode) { add(node); node.children.forEach(::visit) }
         semanticsOwners.forEach { visit(it.unmergedRootSemanticsNode) }
