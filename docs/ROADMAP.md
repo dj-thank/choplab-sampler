@@ -24,6 +24,12 @@
 
 ### 現在の修正対象と再開点
 
+現在のMac配布済みsourceは[PR236](https://github.com/dj-thank/choplab-sampler/pull/236)を統合したmain `a56972ff`、build33。5人の65指摘から重複と実機/provider条件を分けた60件を実装し、検証head `5ee5b279` の必須3job・Mac配布・Apple共通基盤が成功した後に統合した。NEXT/Previewの両DMGをread-only mount・同梱Javaで受け入れ、同梱installerからapp/manifestを対で更新した。旧app/manifestと利用者dataを保全し、導入済みの通常起動/終了/再開も両app各2回成功した。以下の候補/初回CI記録は経緯であり、現在の受入を上書きしない。
+
+2026-10-08 UTC、画面解除後に同じbuild33 NEXTの275fileと署名を照合し、同梱Java/helperで実システム音のPCM16/float32、左右分離、親Javaの自音除外が成功した。スピーカーをミュートにしたままの再確認でも成功し、自音除外は各-91.39/-80.58dB。OS音量設定は変更せず、生音声は残していない。これは出力ミュート下の内部音声取得の受入であり、マイク入力gainや聴感/遅延の合格を意味しない。実Finderで合成保存fileの選択表示も成功した。native key入力の試験は前面/フォーカスの安定確認ができず未受入。物理操作・VoiceOver、実Spotify API、許可変更/機器抜き差し、聴感/遅延、Developer ID/公証とPUBLIC_PASS/HUMAN_GOは引き続き別条件。
+
+同mainの統合後Windows CI [run37694533691](https://github.com/dj-thank/choplab-sampler/actions/runs/37694533691)では、歌唱ガイドのReload直後の解析1件が失敗した。root担当のbuild34では `VocalCoachController` のdocument通知の判定/停止をReload/解析受付と同じmutex内に置き、届いた旧revisionでなく現documentと採用済みrevisionを比較する。旧通知を保持→Reload→解析開始→旧通知を解放する試験で修正前の解析取消を再現し、修正後は同回帰を含むController6件と実hostの合成入出力4件、Android共通UI compile、配布policy421件が成功。ガイドなし/消音時の拒否、録音中の拒否、元assertと待機上限は保持する。完了条件は同じheadの必須CIとMac/Apple基盤CI、統合sourceの両DMG/導入/保存再開の照合。結果は本修正のPRと配布receiptへ束縛し、rollbackは限定PRのrevertと保全したbuild33 app/manifestへの復帰とする。
+
 2026-10-08の追加依頼「徹底的なUX改善」「5人から50項目が集まってから着手」に対し、main `411fe8e8` を同一の基準として5人が独立点検した。rootが65指摘を集約し、重複2件と実provider/実機の受入条件3件を区別した結果、実装対象は60件。50件を超えた後に実装を開始した。rootが統合とMac導入、Library担当が取込/検索/metadata、audio担当が録音保全/入出力、editor担当が制作/Undo/操作状態を独立worktreeで所有し、補助窓とkeyboardも順に対応する。対象は現行4工程とSOURCE/HAND独立を保持する操作改善であり、保存・録音失敗時に素材を失わないこと、大量Libraryへ選択的に到達できること、日英/keyboardで制作・復旧ができることを完了条件にする。各指摘の実装と検証を対応表へ束縛し、rootが関連試験・必須CI・main統合・新しいDMG/保存再開を照合する。候補段階で実機/実音/provider/公開/Humanを認定しない。rollbackは限定PRのrevertと保全したbuild32 app/manifestの対への復帰。利用者の制作profileには試験データを書かない。
 
 build33候補 `02e37bb5` で60件すべてを実装・個別検証した。Library/検索18件、制作17件、録音13件、Mac配布/開発3件、keyboard/表示/補助窓/出力案内9件を元65 IDへ対応させ、未分類は0。録音の原音は制作反映とautosaveの確認後だけ解放し、失敗時の再試行・明示破棄・再起動回収を設けた。録音見込みと実際の残時間、機器選択/再接続、typed権限/中断理由を表示する。新規制作・原曲を保護するUndo/Redo・clip端/全体表示・小数BPM・歌詞draft・正確な原曲範囲を修正。Libraryの選択書出し/metadata往復・読込失敗/部分失敗/再試行・曲順とReturn検索を整え、接続/窓表示での取得0を維持する。日英、保存する文字倍率、PAD/波形/HANDのkeyboard、補助窓の即時停止/Escape/画面内配置、成功した出力の保存先案内を接続した。言語は編集中の入力を保つため次回起動から、文字倍率は即時反映する。DMG installerはappとmanifestを対で検証・更新・rollbackし、起動中のappを置き換えない。
