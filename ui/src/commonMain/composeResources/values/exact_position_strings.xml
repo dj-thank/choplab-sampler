@@ -1,0 +1,8 @@
+<resources>
+    <string name="ce_exact_position">Exact timeline position</string>
+    <string name="ce_exact_position_hint">Start position in the song. The source range stays the same. Maximum: %1$s frames at 48 kHz.</string>
+    <string name="ce_position_frames">48 kHz frames</string>
+    <string name="ce_position_seconds">Seconds</string>
+    <string name="ce_position_invalid">Enter a position from zero through the maximum.</string>
+    <string name="ce_position_resolved">Apply at frame %1$s (seconds round to the nearest frame)</string>
+</resources>

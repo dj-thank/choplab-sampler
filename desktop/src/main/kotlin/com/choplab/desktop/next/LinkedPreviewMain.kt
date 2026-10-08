@@ -62,12 +62,13 @@ fun main() {
                     closing = true
                     scope.launch {
                         val closed = try {
+                            presenter.prepareToClose()
                             closeAfterAutosave({ check(presenter.finishRecording()); backend.flushAutosave() },
                                 { ports.confirmCloseWithoutAutosave().also { if (it) closedWithoutAutosave.set(true) } }) {
                                 presenter.close(); exitApplication()
                             }
                         } catch (cancel: CancellationException) { throw cancel } catch (_: Exception) { false }
-                        if (!closed) closing = false
+                        if (!closed) { presenter.cancelClose(); closing = false }
                     }
                 }
             }

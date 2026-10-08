@@ -24,9 +24,17 @@
 
 ### 現在の修正対象と再開点
 
-現在の導入済みMacは[PR237](https://github.com/dj-thank/choplab-sampler/pull/237)統合main `a6a8c455` のbuild34（NEXT/Preview）。2026-10-08の追加監査は同sourceを基準に5人から57件を受領し、重複整理後に実装を開始した。利用者の追記により50件未満でも確認された残件を全て扱う。rootが統合・Mac導入を所有し、各項目を実装・検証・統合・配布へ対応させる。現在は独立worktreeで修正中であり、57件の配布完了とはしない。
+現在の導入済みMacは[PR237](https://github.com/dj-thank/choplab-sampler/pull/237)統合main `a6a8c455` のbuild34（NEXT/Preview）。2026-10-08の追加監査は同sourceを基準に5人から57件を受領し、重複整理後に実装を開始した。利用者の追記により50件未満でも確認された残件を全て扱う。rootが統合・Mac導入を所有し、各項目を実装・検証・統合・配布へ対応させる。57件すべての実装とローカル確認を終え、Library14件をmainへ統合した。残る33件の制作/録音/操作と10件のMac起動/導入を順に統合し、同じ最終sourceからbuild35を配布する。候補の成功を配布完了とはしない。
 
-最初の候補はLibrary/Onlineの14件（実装 `8412c836`）。FLAC/MP3の観測タグでartist/album/曲順を分類し、同じ音源の再追加は保存bytesを検証する。破損は明示修復まで保全し、部分取込は成功・再利用・失敗を残す。Library/Spotifyの一覧位置を維持し、読めないcatalog項目と空一覧を区別する。Online詳細への移動/戻る、任意画像の待機取消、保存済み音源の再取得防止、未知進捗・過大形式・再試行案内を整える。表示だけで音源取得や制作適用を起こさない。関連85試験、実FLAC/MP3のタグ・原本hash確認、Android Preview compileがLOCAL_PASS。最後の旧adapter修正後も関連5試験を再実行して成功。[PR238](https://github.com/dj-thank/choplab-sampler/pull/238)の初回CIはWindows配布・Apple共通基盤・履歴が成功したが、Linuxの一覧復帰試験は修正途中も1pixel差が残った。依存実装と制御したpointer押下で、クリック前の期待値採取後にfocusによるBringIntoViewが始まることを確認した。試験は押下中に大きい候補がviewportを覆う実幾何条件まで待ち、Inspect入口の位置を独立に凍結して、元の0.01pixel許容で復帰と比較する。日200%では510→522→522→522、英200%では542→554→554→554（押下前/押下完了/Inspect/復帰）となり、製品のScrollState変更や許容拡大は不要だった。日英・保存/適用/停止の全assertを保持し、最終4試験はLOCAL_PASS。必須CI・main統合・同sourceの新DMG導入はこれから照合する。rollbackは限定PRのrevertと保全済みbuild34 app/manifestへの復帰。実Spotify API、物理操作・VoiceOver、聴感/遅延、Developer ID/公証、PUBLIC_PASS/HUMAN_GOは未確認。
+Library/Onlineの14件は[PR238](https://github.com/dj-thank/choplab-sampler/pull/238)のhead `6b93acdd` でLinux検証・Windows配布・Apple共通基盤・履歴検査が成功し、main `60afbdfc` へ統合済み。FLAC/MP3の観測タグでartist/album/曲順を分類し、再追加時の保存bytes照合、破損原本の保全、部分取込、一覧位置、未知進捗/サイズ上限/再試行を整えた。関連85試験と最後のadapter5試験、原本hash、Android compileが成功。初回Linuxの一覧復帰試験の1pixel差はpointer押下時のfocus移動が起点だった。実viewport幾何条件まで押下を保ち、Inspect時点と復帰を元の0.01pixel許容で比較して成功した。製品ScrollStateや許容値は変更していない。
+
+次の候補は制作/録音/操作33件（A11Y2-001〜009、AUD2-001〜009、CRT2-001〜012、MAC2-004/005/012）。rootが更新mainから8commitを移植し、先行候補 `a1492a53` と製品sourceが一致することを確認した。波形の素材別再試行、録音受理記録と再起動時の重複防止、STEP/歌詞/テイク/TTSの下書き、加工来歴、全停止と試聴所有権、PAD削除期限、正確なclip配置、未保存制作の切替確認、終了前のpicker取消を接続する。64トラックの編集/再開を既存モデルと揃え、同時32音・1024clip・PCM共有上限と1Undoを保持する。
+
+各担当の録音66件、制作143件、操作17件等の回帰、root統合159件と保存切替/実UI/精密配置14件、実ファイル保存再開3件がLOCAL_PASS。旧制限を前提にしたfixtureを合法17トラックでの制御された準備失敗へ揃え、反復先への音のはみ出し拒否も確認した。64トラック10,000blockでrender割当0、p99は4ms中2.059msであり、25%目標や実音/遅延の合格ではない。全57件を組み合わせたMac候補 `449b7d5f` の同梱Javaで制作9工程/15Undo、11codec、実分離モデル、日英native menu、初期API要求0、保存再開と通常終了再開2回が成功した。候補Previewも11codecと長尺/破損拒否に成功。必須CIを確認してこの33件を統合し、後続のMac10件と合わせて最終DMG/導入を照合する。rollbackは限定PRのrevertと保全済みbuild34 app/manifestへの復帰。実Spotify API、物理操作・VoiceOver、聴感/遅延、Developer ID/公証、PUBLIC_PASS/HUMAN_GOは未確認。
+
+制作UX候補の初回CIはApple共通基盤と履歴が成功し、Linux/Windowsとも非協調入力の破棄試験1件が失敗した。破棄待ちの録音を保存待ちとして再取得していた製品回帰であり、修正 `1ab09033` はcapture threadが終わるまで録音slotと原本を所有し、破棄完了後だけ解放する。停止済み原本の削除失敗では再保存/再破棄を維持する。元assertと2秒停止deadlineのまま修正前FAILを再現し、durable/non-durable双方とslot再利用を含む関連8class37件が成功。修正headのCIを再確認してから統合する。先行Mac候補の制作/codec結果はその範囲に限り、最終配布ではこの録音修正を含む同一sourceから再梱包する。
+
+録音修正後のCIではApple/履歴が成功し、Linux/Windows共通でUI351件中3件が失敗した。修正 `e868a6cd` は広い配置面のclip設定を2列へ整理し、タイムラインを404pxから503pxへ確保して4段目の94px clip全体を維持する。狭幅/文字2倍では音量と数値操作を縦に配置し48dpを保つ。くり返せない理由は自身の長さ超過と別clipの転記先占有を区別し、拒否判定は保持する。再読込fixtureも実際の未保存確認を操作する。元の表示閾値を下げず3失敗を解消し、日英の操作矩形を含む関連5class72件が成功（failure/error/skip0）。この修正を含む最新headの必須CIを確認して統合する。
 
 前回build33の配布sourceは[PR236](https://github.com/dj-thank/choplab-sampler/pull/236)を統合したmain `a56972ff`、build33。5人の65指摘から重複と実機/provider条件を分けた60件を実装し、検証head `5ee5b279` の必須3job・Mac配布・Apple共通基盤が成功した後に統合した。NEXT/Previewの両DMGをread-only mount・同梱Javaで受け入れ、同梱installerからapp/manifestを対で更新した。旧app/manifestと利用者dataを保全し、導入済みの通常起動/終了/再開も両app各2回成功した。以下の候補/初回CI記録は経緯であり、現在の受入を上書きしない。
 

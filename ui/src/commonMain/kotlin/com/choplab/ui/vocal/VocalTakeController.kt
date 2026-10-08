@@ -1,6 +1,7 @@
 package com.choplab.ui.vocal
 
 import com.choplab.core.DocumentState
+import com.choplab.core.ai.*
 import com.choplab.core.edit.Intent
 import com.choplab.core.model.*
 import com.choplab.core.vocal.*
@@ -19,6 +20,8 @@ interface VocalTakePort {
 }
 
 interface VocalTakePorts {
+    /** The shared SOURCE state, read again under the admission lock to reject queued old notifications. */
+    val previewState: StateFlow<VocalPreviewState>? get() = null
     suspend fun render(project: Project, draft: VocalCompDraft, name: String): Asset?
     /** Host serializes its final recording/busy check with the Studio expectedRevision dispatch. */
     suspend fun apply(intent: Intent, expectedRevision: Long): Boolean
@@ -82,9 +85,10 @@ class VocalTakeController(
     @Volatile private var generation = 0L
     @Volatile private var work: Job? = null
     private var prepared: Pair<VocalCompDraft, Asset>? = null
+    private var trackingPreview = false
     init {
-        jobs.launch { document.collect { current -> mutex.withLock {
-            if (!closed && current.revision != state.value.revision && state.value.phase != VocalPhase.APPLYING) {
+        jobs.launch { document.collect { mutex.withLock {
+            if (!closed && document.value.revision != state.value.revision && state.value.phase != VocalPhase.APPLYING) {
                 invalidate(); publish(state.value.copy(phase = VocalPhase.EDITING, problem = VocalProblem.STALE))
             }
         } } }
@@ -96,7 +100,20 @@ class VocalTakeController(
                 }
             }
         } } }
+        ports.previewState?.let { preview -> jobs.launch { preview.collect { mutex.withLock {
+            val current = preview.value
+            if (!closed && (trackingPreview || state.value.previewing || current.owner == VocalPreviewOwner.TAKE)) {
+                // RESTORING is already silent, but keep following our claim until its terminal result.
+                trackingPreview = current.ownsSource && current.owner == VocalPreviewOwner.TAKE
+                publish(state.value.copy(previewing = previewActive(current),
+                    problem = if (current.phase == VocalPreviewPhase.FAILED && state.value.problem != VocalProblem.STALE &&
+                        (current.owner == null || current.owner == VocalPreviewOwner.TAKE)) VocalProblem.PREVIEW_FAILED else state.value.problem))
+            }
+        } } } }
     }
+
+    private fun previewActive(value: VocalPreviewState) = value.owner == VocalPreviewOwner.TAKE &&
+        value.phase in listOf(VocalPreviewPhase.LOADING, VocalPreviewPhase.PLAYING)
 
     suspend fun dispatch(action: VocalAction): Boolean {
         if (action is VocalAction.Apply) return prepare(action.name, apply = true)
@@ -216,8 +233,9 @@ class VocalTakeController(
         return mutex.withLock {
             if (closed || token != generation) return@withLock false
             if (accepted && !preview) { prepared = null; reset(); publish(state.value.copy(applied = true)) }
-            else publish(state.value.copy(phase = VocalPhase.EDITING, previewing = accepted && preview,
+            else publish(state.value.copy(phase = VocalPhase.EDITING, previewing = accepted && preview && (ports.previewState?.value?.let(::previewActive) ?: true),
                 problem = when {
+                    accepted && preview && ports.previewState?.value?.phase == VocalPreviewPhase.FAILED -> VocalProblem.PREVIEW_FAILED
                     accepted -> null
                     document.value.revision != state.value.revision -> VocalProblem.STALE
                     availability.value != VocalAvailability.EDITABLE -> blocked(availability.value)

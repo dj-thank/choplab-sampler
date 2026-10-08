@@ -38,4 +38,8 @@
     <string name="coach_exclusion_partial">選択区間に入る行の一部だけを観測しています。</string>
     <string name="coach_invalid">区間とテイクを確認してください。1回30秒までです。</string>
     <string name="coach_no_guide">この区間で鳴るガイドがありません。TTSガイドの配置・mute・solo・音量を確認してください。</string>
+    <string name="coach_time_number">秒数を有限の数値で入力してください。</string>
+    <string name="coach_time_bounds">0〜%1$d秒の範囲で入力してください。</string>
+    <string name="coach_time_order">終了は開始より1フレーム以上後にしてください。</string>
+    <string name="coach_time_limit">分析範囲を30秒以内にしてください。</string>
 </resources>

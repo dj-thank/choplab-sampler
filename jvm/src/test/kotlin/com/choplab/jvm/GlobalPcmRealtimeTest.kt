@@ -36,7 +36,7 @@ class GlobalPcmRealtimeTest {
             assertFailsWith<PcmMemoryLimit> { memory.reserve(16L * 1024 * 1024) }
             assertTrue(leases.none { it.pcm.evicted })
             val pads = (0 until 30).map { Pad(it, leases[it % 7].pcm, late, late + 8_192, mode = PlayMode.LOOP,
-                attackFrames = 0, loopCrossfadeFrames = 0, mixBus = it % MixerProgram.MAX_BUSES) }
+                attackFrames = 0, loopCrossfadeFrames = 0, mixBus = if (it == 29) MixerProgram.UNROUTED_BUS else it % 16) }
             val arrangement = Arrangement((0 until 32).map {
                 ArrangementClip("clip-$it", leases[it % 7].pcm, 0, late, late + if (effects) 200_000 else 8_192, trackIndex = it % 16)
             })
@@ -110,7 +110,7 @@ class GlobalPcmRealtimeTest {
                     val stats = memory.statistics()
                     println("GLOBAL_PCM_MAX_MIX JDK=${System.getProperty("java.version")} rate=48000 block=192 warmup=10000 blocks=10000 " +
                         "seven400sCaches=7x512pages arrangement=32 primary=30PAD+1HAND+1click fade=16 SOURCE=1 maxPcmReaders=80 " +
-                        "fullMixerFx=$effects fxBuses=${if (effects) 17 else 0} mixerPcmBytes=${MixerDsp.PCM_BYTES} " +
+                        "fullMixerFx=$effects configuredFxBuses=${if (effects) MixerProgram.MAX_BUSES else 0} soundingFxBuses=${if (effects) 17 else 0} mixerPcmBytes=${MixerDsp.PCM_BYTES} " +
                         "sourcePitch=24/17st handSpeed=+/-8 lateSourceFrame=$late renderAllocatedBytes=$allocated firstAllocatingBlock=$firstAllocatingBlock " +
                         "p99ns=${times[9899]} maxNs=${times.last()} p99BlockFraction=${times[9899] / 4_000_000.0} " +
                         "globalPcmPeak=${stats.peakBytes} globalPcmLimit=${stats.limitBytes} underrunFrames=${engine.pcmUnderrunFrames}; synthetic JVM, no device claim")
@@ -126,7 +126,7 @@ class GlobalPcmRealtimeTest {
                         assertTrue(engine.mixerReadout.copyInto(meter))
                         assertTrue(meter.peak[MixerProgram.DELAY_RETURN * 2] > 0f)
                         assertTrue(meter.peak[MixerProgram.REVERB_RETURN * 2] > 0f)
-                        assertTrue((0 until MixerProgram.MAX_BUSES).all { meter.peak[it * 2] > 0f })
+                        assertTrue(((0 until 16).toList() + MixerProgram.UNROUTED_BUS).all { meter.peak[it * 2] > 0f })
                     }
                     engine.controls.offer(EngineCommand.StopAll(engine.frame, id))
                     engine.render(stopOutput)

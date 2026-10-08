@@ -10,6 +10,8 @@ import com.choplab.ui.chop.LiveChopTimingState
  */
 const val CONTINUOUS_TIMELINE_RATE = 48_000
 
+enum class WaveformLoadState { LOADING, READY, FAILED }
+
 enum class ContinuousStage { CAPTURE, CHOP, BEAT, SAVE }
 enum class ContinuousPane { PADS, TIMELINE }
 enum class ContinuousPadMode { ONE_SHOT, GATE, LOOP }
@@ -50,7 +52,7 @@ enum class ContinuousStatus {
     VOICE_EMPTY, VOICE_TOO_SHORT, VOICE_NOT_SAVED, VOICE_NO_ROOM, PLACE_NO_ROOM, PLACE_FAILED,
     /** A song edit refused, as the song could no longer play: too many clips at once, too many or too long. */
     SONG_FULL,
-    MIC_DENIED, MIC_UNAVAILABLE,
+    MIC_DENIED, MIC_UNAVAILABLE, INPUT_TIMEOUT,
     SOURCE_RECORDED, SOURCE_RECORDING_LIMIT, SOURCE_RECORDING_INTERRUPTED,
     SYSTEM_DENIED, SYSTEM_NO_DISPLAY, SYSTEM_UNAVAILABLE, SYSTEM_TIMEOUT, SYSTEM_EMPTY,
     /** Refused because a take is being recorded. */
@@ -174,9 +176,14 @@ enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
     val projectTitle: String = "",
     val documentRevision: Long = 0,
     val newProjectRevision: Long? = null,
+    val openProjectRevision: Long? = null,
+    val closing: Boolean = false,
     val autosaveFailed: Boolean = false,
     val pendingRecording: Boolean = false,
     val pendingRecordingApplied: Boolean = false,
+    val pendingRecordingCanRecoverSource: Boolean = false,
+    val assetWaveforms: Map<String, WaveformLoadState> = emptyMap(),
+    val assetWaveformNames: Map<String, String> = emptyMap(),
     val recordingPunch: Boolean = false,
     val recordingInterruption: RecordingInterruption? = null,
     /** Before-start storage/document estimates; actual capture limits come from the input readout. */
@@ -203,6 +210,7 @@ enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
     val selectedBank: Int = 0,
     val pads: List<ContinuousPad> = emptyList(),
     val selectedPadId: Int = 0,
+    val selectedPadSnapshot: com.choplab.core.model.Pad? = null,
     val tracks: List<ContinuousTrack> = emptyList(),
     val clips: List<ContinuousClip> = emptyList(),
     val selectedClipId: String? = null,
@@ -309,6 +317,9 @@ class ContinuousHitGesture(val padId: Int, val songFrame: Long)
 /** One physical press, captured before awaiting release; it cannot cross a pass or document revision. */
 data class ContinuousChopGesture(val pass: Any, val revision: Long, val output: LiveChopOutput)
 
+/** A short-lived confirmation of one exact PAD, checked again when the action executes. */
+data class PadClearConfirmation(val pad: com.choplab.core.model.Pad, val revision: Long, val expiresAt: kotlin.time.TimeMark)
+
 /** Typed requests. Hosts/Studio confirm every edit; UI drag previews are never document commits. */
 sealed interface ContinuousEditorAction {
     data object RevealCompletedOutput : ContinuousEditorAction
@@ -354,6 +365,8 @@ sealed interface ContinuousEditorAction {
     data object StopSourceRecording : ContinuousEditorAction
     data object DiscardSourceRecording : ContinuousEditorAction
     data object OpenProject : ContinuousEditorAction
+    data class ConfirmOpenProject(val saveCurrent: Boolean, val revision: Long) : ContinuousEditorAction
+    data object CancelOpenProject : ContinuousEditorAction
     data class OpenProjectFile(val location: com.choplab.core.Location) : ContinuousEditorAction
     data object SaveProject : ContinuousEditorAction
     data class Mixer(val action: com.choplab.ui.mixer.MixerAction) : ContinuousEditorAction
@@ -402,7 +415,7 @@ sealed interface ContinuousEditorAction {
     data class SetPadMode(val padId: Int, val mode: ContinuousPadMode) : ContinuousEditorAction
     /** 0 (none) to 4, as in the earlier app. */
     data class SetPadChoke(val padId: Int, val group: Int) : ContinuousEditorAction
-    data class ClearPad(val padId: Int) : ContinuousEditorAction
+    data class ClearPad(val padId: Int, val confirmation: PadClearConfirmation? = null) : ContinuousEditorAction
     /** Explicit user placement only: original source is never placed by merely changing stages. */
     data class PlacePad(val padId: Int, val trackId: String?, val timelineFrame: Long) : ContinuousEditorAction
     /**
@@ -411,6 +424,7 @@ sealed interface ContinuousEditorAction {
      */
     data class FillPad(val padId: Int, val trackId: String?, val timelineFrame: Long, val spacing: ContinuousGrid, val bars: Int) : ContinuousEditorAction
     data class SelectClip(val clipId: String?) : ContinuousEditorAction
+    data class SetClipPosition(val clipId: String, val timelineStartFrame: Long, val expectedRevision: Long) : ContinuousEditorAction
     data class MoveClip(val clipId: String, val trackId: String, val timelineStartFrame: Long) : ContinuousEditorAction
     /** Moves the clip to the next grid line later (or earlier); on a free grid, by one second. */
     data class NudgeClip(val clipId: String, val forward: Boolean) : ContinuousEditorAction
@@ -455,6 +469,8 @@ sealed interface ContinuousEditorAction {
     data object StopVoice : ContinuousEditorAction
     data object DiscardVoice : ContinuousEditorAction
     data object DiscardHits : ContinuousEditorAction
+    data class RetryWaveforms(val assetHash: String) : ContinuousEditorAction
+    data object RecoverRecordingAsSource : ContinuousEditorAction
     data object RetryRecordingSave : ContinuousEditorAction
     data object DiscardPendingRecording : ContinuousEditorAction
     /**

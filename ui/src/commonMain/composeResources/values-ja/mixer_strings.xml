@@ -32,6 +32,7 @@
     <string name="mixer_returns">共通リターン</string>
     <string name="mixer_delay_on">ディレイを使う</string>
     <string name="mixer_delay_time">ディレイ時間 (ms)</string>
+    <string name="mixer_delay_range">範囲 1/48 ms（1フレーム）〜2000 ms。最も近いフレームへ丸めます。</string>
     <string name="mixer_feedback">フィードバック (%)</string>
     <string name="mixer_delay_return">ディレイ戻り音量 (%)</string>
     <string name="mixer_reverb_on">リバーブを使う</string>

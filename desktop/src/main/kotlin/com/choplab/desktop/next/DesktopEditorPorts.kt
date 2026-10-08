@@ -81,7 +81,9 @@ internal class DesktopEditorPorts(
         override suspend fun original(project: com.choplab.core.model.Project, draft: com.choplab.core.vocal.VocalPitchDraft) =
             pitchRenderer.original(project, draft, if (japanese) "原音の試聴" else "Original audition")
     }
-    override val vocalPunch = VocalPunchCapture(backend.studio, backend.engine, backend.voice)
+    override val vocalPunch = VocalPunchCapture(backend.studio, backend.engine, backend.voice,
+        inputFailure = { if (microphoneDenied()) com.choplab.core.vocal.PunchProblem.PERMISSION else com.choplab.core.vocal.PunchProblem.NO_INPUT },
+        cancelOpening = ::cancelVoiceOpening)
     override val vocalTakes = object : com.choplab.ui.vocal.VocalTakePort {
         override val preview = speechPreview
         override suspend fun render(project: com.choplab.core.model.Project, draft: com.choplab.core.vocal.VocalCompDraft, name: String) =
@@ -165,10 +167,18 @@ internal class DesktopEditorPorts(
     override suspend fun startVoice(maxSeconds: Int) = when (backend.voice.start(maxSeconds)) {
         VoiceTakes.Start.STARTED -> VoiceStart.STARTED
         VoiceTakes.Start.NO_ROOM -> VoiceStart.NO_ROOM
-        VoiceTakes.Start.NO_INPUT -> if (backend.macAudio?.microphonePermission in setOf(
-            com.choplab.desktop.audio.MacMicrophonePermission.Status.DENIED,
-            com.choplab.desktop.audio.MacMicrophonePermission.Status.RESTRICTED)) VoiceStart.DENIED else VoiceStart.UNAVAILABLE
+        VoiceTakes.Start.NO_INPUT -> voiceStartFailure()
     }
+    private fun microphoneDenied() = backend.macAudio?.microphonePermission in setOf(
+        com.choplab.desktop.audio.MacMicrophonePermission.Status.DENIED, com.choplab.desktop.audio.MacMicrophonePermission.Status.RESTRICTED)
+    private fun voiceStartFailure() = when {
+        backend.voice.openingFailure == com.choplab.jvm.InputOpeningFailure.TIMEOUT ||
+            backend.macAudio?.microphonePermission == com.choplab.desktop.audio.MacMicrophonePermission.Status.TIMEOUT -> VoiceStart.TIMEOUT
+        microphoneDenied() -> VoiceStart.DENIED
+        else -> VoiceStart.UNAVAILABLE
+    }
+    override suspend fun prepareVoiceTakeAcceptance(project: com.choplab.core.model.Project, revision: Long) = backend.voice.prepareAcceptance(project, revision)
+    override suspend fun retryPunchTake(name: String) = backend.voice.stopPunch(name)
     override fun cancelVoiceOpening() { backend.macAudio?.cancelOpening(); backend.voice.cancelOpening() }
     override fun voiceInputReadout() = backend.voice.inputReadout()
     override suspend fun voiceRecordingEstimateMillis(maxSeconds: Int) = backend.voice.estimateMillis(maxSeconds)
@@ -178,9 +188,7 @@ internal class DesktopEditorPorts(
         override suspend fun startArmedVoice(maxSeconds: Int) = when (backend.voice.start(maxSeconds, waitForCue = true)) {
             VoiceTakes.Start.STARTED -> VoiceStart.STARTED
             VoiceTakes.Start.NO_ROOM -> VoiceStart.NO_ROOM
-            VoiceTakes.Start.NO_INPUT -> if (backend.macAudio?.microphonePermission in setOf(
-            com.choplab.desktop.audio.MacMicrophonePermission.Status.DENIED,
-            com.choplab.desktop.audio.MacMicrophonePermission.Status.RESTRICTED)) VoiceStart.DENIED else VoiceStart.UNAVAILABLE
+            VoiceTakes.Start.NO_INPUT -> voiceStartFailure()
         }
         override fun cueVoiceAt(engineFrame: Long): Boolean = backend.engine.estimatedOutputNanos(engineFrame)?.let(backend.voice::cueAt) == true
         override fun armingTimedOut() = backend.voice.armingTimedOut
@@ -215,18 +223,18 @@ internal class DesktopEditorPorts(
         DesktopProfile.dataDirectory(preview = true).toPath().resolve("audio-library"), backend::validateLibraryFile)?.let { backend.files.registerNamed(it.path, it.title, it.hash) }
     override suspend fun chooseAudio() = choose(false, OriginalAudioImportPort.EXTENSIONS, if (japanese) "音源を開く" else "Open audio")?.let(backend.files::register)
     override suspend fun chooseOpen() = choose(false, listOf("choplab"), if (japanese) "制作を開く" else "Open project")?.let(backend.files::register)
-    override suspend fun chooseSave() = choose(true, listOf("choplab"), if (japanese) "制作を保存" else "Save project")?.let(backend.files::register)
+    override suspend fun chooseSave() = choose(true, listOf("choplab"), if (japanese) "制作を保存" else "Save project", suggestedName("choplab"))?.let(backend.files::register)
     override val outputRevealAvailable get() = outputRevealer.available()
     override fun outputDisplayName(location: Location) = backend.files.resolve(location).fileName.toString()
     override suspend fun revealOutput(location: Location) = outputRevealer.reveal(backend.files.resolve(location))
     override val stemsAvailable = true
     override fun readMixer(target: com.choplab.engine.MixerSnapshot) = backend.engine.status.value.phase == DriverPhase.ATTACHED && backend.engine.copyMixerReadout(target)
     override suspend fun chooseStems(frames: Long): com.choplab.core.StemExportRequest? {
-        val path = choose(true, listOf("zip"), if (japanese) "パート別WAVを書き出す" else "Export stems") ?: return null
+        val path = choose(true, listOf("zip"), if (japanese) "パート別WAVを書き出す" else "Export stems", suggestedName("zip")) ?: return null
         return com.choplab.core.StemExportRequest(backend.files.register(path), Math.toIntExact(frames))
     }
     override suspend fun chooseExport(frames: Long): ExportRequest? {
-        val path = choose(true, listOf("wav"), if (japanese) "WAVを書き出す" else "Export WAV") ?: return null
+        val path = choose(true, listOf("wav"), if (japanese) "WAVを書き出す" else "Export WAV", suggestedName("wav")) ?: return null
         return ExportRequest(backend.files.register(path), Math.toIntExact(frames), bits = 24)
     }
     suspend fun confirmCloseWithoutAutosave(): Boolean = suspendCancellableCoroutine { answer ->
@@ -239,7 +247,8 @@ internal class DesktopEditorPorts(
             if (answer.isActive) answer.resume(choice == JOptionPane.YES_OPTION)
         }
     }
-    private suspend fun choose(save: Boolean, extensions: List<String>, title: String): Path? = suspendCancellableCoroutine { answer ->
+    private fun suggestedName(extension: String) = nextSuggestedFilename(backend.studio.document.value.project.title, extension, japanese)
+    private suspend fun choose(save: Boolean, extensions: List<String>, title: String, suggestedName: String? = null): Path? = suspendCancellableCoroutine { answer ->
         SwingUtilities.invokeLater {
             if (!answer.isActive) return@invokeLater
             val extension = extensions.first()
@@ -247,6 +256,7 @@ internal class DesktopEditorPorts(
                 val picker = FileDialog(parent() as? Frame, title, if (save) FileDialog.SAVE else FileDialog.LOAD)
                 answer.invokeOnCancellation { SwingUtilities.invokeLater { picker.dispose() } }
                 try {
+                    if (save && suggestedName != null) picker.file = suggestedName
                     picker.filenameFilter = java.io.FilenameFilter { _, name -> extensions.any { name.endsWith(".$it", true) } }
                     picker.isVisible = true
                     picker.files.firstOrNull()?.toPath() ?: picker.file?.let { Path.of(picker.directory, it) }
@@ -254,6 +264,7 @@ internal class DesktopEditorPorts(
             } else {
                 val picker = JFileChooser().apply {
                     dialogTitle = title
+                    if (save && suggestedName != null) selectedFile = java.io.File(suggestedName)
                     fileFilter = FileNameExtensionFilter(extensions.joinToString(", ") { it.uppercase() }, *extensions.toTypedArray())
                     isAcceptAllFileFilterUsed = false
                 }
@@ -262,14 +273,16 @@ internal class DesktopEditorPorts(
                 if (result == JFileChooser.APPROVE_OPTION) picker.selectedFile.toPath() else null
             }
             var selected: Path? = null
-            if (file != null) {
+            if (file != null && answer.isActive) {
                 selected = if (save && !file.fileName.toString().endsWith(".$extension", ignoreCase = true))
                     file.resolveSibling(file.fileName.toString() + ".$extension") else file
                 if (save && Files.exists(selected)) {
-                    val overwrite = JOptionPane.showConfirmDialog(parent(),
-                        if (japanese) "同じ名前のファイルを置き換えますか？" else "Replace the existing file?",
-                        title, JOptionPane.YES_NO_OPTION)
-                    if (overwrite != JOptionPane.YES_OPTION) selected = null
+                    val prompt = JOptionPane(if (japanese) "同じ名前のファイルを置き換えますか？" else "Replace the existing file?",
+                        JOptionPane.QUESTION_MESSAGE, JOptionPane.YES_NO_OPTION)
+                    val dialog = prompt.createDialog(parent(), title)
+                    answer.invokeOnCancellation { SwingUtilities.invokeLater { dialog.dispose() } }
+                    try { if (answer.isActive) dialog.isVisible = true } finally { dialog.dispose() }
+                    if (prompt.value != JOptionPane.YES_OPTION) selected = null
                 }
             }
             if (answer.isActive) answer.resume(selected)

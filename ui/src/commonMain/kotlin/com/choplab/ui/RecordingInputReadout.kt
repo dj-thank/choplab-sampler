@@ -7,7 +7,11 @@ data class RecordingInputReadout(
     val peakLevel: Float? = null,
     /** A stopped recording still needs explicit acceptance into the document, or explicit discard. */
     val pendingSave: Boolean = false,
+    val pendingAccepted: Boolean = false,
+    val channels: Int? = null,
+    val leftPeak: Float? = null,
+    val rightPeak: Float? = null,
     val interruption: RecordingInterruption? = null,
 )
 
-enum class RecordingInterruption { DEVICE_LOST, READ_FAILED, STORAGE_FAILED, OUTPUT_LOST, UNKNOWN }
+enum class RecordingInterruption { DEVICE_LOST, READ_FAILED, STORAGE_FAILED, OUTPUT_LOST, PERMISSION, UNKNOWN }

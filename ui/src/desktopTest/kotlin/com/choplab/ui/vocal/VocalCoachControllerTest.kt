@@ -9,6 +9,34 @@ import kotlinx.coroutines.flow.*
 import kotlin.test.*
 
 class VocalCoachControllerTest {
+    @Test fun invalidRangesIdentifyTheFieldAndNeverStartAnalysis() = runBlocking {
+        val f = Fixture()
+        try {
+            for ((start, end, expectedStart, expectedEnd) in listOf(
+                listOf("oops", "1", CoachRangeProblem.NUMBER, null),
+                listOf("NaN", "1", CoachRangeProblem.NUMBER, null),
+                listOf("-1", "1", CoachRangeProblem.BOUNDS, null),
+                listOf("0", "Infinity", null, CoachRangeProblem.NUMBER),
+                listOf("0", "1801", null, CoachRangeProblem.BOUNDS),
+                listOf("2", "2", null, CoachRangeProblem.ORDER),
+                listOf("2", "1", null, CoachRangeProblem.ORDER),
+                listOf("0", "30.1", null, CoachRangeProblem.TOO_LONG),
+            )) {
+                assertTrue(f.controller.dispatch(CoachAction.Range(start as String, end as String)))
+                val validation = f.controller.state.value.validateRange()
+                assertEquals(expectedStart, validation.startProblem)
+                assertEquals(expectedEnd, validation.endProblem)
+                assertNull(f.controller.state.value.request())
+                assertFalse(f.controller.dispatch(CoachAction.Analyze))
+                assertNull(f.request)
+            }
+            assertTrue(f.controller.dispatch(CoachAction.Range(" 0 ", "30")))
+            assertNotNull(f.controller.state.value.request())
+            assertTrue(f.controller.dispatch(CoachAction.Analyze))
+            assertEquals(30L * 48_000, f.request?.endFrame)
+        } finally { f.close() }
+    }
+
     @OptIn(InternalCoroutinesApi::class)
     @Test fun anOldDocumentNotificationCannotCancelAnalysisAfterReloadAdoptsTheCurrentRevision() = runBlocking {
         val captured = CompletableDeferred<Unit>(); val releaseNotification = CompletableDeferred<Unit>()

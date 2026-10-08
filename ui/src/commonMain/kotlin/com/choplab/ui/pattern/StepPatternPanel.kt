@@ -25,6 +25,16 @@ fun StepPatternPanel(controller: StepPatternController, onClose: () -> Unit, mod
     val state by controller.state.collectAsState()
     val scope = rememberCoroutineScope()
     fun dispatch(action: PatternAction) { scope.launch { controller.dispatch(action) } }
+    fun requestClose(discard: Boolean = false) { scope.launch { if (controller.requestClose(discard)) onClose() } }
+    if (state.closeConfirmation) AlertDialog(onDismissRequest = { scope.launch { controller.keepEditing() } },
+        title = { Text(stringResource(Res.string.pattern_close_draft_title)) },
+        text = { Text(stringResource(Res.string.pattern_close_draft_hint)) },
+        confirmButton = { TextButton({ requestClose(discard = true) }, modifier = Modifier.heightIn(min = 48.dp).testTag("pattern-close-discard")) {
+            Text(stringResource(Res.string.pattern_close_discard))
+        } },
+        dismissButton = { TextButton({ scope.launch { controller.keepEditing() } }, modifier = Modifier.heightIn(min = 48.dp).testTag("pattern-close-keep")) {
+            Text(stringResource(Res.string.pattern_close_keep))
+        } })
     var choosePattern by remember { mutableStateOf(false) }
     var choosePad by remember { mutableStateOf(false) }
     var firstBar by remember(state.firstBar) { mutableStateOf(state.firstBar.toString()) }
@@ -177,8 +187,7 @@ fun StepPatternPanel(controller: StepPatternController, onClose: () -> Unit, mod
             }
             OutlinedTextField(firstBar, { input -> firstBar = input.take(5); input.toIntOrNull()?.takeIf { it in 1..26_041 }?.let { dispatch(PatternAction.FirstBar(it)) } },
                 enabled = state.editable, isError = !validStart, label = { Text(stringResource(Res.string.pattern_editor_start)) }, modifier = Modifier.fillMaxWidth().testTag("pattern-start"))
-            val bars = state.sequence.sumOf { section -> state.project.patterns.first { it.id == section.patternId }.bars * section.repeats }
-            if (state.sequence.isNotEmpty()) Text(stringResource(Res.string.pattern_editor_destination, destinations, state.firstBar, state.firstBar + bars),
+            if (state.sequence.isNotEmpty()) Text(stringResource(Res.string.pattern_editor_destination, destinations, state.firstBar, state.lastQueuedBar),
                 Modifier.testTag("pattern-queue-range"))
             Button({ dispatch(PatternAction.Place(trackName)) }, enabled = state.editable && !state.dirty && state.sequence.isNotEmpty() && validStart,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("pattern-place")) { Text(stringResource(Res.string.pattern_editor_place)) }
@@ -192,7 +201,7 @@ fun StepPatternPanel(controller: StepPatternController, onClose: () -> Unit, mod
             if (state.problem == PatternProblem.STALE_DOCUMENT) OutlinedButton({ dispatch(PatternAction.Reload) },
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("pattern-reload")) { Text(stringResource(Res.string.pattern_editor_reload)) }
             if (state.applied) Text(stringResource(Res.string.pattern_editor_applied), Modifier.testTag("pattern-applied"))
-            OutlinedButton({ controller.close(); onClose() }, enabled = state.phase != PatternPhase.APPLYING,
+            OutlinedButton({ requestClose() }, enabled = state.phase != PatternPhase.APPLYING,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).testTag("pattern-close")) { Text(stringResource(Res.string.pattern_editor_close)) }
         }
     }

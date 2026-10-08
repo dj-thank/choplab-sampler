@@ -37,11 +37,14 @@ data class StepPatternState(
     val problem: PatternProblem? = null,
     val trimBars: Int? = null,
     val applied: Boolean = false,
+    val closeConfirmation: Boolean = false,
 ) {
     val dirty: Boolean get() = project.patterns.firstOrNull { it.id == draft.id } != draft || name != draft.name
+    val hasUnappliedWork: Boolean get() = dirty || sequence.isNotEmpty()
+    val lastQueuedBar: Int get() = firstBar + sequence.sumOf { section -> project.patterns.first { it.id == section.patternId }.bars * section.repeats } - 1
     val steps: Int get() = draft.lengthTicks / gridTicks
     val pages: Int get() = (steps + columns - 1) / columns
-    val editable: Boolean get() = phase == PatternPhase.EDITING && availability == PatternAvailability.EDITABLE && problem != PatternProblem.STALE_DOCUMENT
+    val editable: Boolean get() = !closeConfirmation && phase == PatternPhase.EDITING && availability == PatternAvailability.EDITABLE && problem != PatternProblem.STALE_DOCUMENT
 }
 sealed interface PatternAction {
     data class Select(val id: String) : PatternAction
@@ -96,12 +99,23 @@ class StepPatternController(
                 serial++; work?.cancel(); publish(state.value.copy(phase = PatternPhase.EDITING, problem = blocked(value)))
             }
         } } }
-        jobs.launch { document.collect { current -> lock.withLock {
-            if (!closed && current.revision != state.value.revision && state.value.phase != PatternPhase.APPLYING) {
+        jobs.launch { document.collect { lock.withLock {
+            if (!closed && document.value.revision != state.value.revision && state.value.phase != PatternPhase.APPLYING) {
                 serial++; work?.cancel(); publish(state.value.copy(phase = PatternPhase.EDITING, problem = PatternProblem.STALE_DOCUMENT))
             }
         } } }
     }
+
+    /** Every user close entrance shares this guard; disposal itself remains unconditional. */
+    suspend fun requestClose(discard: Boolean = false): Boolean = lock.withLock {
+        if (closed) return@withLock true
+        if (state.value.phase == PatternPhase.APPLYING) return@withLock false
+        if (!discard && state.value.hasUnappliedWork) {
+            publish(state.value.copy(closeConfirmation = true)); return@withLock false
+        }
+        close(); true
+    }
+    suspend fun keepEditing() = lock.withLock { if (!closed) publish(state.value.copy(closeConfirmation = false)) }
 
     suspend fun dispatch(action: PatternAction): Boolean {
         if (action == PatternAction.Save) return save()

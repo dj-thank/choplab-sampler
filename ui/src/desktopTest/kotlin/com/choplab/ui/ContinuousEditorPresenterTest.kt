@@ -25,6 +25,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlin.math.pow
 import kotlin.test.*
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 
 /** Presenter/Studio contracts with fake platform ports; not physical audio evidence. */
 class ContinuousEditorPresenterTest {
@@ -256,6 +258,7 @@ class ContinuousEditorPresenterTest {
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
             h.until { it.selectedTrackId == "a" }
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenProjectFile(Location("project"))))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ConfirmOpenProject(false, h.studio.document.value.revision)))
             h.until { it.selectedClipId == null && it.selectedTrackId == null }
         } finally { h.close() }
     }
@@ -1659,7 +1662,7 @@ class ContinuousEditorPresenterTest {
             assertEquals(PlayMode.ONE_SHOT, h.studio.document.value.project.pads[1].mode)
             // Clearing a looping PAD stops it, empties it and closes the panel.
             val before = h.engine.commands.size
-            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ClearPad(0)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ClearPad(0, PadClearConfirmation(h.studio.document.value.project.pads[0], h.studio.document.value.revision, TimeSource.Monotonic.markNow() + 5.seconds))))
             h.until { !it.padPlayOpen && it.pads[0].kind == ContinuousPadKind.EMPTY && 0 !in it.pads.filter { p -> p.looping }.map { p -> p.id } }
             assertNull(h.studio.document.value.project.pads[0].assetHash)
             assertTrue(h.engine.commands.drop(before).any { it is EngineCommand.Release && it.padId == 0 }, "The looping PAD stops")
@@ -2228,7 +2231,7 @@ class ContinuousEditorPresenterTest {
     }
 
     @Test fun aRepeatCopiesItsBarsIntoTheEmptyBarsAfterInOneUndoAndIsRefusedOverOtherClips() = runBlocking<Unit> {
-        val h = Harness()
+        val h = Harness { p -> p.copy(pads = p.pads.map { if (it.id == 0) it.copy(range = FrameRange(0, 24_000)) else it }.frozen()) }
         try {
             h.until { it.permits(ContinuousCapability.PLACE_PAD) }
             // 120 BPM: four beats of the first bar, repeated four times, fill five bars.
@@ -2243,6 +2246,19 @@ class ContinuousEditorPresenterTest {
             h.until { it.clips.size == 5 }
             assertFalse(h.presenter.dispatch(ContinuousEditorAction.RepeatBars(0, 1, 1)))
             assertEquals(5, h.studio.document.value.project.clips.size)
+        } finally { h.close() }
+    }
+
+    @Test fun aRepeatRefusesAClipThatStartsInTheSourceBarButSpillsIntoTheDestination() = runBlocking<Unit> {
+        val h = Harness()
+        try {
+            h.until { it.permits(ContinuousCapability.PLACE_PAD) }
+            // The one-second PAD on beat four extends beyond the two-second bar.
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.FillPad(0, null, 0, ContinuousGrid.BEAT, 1)))
+            h.until { it.clips.size == 4 }
+            val before = h.studio.document.value
+            assertFalse(h.presenter.dispatch(ContinuousEditorAction.RepeatBars(0, 1, 1)))
+            assertEquals(before, h.studio.document.value, "Refusal keeps the entire document and Undo revision")
         } finally { h.close() }
     }
 
@@ -2519,7 +2535,8 @@ class ContinuousEditorPresenterTest {
     }
 
     @Test fun aPassEndedByTheSongReportsWhatGoesWrongInsteadOfThrowing() = runBlocking<Unit> {
-        // A document from elsewhere with more tracks than the editor edits: its song can play, but no edit of it goes on.
+        // Seventeen tracks are valid. Reject only preparation of the added pass so this
+        // checks failure recovery without relying on the former sixteen-track limit.
         val h = Harness { p -> p.copy(tracks = (1..17).map { Track("t$it", "T$it", TrackKind.BANK) }.frozen(),
             clips = frozenListOf(Clip("song", "t1", p.pads[1].assetHash!!, FrameRange(0, 48_000), timelineStartFrame = 0))) }
         try {
@@ -2527,8 +2544,11 @@ class ContinuousEditorPresenterTest {
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordHits))
             h.until { it.recordingHits }
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.CaptureHit(0, 25_920)))
+            val before = h.studio.document.value
+            h.engine.refuses = { it.clips.size > 1 }
             h.engine.transport = h.engine.transport.copy(playing = false, sequencePaused = false)
             h.until { !it.recordingHits && it.status == ContinuousStatus.FAILED }
+            assertEquals(before, h.studio.document.value, "A refused pass leaves the song and Undo revision intact")
             // The poll goes on: another pass still ends with the song.
             h.engine.transport = h.engine.transport.copy(playing = true)
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordHits))
@@ -3244,6 +3264,7 @@ class ContinuousEditorPresenterTest {
             try {
                 h.ports.openLocation = Location("old.choplab")
                 assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenProject))
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.ConfirmOpenProject(false, h.studio.document.value.revision)))
                 h.until { it.status == status }
                 assertNull(h.studio.document.value.savedRevision, "A rescued document is new until it is saved")
             } finally { h.close() }
@@ -3262,6 +3283,7 @@ class ContinuousEditorPresenterTest {
         try {
             h.ports.openLocation = Location("old.choplab")
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenProject))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ConfirmOpenProject(false, h.studio.document.value.revision)))
             withTimeout(5_000) { while (h.studio.work.value.jobId != null || h.studio.work.value.preparationId != null) delay(5) }
             // A mailbox turn after Open's completion ensures its notice was emitted before the dispatcher is released.
             h.studio.dispatch(Action.RefreshTransport)

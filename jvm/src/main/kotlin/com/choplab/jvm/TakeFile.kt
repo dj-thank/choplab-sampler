@@ -21,7 +21,8 @@ import java.util.UUID
  * it stopped.
  */
 class TakeFile(scratch: Path, private val sampleRate: Int, private val channels: Int, private val maxFrames: Long,
-               reserved: PcmMemoryBudget.Reservation? = null) {
+               reserved: PcmMemoryBudget.Reservation? = null,
+               private val deleteRecovery: (Path) -> Unit = { Files.deleteIfExists(it) }) {
     init { require(sampleRate in 8_000..192_000 && channels in 1..2 && maxFrames > 0) }
     // Synchronous construction is worker-only. VoiceTakes supplies its cancellable pre-reservation.
     private val reservation = reserved ?: kotlinx.coroutines.runBlocking { PcmMemoryBudget.shared.reserve(MEMORY_BYTES) }
@@ -35,6 +36,7 @@ class TakeFile(scratch: Path, private val sampleRate: Int, private val channels:
     /** Whether any sample was not silence: an input that delivers only zeros (muted, or not allowed) recorded nothing. */
     private var heard = false
     private var sealed: Pending? = null
+    val recoveryFile: Path? get() = file
 
     init {
         // The header goes in last, once the length is known.
@@ -120,6 +122,7 @@ class TakeFile(scratch: Path, private val sampleRate: Int, private val channels:
 
     /** Complete float originals are recoverable after restart; invalid files remain private for diagnosis. */
     class Pending internal constructor(val file: Path, private val asset: Asset) {
+        val hash: String get() = asset.hash
         fun publish(store: FileAssetStore, name: String): Asset = asset.copy(name = name).also { store.adoptRetaining(it, file) }
         fun discard() { Files.deleteIfExists(file) }
         val recordedMillis get() = asset.frames * 1_000 / asset.sampleRate
@@ -177,7 +180,7 @@ class TakeFile(scratch: Path, private val sampleRate: Int, private val channels:
         finally {
             try {
                 channel?.close()
-                file?.let(Files::deleteIfExists)
+                file?.let(deleteRecovery)
                 file = null
                 sealed = null
             } finally { output = null; channel = null; bytes = null; reservation.close() }

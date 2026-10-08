@@ -12,13 +12,22 @@ object FakeSystemAudioHelper {
     @JvmStatic fun main(args: Array<String>) {
         val mode = args.firstOrNull() ?: "normal"
         val out = System.out
-        if (mode == "float" || mode == "float-dies") {
+        if (mode == "float" || mode == "float-dies" || mode == "float-permission" || mode == "float-error") {
             out.write("CHOPLAB-FLOAT32 48000 2\n".toByteArray()); out.flush()
             val bytes = java.nio.ByteBuffer.allocate(48_000 * 8).order(java.nio.ByteOrder.LITTLE_ENDIAN)
             repeat(48_000) { frame -> bytes.putFloat(.1234567f + frame / 1_000_000f); bytes.putFloat(-.2345678f - frame / 1_000_000f) }
             for (at in bytes.array().indices step 7) { out.write(bytes.array(), at, minOf(7, bytes.capacity() - at)); out.flush() }
+            if (mode == "float-permission" || mode == "float-error") {
+                System.err.println("CHOPLAB-END ${if (mode == "float-permission") "PERMISSION" else "READ_FAILED"}")
+                System.err.flush(); exitProcess(2)
+            }
             if (mode == "float-dies") exitProcess(2)
             while (System.`in`.read() >= 0) Unit
+            return
+        }
+        if (mode == "mic-late" || mode == "mic-denied") {
+            if (mode == "mic-late") Thread.sleep(10_000)
+            out.write("CHOPLAB-MIC ${if (mode == "mic-denied") "DENIED" else "AUTHORIZED"}\n".toByteArray()); out.flush()
             return
         }
         if (mode == "no-display") {

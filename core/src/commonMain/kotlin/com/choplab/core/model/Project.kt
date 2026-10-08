@@ -21,6 +21,8 @@ object ProjectLimits {
     const val BANK_COUNT = 8
     const val MAX_ASSETS = 256
     const val MAX_PATTERNS = 128
+    const val MAX_TRACKS = com.choplab.engine.Arrangement.MAX_TRACKS
+    const val MAX_CLIPS = 4096
     const val MAX_NOTES = 4096
     const val MAX_FRAMES = 30_000_000L
     const val MAX_ASSET_BYTES = 256L * 1024 * 1024
@@ -217,11 +219,11 @@ data class Project(
         require(pads.size == 128 && pads.map { it.id } == (0..127).toList())
         require(patterns.size in 1..ProjectLimits.MAX_PATTERNS && patterns.map { it.id }.distinct().size == patterns.size)
         require(song.size <= 1024 && song.all { section -> patterns.any { it.id == section.patternId } })
-        require(tracks.size <= 64 && tracks.map { it.id }.distinct().size == tracks.size)
+        require(tracks.size <= ProjectLimits.MAX_TRACKS && tracks.map { it.id }.distinct().size == tracks.size)
         require(banks.all { bank -> bank.trackId == null || tracks.any { it.id == bank.trackId && it.kind == TrackKind.BANK } }) {
             "A BANK route must reference a BANK track"
         }
-        require(clips.size <= 4096 && clips.map { it.id }.distinct().size == clips.size)
+        require(clips.size <= ProjectLimits.MAX_CLIPS && clips.map { it.id }.distinct().size == clips.size)
         require(lyrics.size <= 4096 && lyrics.map { it.id }.distinct().size == lyrics.size)
         require(lyricStructure == null || lyricStructure.sections.all { section -> section.lines.all { reading -> lyrics.any { it.id == reading.lineId } } })
         require(takes.size <= 1024 && takes.map { it.id }.distinct().size == takes.size)

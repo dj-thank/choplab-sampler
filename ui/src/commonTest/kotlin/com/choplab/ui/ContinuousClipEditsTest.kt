@@ -424,7 +424,10 @@ class ContinuousClipEditsTest {
         // At 97 BPM bars 2-5 run 475 052 frames from 118 762, and bars 6-9 one frame fewer, to 1 068 864.
         val odd = fixture().copy(tempo = Tempo(97_000))
         val last = apply(odd, ContinuousEditorAction.PlacePad(0, null, 593_813))
-        val copy = apply(last, ContinuousEditorAction.RepeatBars(118_762, 4, 1)).clips.last()
+        // A tail already sounding in the destination makes those bars occupied.
+        assertFailsWith<IllegalArgumentException> { apply(last, ContinuousEditorAction.RepeatBars(118_762, 4, 1)) }
+        val endingAtBoundary = apply(last, ContinuousEditorAction.TrimClip(last.clips.single().id, 0, 1, 593_813))
+        val copy = apply(endingAtBoundary, ContinuousEditorAction.RepeatBars(118_762, 4, 1)).clips.last()
         assertEquals(1_068_864L, copy.timelineStartFrame, "The last frame of bars 6-9, not bar 10's first")
         // 240 BPM: a bar is 48 000 frames and the two-second sound lasts two. Repeated every bar it would play over itself.
         val long = apply(fixture().copy(tempo = Tempo(240_000)), ContinuousEditorAction.PlacePad(0, null, 0))

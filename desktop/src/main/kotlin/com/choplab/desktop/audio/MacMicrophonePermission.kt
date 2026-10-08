@@ -9,13 +9,14 @@ import java.util.concurrent.atomic.AtomicReference
 internal class MacMicrophonePermission(
     private val helper: () -> File? = ::locateMacSystemAudioHelper,
     private val launch: (File) -> Process = { ProcessBuilder(it.absolutePath, "--microphone-permission").redirectError(ProcessBuilder.Redirect.DISCARD).start() },
-    private val timeoutMillis: Long = 60_000,
+    private val timeoutMillis: Long = 20_000,
 ) {
     enum class Status { AUTHORIZED, DENIED, RESTRICTED, UNKNOWN, CANCELLED, TIMEOUT }
     private val opening = AtomicReference<Process?>()
     private val generation = AtomicLong()
     fun cancel() { generation.incrementAndGet(); opening.getAndSet(null)?.destroyForcibly() }
-    fun request(): Status {
+    fun request(stillRequested: () -> Boolean = { true }): Status {
+        if (!stillRequested()) return Status.CANCELLED
         val token = generation.get()
         val executable = helper() ?: return Status.UNKNOWN
         var process: Process? = null
@@ -25,7 +26,7 @@ internal class MacMicrophonePermission(
             val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis)
             val line = StringBuilder()
             while (true) {
-                if (generation.get() != token) return Status.CANCELLED
+                if (generation.get() != token || !stillRequested()) return Status.CANCELLED
                 if (System.nanoTime() >= deadline) return Status.TIMEOUT
                 if (process.inputStream.available() == 0) {
                     if (!process.isAlive) return Status.UNKNOWN
@@ -36,8 +37,8 @@ internal class MacMicrophonePermission(
                 if (byte < 0 || line.length >= 80) return Status.UNKNOWN
                 line.append(byte.toChar())
             }
-            if (generation.get() != token) Status.CANCELLED else parse(line.toString())
-        } catch (_: Exception) { if (generation.get() != token) Status.CANCELLED else Status.UNKNOWN }
+            if (generation.get() != token || !stillRequested()) Status.CANCELLED else parse(line.toString())
+        } catch (_: Exception) { if (generation.get() != token || !stillRequested()) Status.CANCELLED else Status.UNKNOWN }
         finally { process?.let { opening.compareAndSet(it, null); if (it.isAlive) it.destroyForcibly() } }
     }
     companion object {

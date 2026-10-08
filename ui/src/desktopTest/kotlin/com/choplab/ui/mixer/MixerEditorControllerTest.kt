@@ -11,6 +11,49 @@ import kotlinx.coroutines.runBlocking
 import kotlin.test.*
 
 class MixerEditorControllerTest {
+    @Test fun equivalentNumericDraftsCanSwitchChannelsButInvalidOrChangedDraftsStayProtected() = runBlocking {
+        val h = BankPadEditorHarness()
+        val controller = MixerEditorController(h.studio) { intent, revision -> h.studio.dispatch(Action.Edit(intent, revision)).accepted }
+        try {
+            val before = h.studio.document.value
+            for (value in listOf("100.0", " 100 ", "1e2")) {
+                assertTrue(controller.dispatch(MixerAction.Open(MixerTarget.Master)))
+                assertTrue(controller.dispatch(MixerAction.Change(MixerField.GAIN, value)))
+                assertFalse(controller.view.value.canApply)
+                assertTrue(controller.dispatch(MixerAction.Select(MixerTarget.Bank(0))))
+                assertNull(controller.view.value.problem)
+                assertTrue(controller.dispatch(MixerAction.Cancel))
+            }
+            for (value in listOf("NaN", "", "101")) {
+                controller.dispatch(MixerAction.Open(MixerTarget.Master))
+                controller.dispatch(MixerAction.Change(MixerField.GAIN, value))
+                assertTrue(controller.dispatch(MixerAction.Select(MixerTarget.Master)), "Reselecting the same channel preserves its draft")
+                assertFalse(controller.dispatch(MixerAction.Select(MixerTarget.Bank(0))))
+                assertEquals(value, controller.view.value.draft!!.fields[MixerField.GAIN])
+                assertEquals(MixerProblem.UNAPPLIED, controller.view.value.problem)
+                controller.dispatch(MixerAction.Cancel)
+            }
+            assertEquals(before, h.studio.document.value)
+        } finally { h.close() }
+    }
+
+    @Test fun delayAcceptsItsDisplayedOneFrameMinimumAndRejectsZero() = runBlocking {
+        val h = BankPadEditorHarness()
+        val controller = MixerEditorController(h.studio) { intent, revision -> h.studio.dispatch(Action.Edit(intent, revision)).accepted }
+        try {
+            controller.dispatch(MixerAction.Open(MixerTarget.Master))
+            controller.dispatch(MixerAction.Change(MixerField.DELAY_TIME, "0"))
+            assertTrue(MixerField.DELAY_TIME in controller.view.value.invalidFields)
+            assertFalse(controller.dispatch(MixerAction.Apply))
+            controller.dispatch(MixerAction.Change(MixerField.DELAY_TIME, MixerField.DELAY_TIME.minimum.toString()))
+            assertTrue(controller.view.value.invalidFields.isEmpty())
+            assertTrue(controller.dispatch(MixerAction.Apply))
+            assertEquals(1, h.studio.document.value.project.mix.delay.frames)
+            assertTrue(h.studio.dispatch(Action.Undo).accepted)
+            assertEquals(h.initial, h.studio.document.value.project)
+        } finally { h.close() }
+    }
+
     @Test fun aBankDraftIsSilentAndCreatesItsRealRouteWithAllMixValuesInOneUndo() = runBlocking {
         val h = BankPadEditorHarness()
         val controller = MixerEditorController(h.studio) { intent, revision -> h.studio.dispatch(Action.Edit(intent, revision)).accepted }

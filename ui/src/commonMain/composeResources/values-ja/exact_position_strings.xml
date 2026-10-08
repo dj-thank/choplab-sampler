@@ -1,0 +1,8 @@
+<resources>
+    <string name="ce_exact_position">配置位置を正確に入力</string>
+    <string name="ce_exact_position_hint">曲上の開始位置です。元音の範囲は変わりません。上限: %1$s フレーム（48 kHz）。</string>
+    <string name="ce_position_frames">48 kHz フレーム</string>
+    <string name="ce_position_seconds">秒</string>
+    <string name="ce_position_invalid">0以上で上限以内の位置を入力してください。</string>
+    <string name="ce_position_resolved">適用位置: %1$s フレーム（秒入力は最も近いフレームへ丸めます）</string>
+</resources>

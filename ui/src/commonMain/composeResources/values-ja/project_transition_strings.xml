@@ -1,0 +1,7 @@
+<resources>
+    <string name="ce_open_project_save_hint">別の制作を開く前に、今の制作をファイルに保存しますか？</string>
+    <string name="ce_save_then_open">保存して開く</string>
+    <string name="ce_open_without_save">保存せず開く</string>
+    <string name="ce_closing_project">終了しています</string>
+    <string name="ce_closing_project_hint">録音と制作の保存を確認しています。</string>
+</resources>

@@ -1,5 +1,6 @@
 package com.choplab.ui.pattern
 
+import com.choplab.ui.CreationRevisionNotifications
 import com.choplab.core.edit.Intent
 import com.choplab.core.model.*
 import com.choplab.core.pattern.*
@@ -8,6 +9,48 @@ import kotlinx.coroutines.*
 import kotlin.test.*
 
 class StepPatternControllerTest {
+    @Test fun oldDocumentNotificationAfterReloadCannotInvalidateSavedOrPlacedPattern() = runBlocking {
+        for (place in listOf(false, true)) {
+            val notifications = CreationRevisionNotifications()
+            val f = PatternTestFixture(observeDocument = notifications::observe)
+            try {
+                withTimeout(5000) { notifications.captured.await() }
+                f.document.value = f.document.value.copy(revision = 1)
+                assertTrue(f.action(PatternAction.Reload))
+                assertTrue(f.action(PatternAction.Toggle(0)))
+                assertTrue(f.action(PatternAction.Save))
+                if (place) { assertTrue(f.action(PatternAction.Queue)); assertTrue(f.action(PatternAction.Place("Beat"))) }
+                notifications.release.complete(Unit)
+                withTimeout(5000) { notifications.delivered.await() }
+                assertNull(f.controller.state.value.problem)
+                assertEquals(f.document.value.revision, f.controller.state.value.revision)
+                assertTrue(f.controller.state.value.applied)
+            } finally { notifications.release.complete(Unit); f.close() }
+        }
+    }
+    @Test fun closeProtectsDraftAndQueueAndKeepRetainsEverySessionChoice() = runBlocking {
+        for (dirty in listOf(false, true)) {
+            val f = PatternTestFixture()
+            try {
+                assertTrue(f.action(PatternAction.Repeats(3)))
+                assertTrue(f.action(PatternAction.FirstBar(4)))
+                assertTrue(f.action(PatternAction.Queue))
+                if (dirty) { assertTrue(f.action(PatternAction.Name("Draft"))); assertTrue(f.action(PatternAction.Toggle(0))) }
+                val before = f.controller.state.value
+                assertFalse(f.controller.requestClose())
+                assertTrue(f.controller.state.value.closeConfirmation)
+                f.controller.keepEditing()
+                assertEquals(before, f.controller.state.value)
+                assertFalse(f.controller.requestClose())
+                assertTrue(f.controller.requestClose(discard = true))
+                assertEquals(PatternPhase.CLOSED, f.controller.state.value.phase)
+                assertTrue(f.edits.isEmpty()); assertEquals(0L, f.document.value.revision)
+            } finally { f.close() }
+        }
+        val unchanged = PatternTestFixture()
+        try { assertTrue(unchanged.controller.requestClose()) } finally { unchanged.close() }
+    }
+
     @Test fun tripletGridChangesPreserveNotesAndRejectClicksFromThePreviousGrid() = runBlocking<Unit> {
         val fixture = PatternTestFixture(selectedPad = 1)
         try {

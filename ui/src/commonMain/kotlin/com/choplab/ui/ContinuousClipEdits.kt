@@ -89,6 +89,10 @@ object ContinuousClipEdits {
         return ProgramCompiler.clipTickToFrame(first, tempo) until ProgramCompiler.clipTickToFrame(first + bars * BAR_TICKS, tempo)
     }
 
+    /** Half-open audible interval intersection, shared by the placement explanation and edit guard. */
+    fun overlapsFrames(startFrame: Long, durationFrames: Long, range: LongRange): Boolean =
+        durationFrames > 0 && !range.isEmpty() && startFrame <= range.last && startFrame + durationFrames > range.first
+
     /** The last line of [step] ticks that sounds at or before [at]. */
     private fun lineAtOrBefore(at: Long, tempo: Tempo, step: Long): Long {
         // A line sounds at the floor of its exact frame, as playback maps ticks, so the straight division can be one
@@ -121,6 +125,19 @@ object ContinuousClipEdits {
         var tracks: List<Track> = project.tracks
         fun bankTrack(padId: Int): Track = routes.trackForPad(padId).also { tracks = routes.tracks }
         var clips: List<Clip> = project.clips
+        val pitchCorrections = project.pitchCorrections.toMutableList()
+        val beatStretches = project.beatStretches.toMutableList()
+        fun copyRecipes(original: Clip, copy: Clip): Clip {
+            project.pitchCorrections.firstOrNull { it.clipId == original.id }?.let {
+                var recipeId: String
+                do { recipeId = freshId("pitch") } while (pitchCorrections.any { saved -> saved.id == recipeId })
+                pitchCorrections += it.copy(id = recipeId, clipId = copy.id)
+            }
+            project.beatStretches.firstOrNull { it.target == StretchTarget(StretchKind.CLIP, original.id) }?.let {
+                beatStretches += it.copy(target = StretchTarget(StretchKind.CLIP, copy.id))
+            }
+            return copy
+        }
         // Clips this gesture creates or reshapes must be audible. A zero-length clip saved by an
         // earlier build stays movable and deletable instead of blocking every other edit.
         val reshaped = mutableSetOf<String>()
@@ -179,6 +196,12 @@ object ContinuousClipEdits {
                     }
                 }
             }
+            is ContinuousEditorAction.SetClipPosition -> {
+                val old = selected(action.clipId)
+                require(action.timelineStartFrame in 0..MAX_TIMELINE_FRAMES - durationFrames(project, old))
+                // Explicit frame placement is independent of the visual snap grid and source trim.
+                replace(old.copy(timelineStartFrame = action.timelineStartFrame))
+            }
             is ContinuousEditorAction.MoveClip -> {
                 require(tracks.any { it.id == action.trackId })
                 val old = selected(action.clipId)
@@ -228,7 +251,7 @@ object ContinuousClipEdits {
                 val copy = if (grid == ContinuousGrid.FREE) old.copy(id = freshId("clip"), timelineStartFrame = end)
                     else old.copy(id = freshId("clip"), timelineStartFrame = null, startTick = maxOf(requireNotNull(snapTick(end, tempo, grid)),
                         requireNotNull(adjacentTick(start, tempo, grid, forward = true))))
-                clips = clips + copy
+                clips = clips + copyRecipes(old, copy)
                 reshaped += copy.id
             }
             is ContinuousEditorAction.RepeatBars -> {
@@ -241,15 +264,15 @@ object ContinuousClipEdits {
                 require(copied.none { durationFrames(project, it) > section.last + 1 - section.first }) { "A clip outlasts the bars" }
                 val after = barsFrames(action.timelineFrame, tempo, action.bars, 1).first..barsFrames(action.timelineFrame, tempo, action.bars, action.times).last
                 // Repeats fill empty bars only: layered over other clips they would double what is there.
-                require(clips.none { startFrame(project, it) in after }) { "The bars after are not empty" }
+                require(clips.none { overlapsFrames(startFrame(project, it), durationFrames(project, it), after) }) { "The bars after are not empty" }
                 clips = clips + (1..action.times).flatMap { time ->
                     val bars = barsFrames(action.timelineFrame, tempo, action.bars, time)
                     copied.map { clip ->
                         // On the beat a copy keeps to the beat. A clip placed freely keeps its place from the bars' start,
                         // within its copy of them: bars can be a frame shorter than the ones copied.
                         val at = clip.timelineStartFrame
-                        if (at == null) clip.copy(id = freshId("clip"), startTick = clip.startTick + time.toLong() * action.bars * BAR_TICKS)
-                        else clip.copy(id = freshId("clip"), timelineStartFrame = minOf(at - section.first + bars.first, bars.last))
+                        copyRecipes(clip, if (at == null) clip.copy(id = freshId("clip"), startTick = clip.startTick + time.toLong() * action.bars * BAR_TICKS)
+                        else clip.copy(id = freshId("clip"), timelineStartFrame = minOf(at - section.first + bars.first, bars.last)))
                     }
                 }
             }
@@ -261,8 +284,7 @@ object ContinuousClipEdits {
             }
             else -> error("Not an arrangement edit")
         }
-        require(tracks.size <= 16)
-        if (clips.size > 1024) throw SongFull()
+        if (tracks.size > ProjectLimits.MAX_TRACKS || (clips.size > 1024 && clips.size > project.clips.size)) throw SongFull()
         // A rendered PAD's sound joins the document with this edit: check its clips as if it had.
         val produced = rendered.values + performances.filterKeys { action is ContinuousEditorAction.PlaceHits && it in action.hits }.values
         val added = produced.distinctBy { it.hash }.filter { made -> project.assets.none { it.hash == made.hash } }
@@ -277,6 +299,6 @@ object ContinuousClipEdits {
         if (!ProgramCompiler.songFits(known.copy(tracks = tracks.frozen(), clips = clips.frozen())) && ProgramCompiler.songFits(project))
             throw SongFull()
         return Intent.SetArrangement(tracks.frozen(), clips.frozen(), project.takes, produced.distinctBy { it.hash }.frozen(),
-            banks = routes.banks.frozen())
+            banks = routes.banks.frozen(), pitchCorrections = pitchCorrections.frozen(), beatStretches = beatStretches.frozen())
     }
 }

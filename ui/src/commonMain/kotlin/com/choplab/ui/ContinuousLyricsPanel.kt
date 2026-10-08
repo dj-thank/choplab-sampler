@@ -34,12 +34,17 @@ import kotlinx.coroutines.delay
     val lyrics = state.lyrics
     if (!lyrics.open) return
     val dirty = remember { mutableStateMapOf<String, Boolean>() }
+    val draftEdits = remember { mutableStateMapOf<String, LyricAction>() }
+    val record: (String, LyricAction?) -> Unit = { tag, action -> if (action == null) draftEdits.remove(tag) else draftEdits[tag] = action }
+    var pendingExport by remember { mutableStateOf<LyricAction.ApplyDraftAndExport?>(null) }
     var draftEpoch by remember { mutableStateOf(0) }
     var pendingLeave by remember { mutableStateOf<(() -> Unit)?>(null) }
     val leave: (() -> Unit) -> Unit = { action -> if (dirty.values.any { it }) pendingLeave = action else action() }
     val send: (LyricAction) -> Unit = { action ->
         val run = { onAction(ContinuousEditorAction.Lyrics(action)) }
-        if (action is LyricAction.Select || action is LyricAction.Add || action is LyricAction.Delete ||
+        if (action is LyricAction.Export && dirty.values.any { it })
+            pendingExport = LyricAction.ApplyDraftAndExport(draftEdits.values.toList(), state.documentRevision, action.format)
+        else if (action is LyricAction.Select || action is LyricAction.Add || action is LyricAction.Delete ||
             action == LyricAction.Close || action == LyricAction.ApplyImport) leave(run) else run()
     }
     val mark: (String, Boolean?) -> Unit = { tag, value -> if (value == null) dirty.remove(tag) else dirty[tag] = value }
@@ -50,6 +55,20 @@ import kotlinx.coroutines.delay
                 dirty.clear(); draftEpoch++; pendingLeave = null; pending()
             }, tag = "ce-lyrics-discard-draft") },
             dismissButton = { CEButton(stringResource(Res.string.ce_keep_editing), { pendingLeave = null }, tag = "ce-lyrics-keep-editing") })
+    }
+    pendingExport?.let { pending ->
+        AlertDialog(onDismissRequest = { pendingExport = null },
+            title = { Text(stringResource(Res.string.creation_lyrics_export_title)) },
+            text = { Text(stringResource(Res.string.creation_lyrics_export_hint)) },
+            confirmButton = { Column {
+                CEButton(stringResource(Res.string.creation_lyrics_apply_export), {
+                    pendingExport = null; onAction(ContinuousEditorAction.Lyrics(pending))
+                }, enabled = state.permits(ContinuousCapability.LYRICS_EDIT), tag = "ce-lyrics-apply-export")
+                CEButton(stringResource(Res.string.creation_lyrics_saved_export), {
+                    pendingExport = null; onAction(ContinuousEditorAction.Lyrics(LyricAction.Export(pending.format)))
+                }, tag = "ce-lyrics-export-saved")
+            } },
+            dismissButton = { CEButton(stringResource(Res.string.ce_keep_editing), { pendingExport = null }, tag = "ce-lyrics-export-keep") })
     }
     val canEdit = state.permits(ContinuousCapability.LYRICS_EDIT)
     val files = state.permits(ContinuousCapability.LYRICS_FILES)
@@ -91,7 +110,7 @@ import kotlinx.coroutines.delay
                             fontWeight = if (line.id == lyrics.selectedId) FontWeight.Bold else FontWeight.Normal)
                     }
                 }
-                lyrics.lines.firstOrNull { it.id == lyrics.selectedId }?.let { line -> key(line.id) { CELyricEdit(line, state.documentRevision, draftEpoch, timing, canEdit, readout, send, leave, mark) } }
+                lyrics.lines.firstOrNull { it.id == lyrics.selectedId }?.let { line -> key(line.id) { CELyricEdit(line, state.documentRevision, draftEpoch, timing, canEdit, readout, send, leave, mark, record) } }
                 CEButton(stringResource(Res.string.ce_lyrics_import), { send(LyricAction.Import) }, Modifier.fillMaxWidth(),
                     enabled = files, tag = "ce-lyrics-import")
                 lyrics.preview?.let { preview ->
@@ -136,16 +155,16 @@ import kotlinx.coroutines.delay
 
 @Composable private fun CELyricEdit(line: LyricLine, revision: Long, draftEpoch: Int, timing: LyricTiming, enabled: Boolean,
                                    readout: () -> ContinuousEditorReadout, send: (LyricAction) -> Unit,
-                                   leave: (() -> Unit) -> Unit, mark: (String, Boolean?) -> Unit) {
+                                   leave: (() -> Unit) -> Unit, mark: (String, Boolean?) -> Unit, record: (String, LyricAction?) -> Unit) {
     var text by remember(line.id, line.text, draftEpoch) { mutableStateOf(line.text) }
-    SideEffect { mark("text", text != line.text) }
-    DisposableEffect(Unit) { onDispose { mark("text", null) } }
+    SideEffect { mark("text", text != line.text); record("text", if (text != line.text) LyricAction.Text(line.id, text) else null) }
+    DisposableEffect(Unit) { onDispose { mark("text", null); record("text", null) } }
     OutlinedTextField(text, { if (it.length <= 4096) text = it }, Modifier.fillMaxWidth().testTag("ce-lyric-text"),
         enabled = enabled, label = { Text(stringResource(Res.string.ce_lyrics_text)) }, singleLine = true)
     CEButton(stringResource(Res.string.ce_lyrics_apply_text), { send(LyricAction.Text(line.id, text)) }, Modifier.fillMaxWidth(),
         enabled = enabled && text != line.text, tag = "ce-lyric-apply-text")
     LyricTimeFields(timing.tickToMilliseconds(line.startTick), timing.tickToMilliseconds(line.endTick), enabled,
-        "ce-lyric-time", draftEpoch, mark) { from, to -> send(LyricAction.Timing(line.id, from, to)) }
+        "ce-lyric-time", draftEpoch, mark, record, { from, to -> LyricAction.Timing(line.id, from, to) }, send)
     CEButton(stringResource(Res.string.ce_lyrics_tap), { send(LyricAction.Tap(line.id, readout().songFrame)) }, Modifier.fillMaxWidth(),
         enabled = enabled, tag = "ce-lyric-tap")
     if (line.words.isNotEmpty()) {
@@ -162,7 +181,7 @@ import kotlinx.coroutines.delay
         val word = line.words[index]
         key(index) {
             LyricTimeFields(timing.tickToMilliseconds(word.startTick), timing.tickToMilliseconds(word.endTick), enabled,
-                "ce-lyric-word-$index", draftEpoch, mark) { from, to -> send(LyricAction.WordTiming(line.id, index, from, to)) }
+                "ce-lyric-word-$index", draftEpoch, mark, record, { from, to -> LyricAction.WordTiming(line.id, index, from, to) }, send)
         }
     }
     var deleting by remember(line, revision) { mutableStateOf(false) }
@@ -175,16 +194,20 @@ import kotlinx.coroutines.delay
         } else { deleting = true; deleteUntil = deleteClock.elapsedNow().inWholeMilliseconds + 5_000 } }, Modifier.fillMaxWidth(), enabled = enabled, tag = "ce-lyric-delete")
 }
 
-@Composable private fun LyricTimeFields(start: Long, end: Long, enabled: Boolean, tag: String, draftEpoch: Int, mark: (String, Boolean?) -> Unit, apply: (Long, Long) -> Unit) {
+@Composable private fun LyricTimeFields(start: Long, end: Long, enabled: Boolean, tag: String, draftEpoch: Int, mark: (String, Boolean?) -> Unit,
+    record: (String, LyricAction?) -> Unit, action: (Long, Long) -> LyricAction, send: (LyricAction) -> Unit) {
     var from by remember(start, draftEpoch) { mutableStateOf(start.toString()) }
     var to by remember(end, draftEpoch) { mutableStateOf(end.toString()) }
-    SideEffect { mark(tag, from != start.toString() || to != end.toString()) }
-    DisposableEffect(tag) { onDispose { mark(tag, null) } }
+    SideEffect {
+        val changed = from != start.toString() || to != end.toString()
+        mark(tag, changed); record(tag, if (changed) action(from.toLongOrNull() ?: -1, to.toLongOrNull() ?: -1) else null)
+    }
+    DisposableEffect(tag) { onDispose { mark(tag, null); record(tag, null) } }
     OutlinedTextField(from, { if (it.length <= 12) from = it }, Modifier.fillMaxWidth().testTag("$tag-start"), enabled = enabled,
         singleLine = true, label = { Text(stringResource(Res.string.ce_lyrics_start_ms)) })
     OutlinedTextField(to, { if (it.length <= 12) to = it }, Modifier.fillMaxWidth().testTag("$tag-end"), enabled = enabled,
         singleLine = true, label = { Text(stringResource(Res.string.ce_lyrics_end_ms)) })
-    CEButton(stringResource(Res.string.ce_lyrics_apply_time), { apply(from.toLongOrNull() ?: -1, to.toLongOrNull() ?: -1) },
+    CEButton(stringResource(Res.string.ce_lyrics_apply_time), { send(action(from.toLongOrNull() ?: -1, to.toLongOrNull() ?: -1)) },
         Modifier.fillMaxWidth(), enabled = enabled, tag = "$tag-apply")
 }
 

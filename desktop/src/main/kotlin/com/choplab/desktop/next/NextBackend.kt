@@ -170,6 +170,7 @@ class NextBackend private constructor(private val shared: EditorBackend, val fil
                     FileProjectPort(assets, files::resolve), WavExportPort(compiler, files::resolve), FileStemExportPort(compiler, files::resolve)) }, decoder = decoder) }
                 catch (failure: Throwable) { try { windows?.close() } catch (cleanup: Throwable) { failure.addSuppressed(cleanup) }; throw failure }
             val voice = try { VoiceTakes(shared.assets, directory.resolve("voice-scratch"), durableTakes = true,
+                recoveredProject = shared.studio.document.value.project, recoveredRevision = shared.studio.document.value.revision, cancelNativeOpening = { mac?.cancelOpening() },
                 microphone = microphone ?: { when { windows != null -> windows.openMicrophone(); mac != null -> mac.openMicrophone(); else -> JavaSoundMicInput.open() } }) }
                 catch (failure: Throwable) {
                     try { runBlocking { shared.shutdown(flush = false) } } catch (cleanup: Throwable) { failure.addSuppressed(cleanup) }
@@ -177,8 +178,8 @@ class NextBackend private constructor(private val shared: EditorBackend, val fil
                     throw failure
                 }
             val system = try { when {
-                windows != null -> NextWasapiSystemAudioCapture(shared.assets, directory.resolve("system-scratch"), windows, shared::flushAutosave)
-                com.choplab.desktop.isMacOsHost() -> NextSystemAudioCapture(shared.assets, directory.resolve("system-scratch"), shared::flushAutosave)
+                windows != null -> NextWasapiSystemAudioCapture(shared.assets, directory.resolve("system-scratch"), windows, shared::flushAutosave, shared.studio.document.value.project, shared.studio.document.value.revision)
+                com.choplab.desktop.isMacOsHost() -> NextSystemAudioCapture(shared.assets, directory.resolve("system-scratch"), shared::flushAutosave, shared.studio.document.value.project, shared.studio.document.value.revision)
                 else -> null
             } } catch (failure: Throwable) {
                 try { runBlocking { voice.close() } } catch (cleanup: Throwable) { failure.addSuppressed(cleanup) }
