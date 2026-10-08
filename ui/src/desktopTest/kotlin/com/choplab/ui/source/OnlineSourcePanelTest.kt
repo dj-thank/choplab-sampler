@@ -23,12 +23,25 @@ class OnlineSourcePanelTest {
                 val source = OnlineCandidate("one", ("Synthetic source 音源の候補 " .repeat(12)).take(240), "Uploader", 61.0,
                     formats = listOf(OnlineAudioFormat("raw", "webm", "opus", 48_000, 2, null, false, null, "ja", null, null, null)))
                 var saves = 0; var searches = 0; var inspections = 0; var applies = 0; var stops = 0; var closes = 0; var dismissed = false
+                lateinit var scene: ImageComposeScene
+                var candidateScrollPosition: Float? = null
                 val port = object : OnlineSourcePort {
                     override val state = MutableStateFlow(OnlineWorkerState())
                     override fun search(query: String, catalog: OnlineCatalog): Boolean {
                         searches++; state.value = OnlineWorkerState(OnlinePhase.CANDIDATES, candidates = (0..4).map { source.copy(id = if (it == 0) source.id else "choice$it") }); return true
                     }
-                    override fun inspect(id: String): Boolean { inspections++; state.value = state.value.copy(phase = OnlinePhase.DETAILS, details = source); return true }
+                    override fun inspect(id: String): Boolean {
+                        // The pointer press can focus this long button and start BringIntoView.
+                        // Freeze the departure position before the worker or panel enters details.
+                        assertEquals(0, inspections)
+                        assertNotNull(scene.tag("online-candidate-0"))
+                        assertNull(scene.tag("online-detail-heading"))
+                        assertEquals(OnlinePhase.CANDIDATES, state.value.phase)
+                        candidateScrollPosition = scene.tag("online-scroll")!!.config[SemanticsProperties.VerticalScrollAxisRange].value()
+                        inspections++
+                        state.value = state.value.copy(phase = OnlinePhase.DETAILS, details = source)
+                        return true
+                    }
                     override fun selectFormat(id: String): Boolean { state.value = state.value.copy(details = source.copy(selectedFormat = id)); return true }
                     override fun save(id: String): Boolean {
                         saves++; state.value = state.value.copy(phase = OnlinePhase.SAVED, saved = OnlineSaved("receipt", source.title)); return true
@@ -39,7 +52,7 @@ class OnlineSourcePanelTest {
                 }
                 val applying = CompletableDeferred<Unit>()
                 val controller = OnlineSourceController(port, OnlineSourceApply { _, _ -> applies++; applying.await(); OnlineUseResult.APPLIED }, 10, this)
-                val scene = ImageComposeScene(width, height, density = Density(1f, font), coroutineContext = coroutineContext) {
+                scene = ImageComposeScene(width, height, density = Density(1f, font), coroutineContext = coroutineContext) {
                     MaterialTheme { OnlineSourcePanel(controller, { dismissed = true }) }
                 }
                 try {
@@ -49,9 +62,41 @@ class OnlineSourcePanelTest {
                     scene.until { tag("online-search")?.config?.contains(SemanticsProperties.Disabled) == false }
                     assertTrue(scene.tag("online-query")!!.config[SemanticsActions.OnImeAction].action!!())
                     scene.until { tag("online-candidate-0") != null }
-                    scene.reach("online-candidate-0", width, height)
-                    val candidateScrollPosition = scene.tag("online-scroll")!!.config[SemanticsProperties.VerticalScrollAxisRange].value()
-                    scene.click("online-candidate-0")
+                    // Establish a known focus-scroll precondition using current, unclipped
+                    // geometry, even if layout changes while the first reach action is running.
+                    withTimeout(10_000) {
+                        do { scene.reach("online-candidate-0", width, height) }
+                        while (scene.tag("online-candidate-0")!!.positionInRoot.y != scene.tag("online-scroll")!!.boundsInRoot.top + 12)
+                    }
+                    val beforePressPosition = scene.tag("online-scroll")!!.config[SemanticsProperties.VerticalScrollAxisRange].value()
+                    var pressedPosition = beforePressPosition
+                    scene.click("online-candidate-0") {
+                        if (font == 2f) {
+                            // Hold a real pointer press on a button larger than the viewport.
+                            // Focus brings the oversized button across the viewport. Await that geometric
+                            // target, not a delay or unchanged rounded pixels during animation.
+                            val candidate = requireNotNull(tag("online-candidate-0"))
+                            val viewport = requireNotNull(tag("online-scroll")).boundsInRoot
+                            assertTrue(candidate.size.height > viewport.height)
+                            try {
+                                until {
+                                    assertEquals(0, inspections)
+                                    assertFalse(controller.state.value.showingDetails)
+                                    val focusedCandidate = requireNotNull(tag("online-candidate-0"))
+                                    focusedCandidate.config.getOrNull(SemanticsProperties.Focused) == true &&
+                                        focusedCandidate.positionInRoot.y <= viewport.top &&
+                                        focusedCandidate.positionInRoot.y + focusedCandidate.size.height >= viewport.bottom
+                                }
+                            } catch (failure: Exception) {
+                                val focusedCandidate = requireNotNull(tag("online-candidate-0"))
+                                error("Focus scroll locale=${locale.language} font=$font before=$beforePressPosition value=${tag("online-scroll")!!.config[SemanticsProperties.VerticalScrollAxisRange].value()} focused=${focusedCandidate.config.getOrNull(SemanticsProperties.Focused)} candidatePosition=${focusedCandidate.positionInRoot} candidateSize=${focusedCandidate.size} candidateBounds=${focusedCandidate.boundsInRoot} viewport=$viewport")
+                            }
+                        }
+                        assertEquals(0, inspections)
+                        assertFalse(controller.state.value.showingDetails)
+                        pressedPosition = tag("online-scroll")!!.config[SemanticsProperties.VerticalScrollAxisRange].value()
+                        if (font == 2f) assertTrue(pressedPosition > beforePressPosition)
+                    }
                     try {
                         scene.until { tag("online-format-0") != null && tag("online-detail-heading")?.config?.getOrNull(SemanticsProperties.Focused) == true }
                     } catch (failure: Exception) {
@@ -75,7 +120,17 @@ class OnlineSourcePanelTest {
                     assertTrue(scene.tag("online-save")!!.config.contains(SemanticsProperties.Disabled))
                     scene.reach("online-back", width, height); scene.click("online-back")
                     scene.until { tag("online-candidate-0") != null }
-                    assertEquals(candidateScrollPosition, scene.tag("online-scroll")!!.config[SemanticsProperties.VerticalScrollAxisRange].value(), 0.01f)
+                    val returnedPosition = scene.tag("online-scroll")!!.config[SemanticsProperties.VerticalScrollAxisRange].value()
+                    val departurePosition = requireNotNull(candidateScrollPosition)
+                    scene.recordCandidateReturn(locale.language, width, height, font,
+                        beforePressPosition, pressedPosition, departurePosition, returnedPosition)
+                    assertEquals(pressedPosition, departurePosition, 0.01f)
+                    assertEquals(departurePosition, returnedPosition, 0.01f)
+                    if (font == 2f) {
+                        // The old pre-press anchor is demonstrably different before navigation,
+                        // independently of the position observed after returning from details.
+                        assertTrue(pressedPosition > beforePressPosition)
+                    }
                     scene.click("online-candidate-0"); scene.until { tag("online-use") != null }
                     assertEquals(1, searches); assertEquals(1, inspections); assertEquals(1, saves)
                     scene.fixed("online-stop", width, height); scene.fixed("online-close", width, height)
@@ -214,16 +269,25 @@ class OnlineSourcePanelTest {
         val bounds = requireNotNull(tag(value)).boundsInRoot
         assertTrue(bounds.left >= 0 && bounds.right <= width && bounds.top in 0f..height.toFloat())
     }
-    private suspend fun ImageComposeScene.click(value: String) {
+    private suspend fun ImageComposeScene.click(value: String, beforeRelease: (suspend ImageComposeScene.() -> Unit)? = null) {
         val bounds = requireNotNull(tag(value)).boundsInRoot
         val viewport = requireNotNull(tag("online-scroll")).boundsInRoot
         val center = if (value in setOf("online-stop", "online-close", "online-cancel")) bounds.center else
             androidx.compose.ui.geometry.Offset(bounds.center.x, (bounds.top + minOf(bounds.bottom, viewport.bottom)) / 2)
         sendPointerEvent(PointerEventType.Press, center, type = PointerType.Mouse, buttons = PointerButtons(isPrimaryPressed = true), button = PointerButton.Primary)
         render(System.nanoTime()).close(); delay(8)
+        beforeRelease?.invoke(this)
         sendPointerEvent(PointerEventType.Release, center, type = PointerType.Mouse, buttons = PointerButtons(), button = PointerButton.Primary)
         render(System.nanoTime()).close(); yield()
     }
+    private fun ImageComposeScene.recordCandidateReturn(locale: String, width: Int, height: Int, font: Float,
+        beforePress: Float, pressed: Float, departure: Float, returned: Float) {
+        val evidence = """{"locale":"$locale","width":$width,"height":$height,"fontScale":$font,"beforePress":$beforePress,"pressedBeforeInspect":$pressed,"inspectDeparture":$departure,"returned":$returned,"tolerance":0.01}"""
+        val output = File(System.getProperty("choplab.ui.evidenceDir"), "online-source").apply { mkdirs() }
+        File(output, "candidate-return-$locale-$width-${(font * 100).toInt()}.json").writeText(evidence)
+        println("ONLINE_CANDIDATE_RETURN $evidence")
+    }
+
     private fun ImageComposeScene.capture(name: String) {
         val output = File(System.getProperty("choplab.ui.evidenceDir"), "online-source").apply { mkdirs() }
         render(System.nanoTime()).use { image -> image.encodeToData()!!.use { File(output, name).writeBytes(it.bytes) } }
