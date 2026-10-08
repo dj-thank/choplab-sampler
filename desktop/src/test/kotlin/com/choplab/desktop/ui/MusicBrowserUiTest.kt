@@ -99,6 +99,63 @@ class MusicBrowserUiTest {
         } finally { scene.close() }
     }
 
+    @Test fun spotifyNewPageStartsAtTopAndCachedPreviousRestoresViewportInBothLanguages() = runBlocking {
+        val previous = Locale.getDefault()
+        try { for (locale in listOf(Locale.JAPAN, Locale.US)) {
+            Locale.setDefault(locale)
+            val requests = mutableListOf<Int>()
+            SpotifyCatalogBrowserTest().session { request ->
+                requests += request.offset
+                val entries = (0 until 20).joinToString(",") { n ->
+                    if (request.offset == 20 && n == 19) "{\"track\":null}"
+                    else """{"track":{"id":"${(request.offset + n + 1).toString().padStart(22, '0')}","name":"Song ${request.offset + n}","artists":[{"name":"Artist"}]}}"""
+                }
+                SpotifyApiResponse(200, """{"items":[$entries],"total":40,"next":${if (request.offset == 0) "\"bounded\"" else "null"}}""")
+            }.use { session ->
+                session.login(); while (session.state.value.busy) delay(5)
+                SpotifyCatalogBrowser(session).use { browser ->
+                    val scene = ImageComposeScene(390, 900, density = Density(1f, 2f), coroutineContext = coroutineContext) {
+                        val state by session.state.collectAsState()
+                        com.choplab.sampler.ui.theme.ChopLabTheme { SpotifyCatalogPanel(state, browser) }
+                    }
+                    try {
+                        settle(scene); assertTrue(requests.isEmpty())
+                        click(scene, "spotify-track"); while (session.state.value.busy) delay(5); settle(scene)
+                        assertTrue(node(scene, "spotify-page").config[SemanticsActions.ScrollToIndex].action!!(12)); settle(scene)
+                        val before = node(scene, "spotify-page").config[SemanticsProperties.VerticalScrollAxisRange].value()
+                        assertTrue(before >= 12)
+                        click(scene, "spotify-next"); while (session.state.value.busy) delay(5); settle(scene)
+                        assertEquals(0f, node(scene, "spotify-page").config[SemanticsProperties.VerticalScrollAxisRange].value(), 0.01f)
+                        assertNotNull(node(scene, "spotify-unreadable")); assertEquals(1, browser.page!!.unreadable)
+                        click(scene, "spotify-previous"); settle(scene)
+                        assertEquals(before, node(scene, "spotify-page").config[SemanticsProperties.VerticalScrollAxisRange].value(), 0.01f)
+                        assertEquals(listOf(0, 20), requests)
+                        capture(scene, "spotify-restored-${locale.language}")
+                    } finally { scene.close() }
+                }
+            }
+        } } finally { Locale.setDefault(previous) }
+    }
+
+    @Test fun reopeningLibraryCompositionRestoresItsAlbumQueryPageAndViewportWithoutUsingAudio() = runBlocking {
+        val items = (0 until 800).map { i -> AudioLibraryItem("id$i", "Song $i", "file", 100, "Artist", "Album") }
+        val browser = LibraryBrowser()
+        browser.open(browser.page(items).groups.single()); browser.open(browser.page(items).groups.single()); browser.search("Song"); browser.next(items)
+        fun open() = ImageComposeScene(700, 740, density = Density(1f), coroutineContext = coroutineContext) {
+            com.choplab.sampler.ui.theme.ChopLabTheme { LibraryBrowserPanel(items, true, { error("No implicit use") }, browser = browser) }
+        }
+        var scene = open()
+        try {
+            settle(scene)
+            node(scene, "library-page").config[SemanticsActions.ScrollToIndex].action!!(18); settle(scene)
+            val before = node(scene, "library-page").config[SemanticsProperties.VerticalScrollAxisRange].value()
+            scene.close(); scene = open(); settle(scene)
+            assertEquals(before, node(scene, "library-page").config[SemanticsProperties.VerticalScrollAxisRange].value(), 0.01f)
+            assertEquals("Artist", browser.artist); assertEquals("Album", browser.album); assertEquals("Song", browser.query)
+            assertEquals(40, browser.location.offset)
+        } finally { scene.close() }
+    }
+
     @Test fun rateLimitExpiryReenablesExplicitBrowsingWithoutAnAutomaticRetry() = runBlocking {
         val requests = AtomicInteger()
         SpotifyCatalogBrowserTest().session {

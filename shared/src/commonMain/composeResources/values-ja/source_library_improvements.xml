@@ -1,0 +1,8 @@
+<resources>
+    <string name="music_failure_corrupt">保存済み音源が破損しています。原本を追加して「元ファイルから修復」を選んでください。破損bytesも保管します。</string>
+    <string name="music_repair_original">元ファイルから修復</string>
+    <string name="music_repaired_count">%1$d件を修復しました。以前のbytesはライブラリの復旧用フォルダへ保管しました。</string>
+    <string name="music_tag_fallback">%1$d件のタグを読み取れませんでした。音源は変更せず、ファイル名と読取可能な情報で保存しました。</string>
+    <string name="music_catalog_unreadable">このページの%1$d件を表示できません。別のページを開くか再試行してください。</string>
+    <string name="music_catalog_partial">%1$d件を表示できませんでした。表示できた項目は利用できます。</string>
+</resources>

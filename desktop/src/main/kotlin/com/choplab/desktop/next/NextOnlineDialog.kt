@@ -26,7 +26,7 @@ internal object NextOnlineDialog {
             Res.string.ce_online_ready, Res.string.ce_online_searching, Res.string.ce_online_candidates,
             Res.string.ce_online_empty, Res.string.ce_online_downloading, Res.string.ce_online_failed,
             Res.string.ce_library_cancelled, Res.string.online_saved, Res.string.online_use, Res.string.online_save,
-            Res.string.online_save_only
+            Res.string.online_save_only, Res.string.online_progress_unknown, Res.string.online_saving
         ).map { getString(it) }
         return suspendCancellableCoroutine { answer ->
             SwingUtilities.invokeLater {
@@ -58,6 +58,7 @@ internal object NextOnlineDialog {
                 val status = JLabel(labels[6])
                 var shown = emptyList<YoutubeSource>()
                 var searched = ""
+                var acquiredSource: String? = null
                 var finished = false
                 var finishing: (NextLibrary.Selection?) -> Unit = {}
                 fun refresh() {
@@ -67,14 +68,16 @@ internal object NextOnlineDialog {
                         model.clear(); shown.forEach(model::addElement)
                     }
                     search.isEnabled = !state.busy && query.text.trim().length in 1..240
-                    acquire.isEnabled = !state.busy && list.selectedValue != null && query.text.trim() == searched
+                    acquire.isEnabled = !state.busy && list.selectedValue != null && query.text.trim() == searched &&
+                        (state.saved == null || list.selectedValue.id != acquiredSource)
                     cancel.isEnabled = state.busy
-                    useOriginal.isEnabled = !state.busy && state.saved != null && query.text.trim() == searched
+                    useOriginal.isEnabled = !state.busy && state.saved != null && query.text.trim() == searched && list.selectedValue?.id == acquiredSource
                     status.text = when (state.phase) {
                         OnlineSourcePhase.READY -> labels[6]
                         OnlineSourcePhase.SEARCHING, OnlineSourcePhase.INSPECTING -> labels[7]
                         OnlineSourcePhase.CANDIDATES, OnlineSourcePhase.DETAILS -> if (state.candidates.isEmpty()) labels[9] else labels[8]
-                        OnlineSourcePhase.DOWNLOADING, OnlineSourcePhase.SAVING -> "${labels[10]} ${state.progress}%"
+                        OnlineSourcePhase.DOWNLOADING -> state.progress?.let { "${labels[10]} ${it.coerceIn(0, 100)}%" } ?: labels[17]
+                        OnlineSourcePhase.SAVING -> labels[18]
                         OnlineSourcePhase.SAVED -> labels[13]
                         OnlineSourcePhase.FAILED -> labels[11]
                         OnlineSourcePhase.CANCELLED, OnlineSourcePhase.CLOSED -> labels[12]
@@ -89,11 +92,11 @@ internal object NextOnlineDialog {
                 }
                 fun lookup() {
                     val input = query.text.trim()
-                    if (input.length in 1..240 && online.search(input)) searched = input
+                    if (input.length in 1..240 && online.search(input)) { searched = input; acquiredSource = null }
                     refresh()
                 }
                 search.addActionListener { lookup() }; query.addActionListener { lookup() }
-                acquire.addActionListener { list.selectedValue?.let { online.acquire(it.id); refresh() } }
+                acquire.addActionListener { list.selectedValue?.let { if (online.acquire(it.id)) acquiredSource = it.id; refresh() } }
                 useOriginal.addActionListener {
                     if (useOriginal.isEnabled) online.state.value.saved?.let { finishing(NextLibrary.Selection(it.path, it.title, it.hash)) }
                 }

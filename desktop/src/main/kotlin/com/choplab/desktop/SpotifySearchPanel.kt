@@ -5,8 +5,10 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
@@ -49,8 +51,19 @@ internal fun SpotifyCatalogPanel(state: SpotifyDesktopState, browser: SpotifyCat
         }
     }
     val available = remember(state, revision, clockTick) { browser.canFetch }
-    fun navigate(action: () -> Unit) { action(); notice = ""; revision++ }
     val page = remember(state, revision) { browser.page }
+    val request = browser.request
+    val accountRevision = browser.accountRevision
+    val navigationRevision = browser.navigationRevision
+    val viewport = browser.viewport(request)
+    val listState = key(accountRevision, request, navigationRevision) { rememberLazyListState(viewport.index, viewport.offset) }
+    val gridState = key(accountRevision, request, navigationRevision) { rememberLazyGridState(viewport.index, viewport.offset) }
+    val isGrid = page?.entries?.firstOrNull()?.kind in listOf(SpotifyCatalogKind.ARTIST, SpotifyCatalogKind.ALBUM)
+    fun rememberPosition() = browser.rememberViewport(request, accountRevision,
+        if (isGrid) gridState.firstVisibleItemIndex else listState.firstVisibleItemIndex,
+        if (isGrid) gridState.firstVisibleItemScrollOffset else listState.firstVisibleItemScrollOffset, navigationRevision)
+    DisposableEffect(accountRevision, request, navigationRevision, isGrid, listState, gridState) { onDispose { rememberPosition() } }
+    fun navigate(action: () -> Unit) { rememberPosition(); action(); notice = ""; revision++ }
     val selected = browser.selectedTracks
     val queued = stringResource(Res.string.music_queued)
     val rejected = stringResource(Res.string.music_queue_full)
@@ -95,17 +108,19 @@ internal fun SpotifyCatalogPanel(state: SpotifyDesktopState, browser: SpotifyCat
         if (notice.isNotBlank()) Text(notice)
         if (page == null && !state.busy) Text(stringResource(if (browser.kind == SpotifyCatalogKind.ARTIST)
             Res.string.music_artist_search else Res.string.music_start))
-        if (page?.entries?.isEmpty() == true) Text(stringResource(Res.string.music_empty))
+        if ((page?.unreadable ?: 0) > 0) Text(stringResource(if (page?.entries?.isEmpty() == true)
+            Res.string.music_catalog_unreadable else Res.string.music_catalog_partial, page!!.unreadable), Modifier.testTag("spotify-unreadable"))
+        else if (page?.entries?.isEmpty() == true) Text(stringResource(Res.string.music_empty))
         if (page?.entries?.firstOrNull()?.kind in listOf(SpotifyCatalogKind.ARTIST, SpotifyCatalogKind.ALBUM))
             LazyVerticalGrid(GridCells.Adaptive(180.dp), Modifier.weight(1f).testTag("spotify-page"),
-                verticalArrangement = Arrangement.spacedBy(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                state = gridState, verticalArrangement = Arrangement.spacedBy(8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 gridItems(page?.entries.orEmpty(), key = { it.kind.name + it.id }) { entry ->
                     com.choplab.sampler.ui.MusicCollectionCard(entry.title, entry.artist,
                         entry.kind == SpotifyCatalogKind.ARTIST, { navigate { browser.open(entry) } },
                         Modifier.testTag("spotify-open-${entry.id}"), available)
                 }
             }
-        else LazyColumn(Modifier.weight(1f).testTag("spotify-page"), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        else LazyColumn(Modifier.weight(1f).testTag("spotify-page"), state = listState, verticalArrangement = Arrangement.spacedBy(6.dp)) {
             items(page?.entries.orEmpty(), key = { it.kind.name + it.id }) { entry ->
                 OutlinedCard(Modifier.fillMaxWidth().heightIn(min = 64.dp)
                     .clickable(enabled = available && entry.kind != SpotifyCatalogKind.TRACK) { navigate { browser.open(entry) } }) {

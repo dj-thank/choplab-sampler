@@ -83,6 +83,55 @@ class OnlineSourceControllerTest {
         } finally { controller.close() }
     }
 
+    @Test fun equalInputsSameFormatAndReturningToDetailsKeepSavedReceiptWithoutProviderOrDocumentWork() = runBlocking<Unit> {
+        val port = Port(source)
+        var uses = 0
+        val controller = OnlineSourceController(port, OnlineSourceApply { _, _ -> uses++; OnlineUseResult.APPLIED }, 8, this)
+        try {
+            controller.ready(); waitFor { controller.state.value.worker.saved != null }
+            val receipt = controller.state.value.worker.saved
+            assertTrue(controller.state.value.canUse); assertFalse(controller.state.value.canSave)
+            assertTrue(controller.dispatch(OnlineSourceAction.Query("synthetic")))
+            assertTrue(controller.dispatch(OnlineSourceAction.Query(" synthetic ")))
+            assertTrue(controller.dispatch(OnlineSourceAction.Catalog(OnlineCatalog.VIDEOS)))
+            assertTrue(controller.dispatch(OnlineSourceAction.Format(format.id)))
+            assertTrue(controller.dispatch(OnlineSourceAction.BackToCandidates))
+            assertFalse(controller.state.value.showingDetails)
+            assertTrue(controller.dispatch(OnlineSourceAction.Inspect(source.id)))
+            assertTrue(controller.state.value.showingDetails)
+            assertFalse(controller.dispatch(OnlineSourceAction.Save))
+            assertEquals(receipt, controller.state.value.worker.saved); assertTrue(controller.state.value.canUse)
+            assertEquals(format.id, controller.state.value.worker.details!!.selectedFormat)
+            assertEquals(1, port.searches); assertEquals(1, port.saves); assertEquals(0, uses)
+            assertTrue(controller.dispatch(OnlineSourceAction.Catalog(OnlineCatalog.MUSIC)))
+            assertTrue(controller.dispatch(OnlineSourceAction.Catalog(OnlineCatalog.VIDEOS)))
+            assertFalse(controller.dispatch(OnlineSourceAction.UseOriginal))
+        } finally { controller.close() }
+    }
+
+    @Test fun malformedInputAndUnavailableFormatsCannotReachSearchOrSavePorts() = runBlocking<Unit> {
+        val available = source.copy(formats = listOf(format, format.copy(id = "large", bytes = 4096),
+            format.copy(id = "zero", bytes = 0), format.copy(id = "unknown", bytes = null)))
+        val port = Port(available)
+        val controller = OnlineSourceController(port, OnlineSourceApply { _, _ -> error("No document change") }, 0, this)
+        try {
+            assertTrue(controller.dispatch(OnlineSourceAction.Query("two\nlines")))
+            assertEquals(OnlineProblem.INVALID_INPUT, controller.state.value.issue)
+            assertFalse(controller.dispatch(OnlineSourceAction.Search)); assertEquals(0, port.searches)
+            controller.dispatch(OnlineSourceAction.Query("valid")); controller.dispatch(OnlineSourceAction.Search)
+            controller.dispatch(OnlineSourceAction.Inspect(source.id))
+            port.state.value = port.state.value.copy(maxDownloadBytes = 1024)
+            assertFalse(controller.dispatch(OnlineSourceAction.Format("large")))
+            assertEquals(OnlineProblem.TOO_LARGE, controller.state.value.issue)
+            assertFalse(controller.dispatch(OnlineSourceAction.Save)); assertEquals(0, port.saves)
+            assertFalse(controller.dispatch(OnlineSourceAction.Format("zero")))
+            assertEquals(OnlineProblem.MALFORMED_RESPONSE, controller.state.value.issue)
+            assertTrue(controller.dispatch(OnlineSourceAction.Format("unknown")))
+            assertTrue(controller.dispatch(OnlineSourceAction.Format(format.id)))
+            assertTrue(controller.dispatch(OnlineSourceAction.Save)); assertEquals(1, port.saves)
+        } finally { controller.close() }
+    }
+
     @Test fun applyCarriesCapturedRevisionRejectsRecordingAndStaleAndStopNeverWaitsForApply() = runBlocking<Unit> {
         val port = Port(source)
         val availability = MutableStateFlow(OnlineAvailability.EDITABLE)
