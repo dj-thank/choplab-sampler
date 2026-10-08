@@ -1,0 +1,10 @@
+<resources>
+    <string name="ce_input_open_timeout">Audio input preparation timed out. Try again.</string>
+    <string name="next_mac_audio_reset_defaults">Use system default input and output</string>
+    <string name="ce_input_level_left">Input L</string>
+    <string name="ce_input_level_right">Input R</string>
+    <string name="ce_input_level_mono">Input mono</string>
+    <string name="ce_input_permission_lost">Capture permission ended. The recorded portion is kept.</string>
+    <string name="ce_recover_as_source">Recover as SOURCE</string>
+    <string name="ce_recover_as_source_hint">The project changed after the punch recording. Recover the whole recording as SOURCE? The previous punch placement will not be applied.</string>
+</resources>

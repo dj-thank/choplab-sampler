@@ -10,6 +10,8 @@ import com.choplab.ui.chop.LiveChopTimingState
  */
 const val CONTINUOUS_TIMELINE_RATE = 48_000
 
+enum class WaveformLoadState { LOADING, READY, FAILED }
+
 enum class ContinuousStage { CAPTURE, CHOP, BEAT, SAVE }
 enum class ContinuousPane { PADS, TIMELINE }
 enum class ContinuousPadMode { ONE_SHOT, GATE, LOOP }
@@ -50,7 +52,7 @@ enum class ContinuousStatus {
     VOICE_EMPTY, VOICE_TOO_SHORT, VOICE_NOT_SAVED, VOICE_NO_ROOM, PLACE_NO_ROOM, PLACE_FAILED,
     /** A song edit refused, as the song could no longer play: too many clips at once, too many or too long. */
     SONG_FULL,
-    MIC_DENIED, MIC_UNAVAILABLE,
+    MIC_DENIED, MIC_UNAVAILABLE, INPUT_TIMEOUT,
     SOURCE_RECORDED, SOURCE_RECORDING_LIMIT, SOURCE_RECORDING_INTERRUPTED,
     SYSTEM_DENIED, SYSTEM_NO_DISPLAY, SYSTEM_UNAVAILABLE, SYSTEM_TIMEOUT, SYSTEM_EMPTY,
     /** Refused because a take is being recorded. */
@@ -177,6 +179,9 @@ enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
     val autosaveFailed: Boolean = false,
     val pendingRecording: Boolean = false,
     val pendingRecordingApplied: Boolean = false,
+    val pendingRecordingCanRecoverSource: Boolean = false,
+    val assetWaveforms: Map<String, WaveformLoadState> = emptyMap(),
+    val assetWaveformNames: Map<String, String> = emptyMap(),
     val recordingPunch: Boolean = false,
     val recordingInterruption: RecordingInterruption? = null,
     /** Before-start storage/document estimates; actual capture limits come from the input readout. */
@@ -455,6 +460,8 @@ sealed interface ContinuousEditorAction {
     data object StopVoice : ContinuousEditorAction
     data object DiscardVoice : ContinuousEditorAction
     data object DiscardHits : ContinuousEditorAction
+    data class RetryWaveforms(val assetHash: String) : ContinuousEditorAction
+    data object RecoverRecordingAsSource : ContinuousEditorAction
     data object RetryRecordingSave : ContinuousEditorAction
     data object DiscardPendingRecording : ContinuousEditorAction
     /**

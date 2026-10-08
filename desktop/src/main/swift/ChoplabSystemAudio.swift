@@ -94,8 +94,11 @@ private final class AudioSink: NSObject, SCStreamOutput, SCStreamDelegate {
     /// A capture that stops by itself (revoked permission, display change) must not look like a
     /// finished recording: ending the helper here makes ChopLab report the early stop.
     func stream(_ stream: SCStream, didStopWithError error: Error) {
-        let detail = error.localizedDescription.replacingOccurrences(of: "\n", with: " ")
-        FileHandle.standardError.write(Data("CHOPLAB-ERROR \(detail)\n".utf8))
+        let native = error as NSError
+        let reason = native.domain == SCStreamErrorDomain
+            ? (native.code == SCStreamError.Code.userDeclined.rawValue ? "PERMISSION" : "READ_FAILED")
+            : "UNKNOWN"
+        FileHandle.standardError.write(Data("CHOPLAB-END \(reason)\n".utf8))
         exit(2)
     }
 

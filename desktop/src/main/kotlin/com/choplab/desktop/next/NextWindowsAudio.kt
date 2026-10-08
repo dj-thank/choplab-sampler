@@ -129,8 +129,8 @@ internal class NextWindowsAudio(
 
 /** Ordinary Windows endpoint mix only; the SOURCE capture action owns the stereo take and its private scratch. */
 internal class NextWasapiSystemAudioCapture(assets: com.choplab.jvm.FileAssetStore, scratch: java.nio.file.Path,
-    private val audio: NextWindowsAudio, private val persistAccepted: suspend () -> Unit = {}) : com.choplab.ui.SystemAudioCapture {
-    private val takes = com.choplab.jvm.VoiceTakes(assets, scratch, captureChannels = 2, durableTakes = true, microphone = audio::openLoopback)
+    private val audio: NextWindowsAudio, private val persistAccepted: suspend () -> Unit = {}, recoveredProject: com.choplab.core.model.Project? = null, recoveredRevision: Long = 0) : com.choplab.ui.SystemAudioCapture {
+    private val takes = com.choplab.jvm.VoiceTakes(assets, scratch, captureChannels = 2, durableTakes = true, recoveredProject = recoveredProject, recoveredRevision = recoveredRevision, microphone = audio::openLoopback)
     @Volatile private var opening: Job? = null
     override suspend fun start(maxSeconds: Int): com.choplab.ui.SystemAudioCapture.Start {
         opening = currentCoroutineContext()[Job]
@@ -148,6 +148,7 @@ internal class NextWasapiSystemAudioCapture(assets: com.choplab.jvm.FileAssetSto
     override fun cancelOpening() { takes.cancelOpening(); opening?.cancel() }
     override val inputReadout get() = takes.inputReadout()
     override suspend fun recordingEstimateMillis(maxSeconds: Int) = takes.estimateMillis(maxSeconds)
+    override suspend fun prepareAcceptance(project: com.choplab.core.model.Project, revision: Long) = takes.prepareAcceptance(project, revision)
     override suspend fun acknowledgeTake() { persistAccepted(); takes.acknowledge() }
     override val full get() = takes.full
     override val interrupted get() = takes.interrupted

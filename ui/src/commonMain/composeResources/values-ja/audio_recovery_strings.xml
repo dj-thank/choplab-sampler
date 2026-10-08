@@ -1,0 +1,10 @@
+<resources>
+    <string name="ce_input_open_timeout">入力の準備が時間内に終わりませんでした。再試行してください。</string>
+    <string name="next_mac_audio_reset_defaults">入力と出力をシステム既定へ戻す</string>
+    <string name="ce_input_level_left">入力 L</string>
+    <string name="ce_input_level_right">入力 R</string>
+    <string name="ce_input_level_mono">入力 モノラル</string>
+    <string name="ce_input_permission_lost">収録の許可が終了しました。録れた部分は保全しています。</string>
+    <string name="ce_recover_as_source">SOURCEとして回収</string>
+    <string name="ce_recover_as_source_hint">パンチ録音後に制作が変わりました。録音全体をSOURCEとして回収しますか？ 元のパンチの配置は適用しません。</string>
+</resources>

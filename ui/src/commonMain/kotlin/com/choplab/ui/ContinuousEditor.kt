@@ -890,6 +890,7 @@ private val CE_SWINGS = listOf(500, 540, 580, 620, 660, 710)
         ContinuousStatus.SYSTEM_NO_DISPLAY -> Res.string.ce_system_no_display
         ContinuousStatus.SYSTEM_UNAVAILABLE -> Res.string.ce_system_unavailable
         ContinuousStatus.SYSTEM_TIMEOUT -> Res.string.ce_system_timeout
+        ContinuousStatus.INPUT_TIMEOUT -> Res.string.ce_input_open_timeout
         ContinuousStatus.SYSTEM_EMPTY -> Res.string.ce_system_empty
         ContinuousStatus.VOICE_SAVED -> Res.string.ce_voice_saved; ContinuousStatus.VOICE_SAVED_SONG_ONLY -> Res.string.ce_voice_saved_song_only
         ContinuousStatus.VOICE_SAVED_TAKE_ONLY -> Res.string.vocal_take_saved_only

@@ -29,6 +29,11 @@ class VoiceTakes(
     private val memory: PcmMemoryBudget = PcmMemoryBudget.shared,
     /** The host acknowledges publication only after its document edit commits. */
     private val durableTakes: Boolean = false,
+    private val recoveredProject: com.choplab.core.model.Project? = null,
+    private val recoveredRevision: Long = 0,
+    private val cancelNativeOpening: () -> Unit = {},
+    private val openTimeoutMillis: Long = 20_000,
+    private val deleteRecovery: (Path) -> Unit = { Files.deleteIfExists(it) },
     private val microphone: suspend () -> MicInput?,
 ) {
     /** How starting a take went. */
@@ -39,7 +44,9 @@ class VoiceTakes(
     private var retiring: VoiceRecorder? = null
     private var pending: VoiceRecorder? = null
     private val recovered = ArrayDeque<Path>()
-    private val opener = CancellableInputOpener(microphone)
+    private val opener = CancellableInputOpener(microphone, openTimeoutMillis, cancelNativeOpening)
+    val openingFailure get() = opener.failure
+    private val recoveredAccepted = mutableSetOf<Path>()
     private var closed = false
     private val openingEpoch = java.util.concurrent.atomic.AtomicLong()
 
@@ -50,7 +57,10 @@ class VoiceTakes(
             if (Files.isDirectory(scratch)) Files.list(scratch).use { files ->
                 files.filter { it.fileName.toString().let { name -> name.startsWith("take-") || name.startsWith("pending-take-") } }
                     .sorted().forEach {
-                        if (durableTakes) recovered.addLast(it)
+                        if (durableTakes) {
+                            recovered.addLast(it)
+                            if (recoveredProject != null && RecordingAcceptance.matches(it, recoveredProject, recoveredRevision)) recoveredAccepted.add(it)
+                        }
                         else if (!it.fileName.toString().startsWith("pending-take-")) try { Files.deleteIfExists(it) } catch (_: Exception) { }
                     }
             }
@@ -88,7 +98,7 @@ class VoiceTakes(
             val created = try {
                 currentCoroutineContext().ensureActive()
                 require(input.channels == captureChannels && input.sampleRate in 8_000..48_000)
-                VoiceRecorder(input, scratch, seconds, waitForCue, nanoTime, window, reserved, passes).also { owned = it; transferred = true }
+                VoiceRecorder(input, scratch, seconds, waitForCue, nanoTime, window, reserved, passes, deleteRecovery).also { owned = it; transferred = true }
             } catch (failure: Exception) {
                 try { input.close() } catch (_: Exception) { }
                 throw failure
@@ -130,6 +140,10 @@ class VoiceTakes(
     val recordedMillis: Long get() = synchronized(lock) { recorder ?: pending }?.recordedMillis ?: 0
     val limitMillis: Long? get() = synchronized(lock) { recorder ?: pending }?.limitMillis
     val peakLevel: Float? get() = synchronized(lock) { recorder }?.peakLevel
+    val inputChannels: Int? get() = synchronized(lock) { recorder }?.inputChannels
+    val leftPeak: Float? get() = synchronized(lock) { recorder }?.leftPeak
+    val rightPeak: Float? get() = synchronized(lock) { recorder }?.takeIf { it.inputChannels == 2 }?.rightPeak
+    val pendingAccepted: Boolean get() = synchronized(lock) { recovered.firstOrNull() in recoveredAccepted }
     val interruption: InputInterruption? get() = synchronized(lock) { recorder ?: pending }?.interruption
     val pendingSave: Boolean get() = synchronized(lock) { pending != null || recovered.isNotEmpty() }
     val inputBusy: Boolean get() = synchronized(lock) { recorder != null || pending != null || retiring != null } || opener.busy
@@ -159,15 +173,25 @@ class VoiceTakes(
         finally { synchronized(lock) { if (current.terminated && retiring === current) retiring = null } }
     }
 
+    /** Prepare before the document edit: a crash immediately after autosave can be recognized exactly. */
+    suspend fun prepareAcceptance(project: com.choplab.core.model.Project, revision: Long) = withContext(Dispatchers.IO + NonCancellable) {
+        if (durableTakes) {
+            val file = synchronized(lock) { pending?.recoveryFile ?: recovered.firstOrNull() }
+            if (file != null) RecordingAcceptance.prepare(file, project, revision)
+        }
+    }
+
     /** Publication does not own the document. Its acknowledged edit releases only this recovery copy. */
     suspend fun acknowledge() = withContext(Dispatchers.IO + NonCancellable) {
         val current = synchronized(lock) { pending }
         if (current != null) {
+            val file = current.recoveryFile
             current.acknowledge()
+            file?.let(RecordingAcceptance::remove)
             synchronized(lock) { if (pending === current) pending = null }
         } else {
             val file = synchronized(lock) { recovered.firstOrNull() }
-            if (file != null) { Files.deleteIfExists(file); synchronized(lock) { recovered.remove(file) } }
+            if (file != null) { deleteRecovery(file); RecordingAcceptance.remove(file); synchronized(lock) { recovered.remove(file); recoveredAccepted.remove(file) } }
         }
     }
 
@@ -181,14 +205,18 @@ class VoiceTakes(
     suspend fun discard() {
         cancelOpening()
         withContext(Dispatchers.IO + NonCancellable) {
-            val current = synchronized(lock) { (pending ?: recorder).also { pending = null; recorder = null; if (it != null) retiring = it } }
+            val current = synchronized(lock) { (pending ?: recorder).also { recorder = null; if (it != null) { pending = it; retiring = it } } }
             if (current == null) {
                 val file = synchronized(lock) { recovered.firstOrNull() }
-                if (file != null) { Files.deleteIfExists(file); synchronized(lock) { recovered.remove(file) } }
+                if (file != null) { deleteRecovery(file); RecordingAcceptance.remove(file); synchronized(lock) { recovered.remove(file); recoveredAccepted.remove(file) } }
                 return@withContext
             }
-            try { current.discard() }
-            finally { synchronized(lock) { if (current.terminated && retiring === current) retiring = null } }
+            try {
+                val file = current.recoveryFile
+                current.discard()
+                file?.let(RecordingAcceptance::remove)
+                synchronized(lock) { if (pending === current) pending = null }
+            } finally { synchronized(lock) { if (current.terminated && retiring === current) retiring = null } }
         }
     }
 

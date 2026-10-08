@@ -118,6 +118,8 @@ interface ContinuousEditorPorts {
     fun voiceInputReadout(): RecordingInputReadout = RecordingInputReadout(recordedMillis = voiceRecordedMillis())
     /** Called only after the take was accepted into the document; stop alone must not erase a recoverable take. */
     suspend fun acknowledgeVoiceTake() {}
+    suspend fun prepareVoiceTakeAcceptance(project: Project, revision: Long) {}
+    suspend fun retryPunchTake(name: String): VocalCapturedSession? = null
     /** The running take stopped by itself: the microphone went away or the take could not be written. */
     fun voiceInterrupted(): Boolean = false
     /** Ends the take and stores it as [name]; null when nothing was recorded. */
@@ -143,7 +145,7 @@ interface ContinuousEditorPorts {
 }
 
 /** How opening the microphone went: running, not allowed, no usable input, or no room left to store a take. */
-enum class VoiceStart { STARTED, DENIED, UNAVAILABLE, NO_ROOM }
+enum class VoiceStart { STARTED, DENIED, UNAVAILABLE, NO_ROOM, TIMEOUT }
 
 /** BANK D holds voice takes, as in the earlier app. */
 private const val VOICE_BANK = 3
@@ -214,12 +216,16 @@ private data class KitQuestion(val kitId: String, val bank: List<Pad>, val repla
 
 /** Owned stopped take; the host keeps bytes until this context is acknowledged or explicitly discarded. */
 private data class PendingRecording(val system: Boolean = false, val voice: VoiceRecording? = null,
-    val full: Boolean = false, val interrupted: Boolean = false, val applied: Boolean = false)
+    val full: Boolean = false, val interrupted: Boolean = false, val applied: Boolean = false,
+    val punch: PendingPunch? = null)
+private data class PendingPunch(val project: Project, val revision: Long, val request: VocalPunchRequest,
+    val captured: VocalCapturedSession?, val alignment: RecordingAlignment)
 
 private data class RecordingEstimateRequest(val voiceSeconds: Int, val systemSeconds: Int,
     val assets: List<Asset>, val stage: ContinuousStage, val blocked: Boolean)
 
 private data class EditorView(
+    val assetWaveforms: Map<String, WaveformLoadState> = emptyMap(),
     val pendingOutput: Pair<Operation, Location>? = null,
     val completedOutput: Pair<String, Location>? = null,
     val exportBits: Int = 24,
@@ -449,15 +455,14 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         } }
         jobs.launch {
             studio.document.map { it.project.assets }.distinctUntilChanged().collectLatest { assets ->
-                val next = mutableMapOf<String, List<Float>>()
+                val hashes = assets.map { it.hash }.toSet()
+                envelopes.update { it.filterKeys(hashes::contains) }
+                view.update { it.copy(assetWaveforms = it.assetWaveforms.filterKeys(hashes::contains)) }
                 for (asset in assets) {
                     ensureActive()
-                    val values = envelopes.value[asset.hash] ?: try { ports.peaks(asset).also {
-                        require(it.size <= 2048 && it.all(Float::isFinite))
-                    }.toList() } catch (cancel: CancellationException) { throw cancel } catch (_: Exception) { emptyList() }
-                    next[asset.hash] = values
+                    if (asset.hash !in envelopes.value && view.value.assetWaveforms[asset.hash] != WaveformLoadState.FAILED)
+                        loadWaveform(asset)
                 }
-                envelopes.value = next.toMap()
             }
         }
         jobs.launch {
@@ -675,7 +680,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
             if (controller != null && controller.state.value.phase != PracticePhase.CLOSED) return false
         }
         // The controller can be awaiting a selected-PAD action; cancel outside our serialized edit lock.
-        if (action == ContinuousEditorAction.StopAll) { patterns.value?.dispatch(PatternAction.Cancel); takeEditor.value?.dispatch(VocalAction.Cancel) }
+        if (action == ContinuousEditorAction.StopAll) { patterns.value?.dispatch(PatternAction.Cancel); takeEditor.value?.dispatch(VocalAction.StopPreview) }
         if (action == ContinuousEditorAction.StopAll) analysis.value?.dispatch(SourceAnalysisAction.Cancel)
         if (endsScratch(action)) cancelScratchOpening()
         // Cancel preparation before waiting for a UI edit; Stop cannot queue behind decoding.
@@ -1178,6 +1183,12 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                     pauseSong(); releaseHeld(); view.update { it.copy(hits = null, status = ContinuousStatus.CANCELLED) }; clearRecordingClock()
                 }
                 ContinuousEditorAction.RetryRecordingSave -> retryRecording()
+                is ContinuousEditorAction.RetryWaveforms -> retryWaveform(action.assetHash)
+                ContinuousEditorAction.RecoverRecordingAsSource -> {
+                    val pending = pendingRecording()
+                    if (pending?.punch == null || pending.applied || pending.punch.revision == studio.document.value.revision) false
+                    else saveSource(pending.copy(punch = null).also { recovery -> view.update { it.copy(pendingRecording = recovery) } })
+                }
                 ContinuousEditorAction.DiscardPendingRecording -> {
                     val pending = pendingRecording()
                     if (pending?.applied == true) { refusal = ContinuousStatus.SAVE_FAILED; return@withLock false }
@@ -1348,25 +1359,16 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 try {
                     val result = port.capture(project, expectedRevision, request) { controller.state.value.stopping }
                     return serialized.withLock {
-                        val captured = result.captured ?: return@withLock PunchCompletion(result, false)
-                        if (studio.document.value.revision != expectedRevision) return@withLock PunchCompletion(result.copy(problem = PunchProblem.STALE), false)
+                        if (result.captured == null && !ports.voiceInputReadout().pendingSave) return@withLock PunchCompletion(result, false)
                         controller.beginSaving()
                         view.update { it.copy(punchSaving = true) }
-                        val plan = request.plan(project)
-                        val intent = VocalPunchRecording.retain(project, captured, plan,
-                            result.alignment.framesFor(result.alignment.route), request.manualFrames48k, ::freshId)
-                        finishingTake = true
-                        try {
-                            val saved = send(Action.Edit(intent, expectedRevision))
-                            if (saved) {
-                                lastPunchRange = request.startFrame to request.endFrame
-                                // The document already owns these candidates. A persistence/cleanup failure must
-                                // retry only acknowledgement, never recover the same bytes as another SOURCE.
-                                if (!acknowledgeRecording(PendingRecording(applied = true)))
-                                    return@withLock PunchCompletion(result.copy(problem = PunchProblem.SAVE_FAILED), true)
-                            }
-                            PunchCompletion(result.copy(problem = result.problem ?: if (saved) null else PunchProblem.SAVE_FAILED), saved)
-                        } finally { finishingTake = false }
+                        val pending = PendingRecording(punch = PendingPunch(project, expectedRevision, request, result.captured, result.alignment))
+                        view.update { it.copy(pendingRecording = pending) }
+                        if (result.captured == null) return@withLock PunchCompletion(result, false)
+                        val saved = savePunch(pending)
+                        val applied = saved || view.value.pendingRecording?.applied == true
+                        PunchCompletion(result.copy(problem = if (saved) result.problem else
+                            if (studio.document.value.revision != expectedRevision && !applied) PunchProblem.STALE else PunchProblem.SAVE_FAILED), applied)
                     }
                 } finally { view.update { it.copy(punchRecording = false, punchSaving = false) } }
             }
@@ -1919,6 +1921,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 VoiceStart.STARTED -> null
                 VoiceStart.DENIED -> ContinuousStatus.MIC_DENIED
                 VoiceStart.UNAVAILABLE -> ContinuousStatus.MIC_UNAVAILABLE
+                VoiceStart.TIMEOUT -> ContinuousStatus.INPUT_TIMEOUT
                 VoiceStart.NO_ROOM -> ContinuousStatus.VOICE_NO_ROOM
             }
             if (error != null || sourceOpeningCancelled) {
@@ -1974,7 +1977,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 view.update { it.copy(pendingRecording = null) }
                 return report(if (system) ContinuousStatus.SYSTEM_EMPTY else ContinuousStatus.VOICE_EMPTY, true)
             }
-        if (!addTake(Intent.ImportAsset(asset))) return report(ContinuousStatus.VOICE_NOT_SAVED, false)
+        if (!addTake(Intent.ImportAsset(asset), recording = pending)) return report(ContinuousStatus.VOICE_NOT_SAVED, false)
         if (!acknowledgeRecording(pending)) return report(ContinuousStatus.VOICE_NOT_SAVED, false)
         return report(when {
             pending.interrupted -> ContinuousStatus.SOURCE_RECORDING_INTERRUPTED
@@ -2070,6 +2073,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 VoiceStart.STARTED -> microphoneOpened = true
                 VoiceStart.DENIED -> { refusal = ContinuousStatus.MIC_DENIED; return false }
                 VoiceStart.UNAVAILABLE -> { refusal = ContinuousStatus.MIC_UNAVAILABLE; return false }
+                VoiceStart.TIMEOUT -> { refusal = ContinuousStatus.INPUT_TIMEOUT; return false }
                 VoiceStart.NO_ROOM -> { refusal = ContinuousStatus.VOICE_NO_ROOM; return false }
             }
             if (voiceOpeningCancelled) { refusal = ContinuousStatus.CANCELLED; return false }
@@ -2178,9 +2182,9 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         // Comp/punch selection is a later explicit edit; the recorded asset is never replaced.
         val candidate = Take(freshId("take"), clip.trackId, asset.hash, clip.range, at)
         val placed = when {
-            addTake(Intent.AddVoiceTake(asset, voicePad, clip, track, candidate)) -> if (voicePad == null) ContinuousStatus.VOICE_SAVED_SONG_ONLY else ContinuousStatus.VOICE_SAVED
+            addTake(Intent.AddVoiceTake(asset, voicePad, clip, track, candidate), recording = pending) -> if (voicePad == null) ContinuousStatus.VOICE_SAVED_SONG_ONLY else ContinuousStatus.VOICE_SAVED
             // A rejected audible placement never discards a valid original candidate, even when BANK D is full.
-            addTake(Intent.AddVoiceTake(asset, voicePad, null, track, candidate)) ->
+            addTake(Intent.AddVoiceTake(asset, voicePad, null, track, candidate), recording = pending) ->
                 if (voicePad == null) ContinuousStatus.VOICE_SAVED_TAKE_ONLY else ContinuousStatus.VOICE_SAVED_PAD_ONLY
             else -> return report(ContinuousStatus.VOICE_NOT_SAVED, false)
         }
@@ -2194,11 +2198,22 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     }
 
     /** Adds a take; a stop pressed meanwhile cancels the edit in progress, so a cancelled one is tried again. */
-    private suspend fun addTake(intent: Intent, expectedRevision: Long? = null): Boolean {
+    private suspend fun addTake(intent: Intent, expectedRevision: Long? = null, recording: PendingRecording? = null): Boolean {
         finishingTake = true
         try {
             repeat(3) {
-                val result = answered(studio.dispatch(Action.Edit(intent, expectedRevision)))
+                val document = studio.document.value
+                if (expectedRevision != null && expectedRevision != document.revision) return false
+                if (recording != null) {
+                    val target = try { com.choplab.core.edit.Reducer.reduce(document.project, intent).project }
+                        catch (_: IllegalArgumentException) { return false }
+                    try {
+                        if (recording.system) ports.systemAudioCapture?.prepareAcceptance(target, document.revision + 1)
+                        else ports.prepareVoiceTakeAcceptance(target, document.revision + 1)
+                    } catch (cancel: CancellationException) { throw cancel }
+                    catch (_: Exception) { return false }
+                }
+                val result = answered(studio.dispatch(Action.Edit(intent, expectedRevision ?: document.revision)))
                 if (result.accepted) return true
                 if (result.notice !is Notice.Cancelled) return false
             }
@@ -2849,15 +2864,56 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     }
     private fun hasPendingInput() = ports.voiceInputReadout().pendingSave || ports.systemAudioCapture?.inputReadout?.pendingSave == true
     private fun pendingRecording(): PendingRecording? = view.value.pendingRecording ?: when {
-        ports.voiceInputReadout().pendingSave -> PendingRecording()
-        ports.systemAudioCapture?.inputReadout?.pendingSave == true -> PendingRecording(system = true)
+        ports.voiceInputReadout().pendingSave -> PendingRecording(applied = ports.voiceInputReadout().pendingAccepted)
+        ports.systemAudioCapture?.inputReadout?.pendingSave == true -> PendingRecording(system = true, applied = ports.systemAudioCapture?.inputReadout?.pendingAccepted == true)
         else -> null
     }
     private suspend fun retryRecording(): Boolean {
         if (studio.work.value.jobId != null || studio.work.value.preparationId != null) return false
         val pending = pendingRecording() ?: return false
         view.update { it.copy(pendingRecording = pending, status = ContinuousStatus.SAVING) }
-        return if (pending.voice == null) saveSource(pending) else saveVoice(pending)
+        return when { pending.applied -> acknowledgeRecording(pending); pending.punch != null -> savePunch(pending); pending.voice == null -> saveSource(pending); else -> saveVoice(pending) }
+    }
+    private suspend fun savePunch(pending: PendingRecording): Boolean {
+        if (pending.applied) return acknowledgeRecording(pending)
+        val punch = requireNotNull(pending.punch)
+        if (studio.document.value.project != punch.project || studio.document.value.revision != punch.revision) {
+            refusal = ContinuousStatus.VOICE_NOT_SAVED
+            return false
+        }
+        val captured = punch.captured ?: try { ports.retryPunchTake("VOICE") }
+            catch (cancel: CancellationException) { throw cancel }
+            catch (_: Exception) { null }
+        if (captured == null) { refusal = ContinuousStatus.VOICE_NOT_SAVED; return false }
+        val retained = pending.copy(punch = punch.copy(captured = captured))
+        view.update { it.copy(pendingRecording = retained) }
+        val intent = VocalPunchRecording.retain(punch.project, captured, punch.request.plan(punch.project),
+            punch.alignment.framesFor(punch.alignment.route), punch.request.manualFrames48k, ::freshId)
+        if (!addTake(intent, punch.revision, retained)) { refusal = ContinuousStatus.VOICE_NOT_SAVED; return false }
+        lastPunchRange = punch.request.startFrame to punch.request.endFrame
+        return acknowledgeRecording(retained)
+    }
+
+    private suspend fun loadWaveform(asset: Asset) {
+        view.update { it.copy(assetWaveforms = it.assetWaveforms + (asset.hash to WaveformLoadState.LOADING)) }
+        try {
+            val values = ports.peaks(asset).also { require(it.size <= 2048 && it.all(Float::isFinite)) }.toList()
+            if (studio.document.value.project.assets.any { it.hash == asset.hash }) {
+                envelopes.update { it + (asset.hash to values) }
+                view.update { it.copy(assetWaveforms = it.assetWaveforms + (asset.hash to WaveformLoadState.READY)) }
+            }
+        } catch (cancel: CancellationException) { throw cancel }
+        catch (_: Exception) {
+            if (studio.document.value.project.assets.any { it.hash == asset.hash })
+                view.update { it.copy(assetWaveforms = it.assetWaveforms + (asset.hash to WaveformLoadState.FAILED)) }
+        }
+    }
+    private fun retryWaveform(hash: String): Boolean {
+        if (view.value.assetWaveforms[hash] != WaveformLoadState.FAILED) return false
+        val asset = studio.document.value.project.assets.firstOrNull { it.hash == hash } ?: return false
+        view.update { it.copy(assetWaveforms = it.assetWaveforms + (hash to WaveformLoadState.LOADING)) }
+        jobs.launch { loadWaveform(asset) }
+        return true
     }
     private fun workBusy() = studio.work.value.let { it.jobId != null || it.preparationId != null } || view.value.pendingRecording != null || hasPendingInput()
     private suspend fun importFile(location: Location): Boolean {
@@ -3159,7 +3215,9 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
             ContinuousCapability.LIVE_CHOP, ContinuousCapability.SCRATCH, ContinuousCapability.RELOAD_AUDIO))
         val kitSounds = p.pads.map { pad -> pad.assetHash?.let { DrumKits.identify(p.asset(it)) } }
         return ContinuousEditorState(stage = v.stage, projectTitle = p.title, documentRevision = input.document.revision, newProjectRevision = v.newProjectRevision, original = source,
-            pendingRecording = v.pendingRecording != null || hasPendingInput(), pendingRecordingApplied = v.pendingRecording?.applied == true, recordingPunch = v.punchRecording,
+            pendingRecording = v.pendingRecording != null || hasPendingInput(), pendingRecordingApplied = pendingRecording()?.applied == true,
+            pendingRecordingCanRecoverSource = v.pendingRecording?.punch?.let { it.project != p || it.revision != input.document.revision } == true,
+            assetWaveforms = v.assetWaveforms, assetWaveformNames = p.assets.associate { it.hash to it.name }, recordingPunch = v.punchRecording,
             recordingInterruption = v.recordingInterruption,
             voiceRecordingEstimateMillis = v.voiceEstimateMillis, systemRecordingEstimateMillis = v.systemEstimateMillis,
             exportBits = v.exportBits, exportTail = v.exportTail, stemProgress = input.work.stemProgress,

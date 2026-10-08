@@ -81,7 +81,9 @@ internal class DesktopEditorPorts(
         override suspend fun original(project: com.choplab.core.model.Project, draft: com.choplab.core.vocal.VocalPitchDraft) =
             pitchRenderer.original(project, draft, if (japanese) "原音の試聴" else "Original audition")
     }
-    override val vocalPunch = VocalPunchCapture(backend.studio, backend.engine, backend.voice)
+    override val vocalPunch = VocalPunchCapture(backend.studio, backend.engine, backend.voice,
+        inputFailure = { if (microphoneDenied()) com.choplab.core.vocal.PunchProblem.PERMISSION else com.choplab.core.vocal.PunchProblem.NO_INPUT },
+        cancelOpening = ::cancelVoiceOpening)
     override val vocalTakes = object : com.choplab.ui.vocal.VocalTakePort {
         override val preview = speechPreview
         override suspend fun render(project: com.choplab.core.model.Project, draft: com.choplab.core.vocal.VocalCompDraft, name: String) =
@@ -165,10 +167,18 @@ internal class DesktopEditorPorts(
     override suspend fun startVoice(maxSeconds: Int) = when (backend.voice.start(maxSeconds)) {
         VoiceTakes.Start.STARTED -> VoiceStart.STARTED
         VoiceTakes.Start.NO_ROOM -> VoiceStart.NO_ROOM
-        VoiceTakes.Start.NO_INPUT -> if (backend.macAudio?.microphonePermission in setOf(
-            com.choplab.desktop.audio.MacMicrophonePermission.Status.DENIED,
-            com.choplab.desktop.audio.MacMicrophonePermission.Status.RESTRICTED)) VoiceStart.DENIED else VoiceStart.UNAVAILABLE
+        VoiceTakes.Start.NO_INPUT -> voiceStartFailure()
     }
+    private fun microphoneDenied() = backend.macAudio?.microphonePermission in setOf(
+        com.choplab.desktop.audio.MacMicrophonePermission.Status.DENIED, com.choplab.desktop.audio.MacMicrophonePermission.Status.RESTRICTED)
+    private fun voiceStartFailure() = when {
+        backend.voice.openingFailure == com.choplab.jvm.InputOpeningFailure.TIMEOUT ||
+            backend.macAudio?.microphonePermission == com.choplab.desktop.audio.MacMicrophonePermission.Status.TIMEOUT -> VoiceStart.TIMEOUT
+        microphoneDenied() -> VoiceStart.DENIED
+        else -> VoiceStart.UNAVAILABLE
+    }
+    override suspend fun prepareVoiceTakeAcceptance(project: com.choplab.core.model.Project, revision: Long) = backend.voice.prepareAcceptance(project, revision)
+    override suspend fun retryPunchTake(name: String) = backend.voice.stopPunch(name)
     override fun cancelVoiceOpening() { backend.macAudio?.cancelOpening(); backend.voice.cancelOpening() }
     override fun voiceInputReadout() = backend.voice.inputReadout()
     override suspend fun voiceRecordingEstimateMillis(maxSeconds: Int) = backend.voice.estimateMillis(maxSeconds)
@@ -178,9 +188,7 @@ internal class DesktopEditorPorts(
         override suspend fun startArmedVoice(maxSeconds: Int) = when (backend.voice.start(maxSeconds, waitForCue = true)) {
             VoiceTakes.Start.STARTED -> VoiceStart.STARTED
             VoiceTakes.Start.NO_ROOM -> VoiceStart.NO_ROOM
-            VoiceTakes.Start.NO_INPUT -> if (backend.macAudio?.microphonePermission in setOf(
-            com.choplab.desktop.audio.MacMicrophonePermission.Status.DENIED,
-            com.choplab.desktop.audio.MacMicrophonePermission.Status.RESTRICTED)) VoiceStart.DENIED else VoiceStart.UNAVAILABLE
+            VoiceTakes.Start.NO_INPUT -> voiceStartFailure()
         }
         override fun cueVoiceAt(engineFrame: Long): Boolean = backend.engine.estimatedOutputNanos(engineFrame)?.let(backend.voice::cueAt) == true
         override fun armingTimedOut() = backend.voice.armingTimedOut
