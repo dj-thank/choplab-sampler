@@ -32,6 +32,8 @@ Library/Onlineの14件は[PR238](https://github.com/dj-thank/choplab-sampler/pul
 
 各担当の録音66件、制作143件、操作17件等の回帰、root統合159件と保存切替/実UI/精密配置14件、実ファイル保存再開3件がLOCAL_PASS。旧制限を前提にしたfixtureを合法17トラックでの制御された準備失敗へ揃え、反復先への音のはみ出し拒否も確認した。64トラック10,000blockでrender割当0、p99は4ms中2.059msであり、25%目標や実音/遅延の合格ではない。全57件を組み合わせたMac候補 `449b7d5f` の同梱Javaで制作9工程/15Undo、11codec、実分離モデル、日英native menu、初期API要求0、保存再開と通常終了再開2回が成功した。候補Previewも11codecと長尺/破損拒否に成功。必須CIを確認してこの33件を統合し、後続のMac10件と合わせて最終DMG/導入を照合する。rollbackは限定PRのrevertと保全済みbuild34 app/manifestへの復帰。実Spotify API、物理操作・VoiceOver、聴感/遅延、Developer ID/公証、PUBLIC_PASS/HUMAN_GOは未確認。
 
+制作UX候補の初回CIはApple共通基盤と履歴が成功し、Linux/Windowsとも非協調入力の破棄試験1件が失敗した。破棄待ちの録音を保存待ちとして再取得していた製品回帰であり、修正 `1ab09033` はcapture threadが終わるまで録音slotと原本を所有し、破棄完了後だけ解放する。停止済み原本の削除失敗では再保存/再破棄を維持する。元assertと2秒停止deadlineのまま修正前FAILを再現し、durable/non-durable双方とslot再利用を含む関連8class37件が成功。修正headのCIを再確認してから統合する。先行Mac候補の制作/codec結果はその範囲に限り、最終配布ではこの録音修正を含む同一sourceから再梱包する。
+
 前回build33の配布sourceは[PR236](https://github.com/dj-thank/choplab-sampler/pull/236)を統合したmain `a56972ff`、build33。5人の65指摘から重複と実機/provider条件を分けた60件を実装し、検証head `5ee5b279` の必須3job・Mac配布・Apple共通基盤が成功した後に統合した。NEXT/Previewの両DMGをread-only mount・同梱Javaで受け入れ、同梱installerからapp/manifestを対で更新した。旧app/manifestと利用者dataを保全し、導入済みの通常起動/終了/再開も両app各2回成功した。以下の候補/初回CI記録は経緯であり、現在の受入を上書きしない。
 
 2026-10-08 UTC、画面解除後に同じbuild33 NEXTの275fileと署名を照合し、同梱Java/helperで実システム音のPCM16/float32、左右分離、親Javaの自音除外が成功した。スピーカーをミュートにしたままの再確認でも成功し、自音除外は各-91.39/-80.58dB。OS音量設定は変更せず、生音声は残していない。これは出力ミュート下の内部音声取得の受入であり、マイク入力gainや聴感/遅延の合格を意味しない。実Finderで合成保存fileの選択表示も成功した。native key入力の試験は前面/フォーカスの安定確認ができず未受入。物理操作・VoiceOver、実Spotify API、許可変更/機器抜き差し、聴感/遅延、Developer ID/公証とPUBLIC_PASS/HUMAN_GOは引き続き別条件。
