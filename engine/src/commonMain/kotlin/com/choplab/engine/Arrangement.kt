@@ -68,7 +68,7 @@ class Arrangement(
 
     companion object {
         const val MAX_CLIPS = 1024
-        const val MAX_TRACKS = 16
+        const val MAX_TRACKS = 64
         const val MAX_SIMULTANEOUS_CLIPS = 32
         const val MAX_DURATION_FRAMES = 48_000L * 60 * 30
     }

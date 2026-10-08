@@ -37,6 +37,8 @@ sealed interface LyricAction {
     data object ApplyImport : LyricAction
     data object CancelImport : LyricAction
     data class Export(val format: LrcFormat = LrcFormat.EXTENDED) : LyricAction
+    /** An explicit review choice: validate all visible drafts, commit them once, then export the saved result. */
+    data class ApplyDraftAndExport(val edits: List<LyricAction>, val expectedRevision: Long, val format: LrcFormat) : LyricAction
 }
 
 /** Serialized by the editor. Imports are previews fenced to the exact document revision, never implicit edits. */
@@ -103,6 +105,41 @@ internal class ContinuousLyricsController(private val studio: Studio, private va
                 changed(LyricResult.Success(prepared.imported.lines), prepared.imported.lines.firstOrNull()?.id, prepared.revision)
             }
             LyricAction.CancelImport -> { pending = null; mutable.update { it.copy(preview = null) }; notice(LyricEditorNotice.CANCELLED, true) }
+            is LyricAction.ApplyDraftAndExport -> {
+                if (snapshot.revision != action.expectedRevision) return notice(LyricEditorNotice.STALE, false)
+                if (files == null) return notice(LyricEditorNotice.WRITE_FAILED, false)
+                var lines = project.lyrics
+                // State maps do not promise field order. Text invalidates its old word alignment;
+                // validate explicit word drafts afterwards so none can be silently discarded.
+                val edits = action.edits.sortedBy { when (it) {
+                    is LyricAction.Text -> 0
+                    is LyricAction.Timing -> 1
+                    is LyricAction.WordTiming -> 2
+                    else -> 3
+                } }
+                for (edit in edits) {
+                    fun ticks(from: Long, to: Long): Pair<Long, Long>? =
+                        if (from in 0..timing.maximumMilliseconds && to in 0..timing.maximumMilliseconds)
+                            timing.millisecondsToTick(from) to timing.millisecondsToTick(to) else null
+                    val result = when (edit) {
+                        is LyricAction.Text -> LyricEdits.replaceText(lines, edit.id, edit.text)
+                        is LyricAction.Timing -> ticks(edit.startMilliseconds, edit.endMilliseconds)?.let { (from, to) ->
+                            LyricEdits.retimeLine(lines, edit.id, from, to) }
+                        is LyricAction.WordTiming -> ticks(edit.startMilliseconds, edit.endMilliseconds)?.let { (from, to) ->
+                            LyricEdits.retimeWord(lines, edit.id, edit.word, from, to) }
+                        else -> return notice(LyricEditorNotice.EDIT_FAILED, false)
+                    } ?: return issue(LyricIssue(LyricProblem.TIME_OUT_OF_RANGE))
+                    when (result) {
+                        is LyricResult.Failure -> return issue(result.issue)
+                        is LyricResult.Success -> lines = result.value
+                    }
+                }
+                // Refuse an unrepresentable file before consuming an Undo or opening a picker.
+                val exported = LrcCodec.export(lines, timing, action.format)
+                if (exported is LyricResult.Failure) return issue(exported.issue)
+                if (!changed(LyricResult.Success(lines), view.value.selectedId, snapshot.revision)) return false
+                dispatch(LyricAction.Export(action.format))
+            }
             is LyricAction.Export -> {
                 val port = files ?: return notice(LyricEditorNotice.WRITE_FAILED, false)
                 val rendered = when (val result = LrcCodec.export(project.lyrics, timing, action.format)) {

@@ -6,7 +6,7 @@ import com.choplab.core.edit.Intent
 import com.choplab.core.edit.Reducer
 import com.choplab.core.model.*
 
-enum class VocalProblem { INVALID_INPUT, NO_TAKES, NO_TIMED_LINES, TAKE_TOO_SHORT, LIMIT, BUSY, RECORDING, STALE, RENDER_FAILED, APPLY_FAILED, CLOSED }
+enum class VocalProblem { INVALID_INPUT, NO_TAKES, NO_TIMED_LINES, TAKE_TOO_SHORT, LIMIT, BUSY, RECORDING, STALE, RENDER_FAILED, PREVIEW_FAILED, APPLY_FAILED, CLOSED }
 class VocalEditException(val problem: VocalProblem) : IllegalArgumentException(problem.name)
 
 data class VocalCompDraft(val id: String, val segments: FrozenList<VocalCompSegment>, val replacing: String? = null) {

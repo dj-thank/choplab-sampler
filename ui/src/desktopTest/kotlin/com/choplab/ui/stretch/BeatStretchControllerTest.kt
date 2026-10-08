@@ -1,5 +1,6 @@
 package com.choplab.ui.stretch
 
+import com.choplab.ui.CreationRevisionNotifications
 import com.choplab.core.DocumentState
 import com.choplab.core.edit.*
 import com.choplab.core.model.*
@@ -7,9 +8,27 @@ import com.choplab.engine.Tempo
 import com.choplab.ui.vocal.VocalAvailability
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlin.test.*
 
 class BeatStretchControllerTest {
+    @Test fun oldDocumentNotificationAfterReloadCannotInvalidateNewPreparedWork() = runBlocking {
+        val notifications = CreationRevisionNotifications()
+        val f = Fixture(observeDocument = notifications::observe)
+        try {
+            withTimeout(5000) { notifications.captured.await() }
+            f.document.value = f.document.value.copy(revision = 1)
+            assertTrue(f.controller.dispatch(StretchAction.Reload))
+            assertTrue(f.controller.dispatch(StretchAction.Bpm("120")))
+            assertTrue(f.controller.dispatch(StretchAction.Prepare))
+            notifications.release.complete(Unit)
+            withTimeout(5000) { notifications.delivered.await() }
+            assertTrue(f.controller.state.value.prepared)
+            assertNull(f.controller.state.value.problem)
+            assertEquals(1L, f.controller.state.value.revision)
+        } finally { notifications.release.complete(Unit); f.close() }
+    }
+
     @Test fun lateStopNotificationCannotEraseANewerAuditionButAnActualStopDoes() = runBlocking {
         val f = Fixture(Dispatchers.Unconfined)
         try {
@@ -112,6 +131,7 @@ class BeatStretchControllerTest {
         } finally { f.close() }
     }
     private class Fixture(dispatcher: CoroutineDispatcher = Dispatchers.Default,
+                          val observeDocument: (StateFlow<DocumentState>) -> StateFlow<DocumentState> = { it },
                           private val rendering: suspend (StretchDraft) -> Asset = { rendered(it) }) {
         val session = EditSession(Project(assets = frozenListOf(source), pads = (0..127).map {
             if (it == 0) Pad(0, source.hash, FrameRange(0, source.frames)) else Pad(it)
@@ -126,7 +146,7 @@ class BeatStretchControllerTest {
             plan.effects.indices.forEach { session.acknowledge(plan, it) }; session.commit(plan)
             document.value = DocumentState(session.project, session.revision, session.canUndo, session.canRedo)
         }
-        val controller = BeatStretchController(document, availability, object : BeatStretchPorts {
+        val controller = BeatStretchController(observeDocument(document), availability, object : BeatStretchPorts {
             override val previewing = this@Fixture.previewing
             override fun isPreviewing() = actuallyPreviewing
             override suspend fun render(project: Project, draft: StretchDraft, progress: (Int, Int) -> Unit): Asset { renders++; return rendering(draft) }

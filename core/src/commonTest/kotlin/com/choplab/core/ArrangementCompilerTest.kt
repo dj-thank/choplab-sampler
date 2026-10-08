@@ -154,7 +154,7 @@ class ArrangementCompilerTest {
         val overlapping = project(a, (0..32).map { Clip("c$it", "t", a.hash, FrameRange(0, 100)) })
         assertFailsWith<IllegalArgumentException> { compiler.compile(overlapping, PlaybackTarget.Arrangement(), 1) }
         assertTrue(loader.loaded.isEmpty())
-        val manyTracks = (0..16).map { Track("t$it", "Track $it", TrackKind.SOURCE) }
+        val manyTracks = (0..64).map { Track("t$it", "Track $it", TrackKind.SOURCE) }
         assertFailsWith<IllegalArgumentException> { compiler.compile(project(a, manyTracks.mapIndexed { i, t -> Clip("c$i", t.id, a.hash, FrameRange(0, 100), timelineStartFrame = i * 100L) }, manyTracks), PlaybackTarget.Arrangement(), 2) }
         val largeA = asset("a", frames = 9_000_000); val largeB = asset("b", frames = 9_000_000)
         val large = Project(assets = frozenListOf(largeA, largeB), tracks = frozenListOf(Track("t", "Track", TrackKind.SOURCE)),
@@ -164,6 +164,24 @@ class ArrangementCompilerTest {
         assertFailsWith<IllegalArgumentException> { compiler.compile(project(a, (0..1024).map { Clip("c$it", "t", a.hash, FrameRange(0, 1), timelineStartFrame = it * 2L) }), PlaybackTarget.Arrangement(), 4) }
         assertFailsWith<IllegalArgumentException> { compiler.compile(project(a, listOf(Clip("end", "t", a.hash, FrameRange(0, 1), timelineStartFrame = ProjectLimits.MAX_TIMELINE_FRAMES))), PlaybackTarget.Arrangement(), 5) }
         assertTrue(loader.loaded.isEmpty())
+    }
+
+    @Test fun legalSeventeenThirtyTwoAndSixtyFourTrackDocumentsCompileEveryAudiblePlacement() = runTest {
+        val asset = asset()
+        for (count in listOf(17, 32, 64)) {
+            val tracks = List(count) { Track("t$it", "Track $it", TrackKind.SOURCE) }
+            val clips = tracks.mapIndexed { i, track -> Clip("c$i", track.id, asset.hash, FrameRange(0, 100), timelineStartFrame = i * 100L) }
+            val loader = Loader()
+            val program = ProgramCompiler(loader).compile(project(asset, clips, tracks), PlaybackTarget.Arrangement(), 1)
+            try {
+                val graph = program.arrangement!!
+                assertEquals(count, graph.clipCount)
+                assertEquals(1, graph.maximumOverlap)
+                assertEquals(tracks.map { it.id }, (0 until count).map { program.mixer.busId(it) })
+                assertEquals(count - 1, graph.clip(count - 1).trackIndex)
+                assertEquals(1, loader.loaded.size)
+            } finally { program.releasePreparation() }
+        }
     }
 
     @Test fun adjacentMixedRateRangesShareExactlyOneBoundary() = runTest {
