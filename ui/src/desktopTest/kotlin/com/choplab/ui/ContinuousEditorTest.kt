@@ -1263,7 +1263,7 @@ class ContinuousEditorTest {
         val previous = Locale.getDefault()
         Locale.setDefault(Locale.JAPAN)
         try {
-            val state = mutableStateOf(ContinuousEditorFixture.state())
+            val state = mutableStateOf(ContinuousEditorFixture.state().copy(selectedPadSnapshot = com.choplab.core.model.Pad(2)))
             val actions = mutableListOf<ContinuousEditorAction>()
             fun update(pad: (ContinuousPad) -> ContinuousPad) {
                 state.value = state.value.copy(pads = state.value.pads.map { if (it.id == state.value.selectedPadId) pad(it) else it })
@@ -1330,7 +1330,8 @@ class ContinuousEditorTest {
                 scene.click("ce-clear-pad")
                 assertEquals(again, actions.size, "Asked again after the change")
                 scene.click("ce-clear-pad")
-                assertEquals(ContinuousEditorAction.ClearPad(2), actions.last())
+                assertEquals(2, assertIs<ContinuousEditorAction.ClearPad>(actions.last()).padId)
+                assertNotNull((actions.last() as ContinuousEditorAction.ClearPad).confirmation)
                 scene.click("ce-pad-play-close")
                 assertEquals(ContinuousEditorAction.ClosePadPlay, actions.last())
                 assertNull(scene.tag("ce-pad-play-panel"))

@@ -25,6 +25,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlin.math.pow
 import kotlin.test.*
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 
 /** Presenter/Studio contracts with fake platform ports; not physical audio evidence. */
 class ContinuousEditorPresenterTest {
@@ -1660,7 +1662,7 @@ class ContinuousEditorPresenterTest {
             assertEquals(PlayMode.ONE_SHOT, h.studio.document.value.project.pads[1].mode)
             // Clearing a looping PAD stops it, empties it and closes the panel.
             val before = h.engine.commands.size
-            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ClearPad(0)))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ClearPad(0, PadClearConfirmation(h.studio.document.value.project.pads[0], h.studio.document.value.revision, TimeSource.Monotonic.markNow() + 5.seconds))))
             h.until { !it.padPlayOpen && it.pads[0].kind == ContinuousPadKind.EMPTY && 0 !in it.pads.filter { p -> p.looping }.map { p -> p.id } }
             assertNull(h.studio.document.value.project.pads[0].assetHash)
             assertTrue(h.engine.commands.drop(before).any { it is EngineCommand.Release && it.padId == 0 }, "The looping PAD stops")

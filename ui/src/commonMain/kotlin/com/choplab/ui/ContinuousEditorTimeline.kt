@@ -296,6 +296,12 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
             Text(if (clip == null) stringResource(Res.string.ce_no_selected_clip) else stringResource(Res.string.ce_selected_clip, clip.title), color = CEColor.Green, fontSize = 14.sp, lineHeight = 20.sp)
             if (clip != null) {
                 Text(stringResource(Res.string.ce_clip_position, ceTime(clip.timelineStartFrame, precise = true), ceTime(clip.timelineDurationFrames, precise = true)), color = CEColor.Cream, fontSize = 12.sp, lineHeight = 16.sp, fontFamily = FontFamily.Monospace)
+                key(clip.id, state.documentRevision) {
+                    CEExactPosition(clip.timelineStartFrame, ContinuousClipEdits.MAX_TIMELINE_FRAMES - clip.timelineDurationFrames,
+                        state.permits(ContinuousCapability.MOVE_CLIP)) { frame ->
+                        onAction(ContinuousEditorAction.SetClipPosition(clip.id, frame, state.documentRevision))
+                    }
+                }
                 // Keyed by clip, so a gain dragged on one clip is never shown on the next selection.
                 key(clip.id) { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     CEValueSlider(stringResource(Res.string.ce_clip_gain), clip.gain, state, ContinuousCapability.CLIP_GAIN,

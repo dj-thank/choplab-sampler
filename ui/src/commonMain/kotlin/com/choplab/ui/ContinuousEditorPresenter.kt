@@ -1058,13 +1058,25 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                         ?.let { edit(Intent.SetPad(it.copy(chokeGroup = action.group))) } ?: false
                 }
                 // Studio stops the PAD. A loop the loop button started stays on record, so an Undo brings it back as it was.
-                is ContinuousEditorAction.ClearPad -> project.pads[action.padId].takeIf { it.assetHash != null }?.let { pad ->
-                    edit(Intent.ClearPad(pad.id)).also { cleared ->
+                is ContinuousEditorAction.ClearPad -> {
+                    val confirmation = action.confirmation
+                    val document = studio.document.value
+                    val pad = document.project.pads.getOrNull(action.padId)
+                    if (confirmation == null || confirmation.expiresAt.hasPassedNow() ||
+                        confirmation.revision != document.revision || confirmation.pad != pad ||
+                        studio.selection.value.padId != action.padId || pad?.assetHash == null ||
+                        bankPadBlock(view.value, studio.work.value) != null) false
+                    else send(Action.Edit(Intent.ClearPad(pad.id), confirmation.revision)).also { cleared ->
                         if (cleared) view.update { it.copy(padPlay = false, playingPads = it.playingPads - pad.id) }
                     }
-                } ?: false
+                }
                 is ContinuousEditorAction.PlacePad -> placePad(project, action.padId, action)
                 is ContinuousEditorAction.FillPad -> placePad(project, action.padId, action)
+                is ContinuousEditorAction.SetClipPosition -> {
+                    if (workBusy() || bankPadBlock(view.value, studio.work.value) != null ||
+                        studio.document.value.revision != action.expectedRevision || view.value.clip != action.clipId) false
+                    else send(Action.Edit(ContinuousClipEdits.intent(project, action, ::freshId, grid = view.value.grid), action.expectedRevision))
+                }
                 is ContinuousEditorAction.MoveClip, is ContinuousEditorAction.NudgeClip, is ContinuousEditorAction.TrimClip,
                 is ContinuousEditorAction.SplitClip, is ContinuousEditorAction.DuplicateClip, is ContinuousEditorAction.RepeatBars,
                 is ContinuousEditorAction.DeleteClip,
@@ -3294,7 +3306,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 pad.range?.start ?: 0, pad.range?.end ?: 0, pad.assetHash?.let { p.asset(it).sampleRate } ?: 48_000,
                 pad.pitchSemitones.toFloat(), tone = pad.tone, gain = pad.gain, looping = pad.mode == PlayMode.LOOP && pad.id in v.playingPads,
                 reverse = pad.reverse, chokeGroup = pad.chokeGroup) },
-            selectedPadId = input.selection.padId,
+            selectedPadId = input.selection.padId, selectedPadSnapshot = selected,
             tracks = p.tracks.mapIndexed { i, track -> ContinuousTrack(track.id, track.name,
                 listOf(0xFF89AD50, 0xFFC1843D, 0xFFB6A66D, 0xFFBF7A53)[i % 4], track.mute) },
             // A zero-length clip saved by an earlier build is silent, but stays visible, selectable and deletable.

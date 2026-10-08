@@ -210,6 +210,7 @@ enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
     val selectedBank: Int = 0,
     val pads: List<ContinuousPad> = emptyList(),
     val selectedPadId: Int = 0,
+    val selectedPadSnapshot: com.choplab.core.model.Pad? = null,
     val tracks: List<ContinuousTrack> = emptyList(),
     val clips: List<ContinuousClip> = emptyList(),
     val selectedClipId: String? = null,
@@ -316,6 +317,9 @@ class ContinuousHitGesture(val padId: Int, val songFrame: Long)
 /** One physical press, captured before awaiting release; it cannot cross a pass or document revision. */
 data class ContinuousChopGesture(val pass: Any, val revision: Long, val output: LiveChopOutput)
 
+/** A short-lived confirmation of one exact PAD, checked again when the action executes. */
+data class PadClearConfirmation(val pad: com.choplab.core.model.Pad, val revision: Long, val expiresAt: kotlin.time.TimeMark)
+
 /** Typed requests. Hosts/Studio confirm every edit; UI drag previews are never document commits. */
 sealed interface ContinuousEditorAction {
     data object RevealCompletedOutput : ContinuousEditorAction
@@ -411,7 +415,7 @@ sealed interface ContinuousEditorAction {
     data class SetPadMode(val padId: Int, val mode: ContinuousPadMode) : ContinuousEditorAction
     /** 0 (none) to 4, as in the earlier app. */
     data class SetPadChoke(val padId: Int, val group: Int) : ContinuousEditorAction
-    data class ClearPad(val padId: Int) : ContinuousEditorAction
+    data class ClearPad(val padId: Int, val confirmation: PadClearConfirmation? = null) : ContinuousEditorAction
     /** Explicit user placement only: original source is never placed by merely changing stages. */
     data class PlacePad(val padId: Int, val trackId: String?, val timelineFrame: Long) : ContinuousEditorAction
     /**
@@ -420,6 +424,7 @@ sealed interface ContinuousEditorAction {
      */
     data class FillPad(val padId: Int, val trackId: String?, val timelineFrame: Long, val spacing: ContinuousGrid, val bars: Int) : ContinuousEditorAction
     data class SelectClip(val clipId: String?) : ContinuousEditorAction
+    data class SetClipPosition(val clipId: String, val timelineStartFrame: Long, val expectedRevision: Long) : ContinuousEditorAction
     data class MoveClip(val clipId: String, val trackId: String, val timelineStartFrame: Long) : ContinuousEditorAction
     /** Moves the clip to the next grid line later (or earlier); on a free grid, by one second. */
     data class NudgeClip(val clipId: String, val forward: Boolean) : ContinuousEditorAction

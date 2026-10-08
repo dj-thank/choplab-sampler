@@ -40,6 +40,7 @@ import com.choplab.ui.onboarding.*
 import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.stringResource
 import com.choplab.ui.chop.*
+import kotlin.time.Duration.Companion.seconds
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
@@ -356,10 +357,18 @@ import kotlin.math.roundToLong
                         onAction(ContinuousEditorAction.SetPadChoke(id, group)) }
                 }
                 Text(stringResource(Res.string.ce_choke_help), fontSize = 12.sp, lineHeight = 18.sp, color = CEColor.Border)
-                var armed by remember(pad) { mutableStateOf(false) }
-                CEButton(stringResource(if (armed) Res.string.ce_clear_pad_confirm else Res.string.ce_clear_pad),
-                    { if (armed) onAction(ContinuousEditorAction.ClearPad(id)) else armed = true }, Modifier.fillMaxWidth(),
-                    primary = armed, tag = "ce-clear-pad")
+                var confirmation by remember(pad, state.documentRevision, state.selectedPadSnapshot) { mutableStateOf<PadClearConfirmation?>(null) }
+                LaunchedEffect(confirmation) { if (confirmation != null) { delay(5_000); confirmation = null } }
+                CEButton(stringResource(if (confirmation != null) Res.string.ce_clear_pad_confirm else Res.string.ce_clear_pad), {
+                    val question = confirmation
+                    if (question != null && !question.expiresAt.hasPassedNow()) {
+                        confirmation = null
+                        onAction(ContinuousEditorAction.ClearPad(id, question))
+                    } else confirmation = state.selectedPadSnapshot?.let {
+                        PadClearConfirmation(it, state.documentRevision, kotlin.time.TimeSource.Monotonic.markNow() + 5.seconds)
+                    }
+                }, Modifier.fillMaxWidth(), enabled = state.selectedPadSnapshot?.id == id && state.permits(ContinuousCapability.PAD_PLAY),
+                    primary = confirmation != null, tag = "ce-clear-pad")
             }
         },
         confirmButton = { CEButton(stringResource(Res.string.ce_close), close, tag = "ce-pad-play-close") })

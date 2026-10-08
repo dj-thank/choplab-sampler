@@ -196,6 +196,12 @@ object ContinuousClipEdits {
                     }
                 }
             }
+            is ContinuousEditorAction.SetClipPosition -> {
+                val old = selected(action.clipId)
+                require(action.timelineStartFrame in 0..MAX_TIMELINE_FRAMES - durationFrames(project, old))
+                // Explicit frame placement is independent of the visual snap grid and source trim.
+                replace(old.copy(timelineStartFrame = action.timelineStartFrame))
+            }
             is ContinuousEditorAction.MoveClip -> {
                 require(tracks.any { it.id == action.trackId })
                 val old = selected(action.clipId)
