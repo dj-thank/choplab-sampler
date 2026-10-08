@@ -224,6 +224,8 @@ private data class PendingPunch(val project: Project, val revision: Long, val re
 private data class RecordingEstimateRequest(val voiceSeconds: Int, val systemSeconds: Int,
     val assets: List<Asset>, val stage: ContinuousStage, val blocked: Boolean)
 
+private data class PendingProjectOpen(val location: Location, val revision: Long)
+
 private data class EditorView(
     val assetWaveforms: Map<String, WaveformLoadState> = emptyMap(),
     val pendingOutput: Pair<Operation, Location>? = null,
@@ -251,6 +253,8 @@ private data class EditorView(
     val handGain: Float = 1f,
     val status: ContinuousStatus? = null,
     val newProjectRevision: Long? = null,
+    val pendingProjectOpen: PendingProjectOpen? = null,
+    val closing: Boolean = false,
     val openingProject: Boolean = false,
     val playingPads: Set<Int> = emptySet(),
     val kitChooser: Boolean = false,
@@ -305,6 +309,8 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     @Volatile private var loopOpeningCancelled = false
     @Volatile private var openingSource = false
     @Volatile private var platformPickerOpen = false
+    @Volatile private var platformPicker: Deferred<*>? = null
+    @Volatile private var closingRequested = false
     @Volatile private var sourceOpeningCancelled = false
     @Volatile private var voiceOpeningCancelled = false
     /**
@@ -575,6 +581,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     /** A host interruption cancels offline separation without waiting for a native worker or the action lock. */
     fun cancelFourStemPreparation() { separation.value?.cancel() }
     fun onAction(action: ContinuousEditorAction) {
+        if (closingRequested) return
         if (sourcePreviewBlocked(action)) return
         if (action == ContinuousEditorAction.StopAll) online.value?.cancelPendingApply()
         if (action == ContinuousEditorAction.CloseVocalPractice) practice.value?.close()
@@ -627,6 +634,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     }
 
     suspend fun dispatch(action: ContinuousEditorAction): Boolean {
+        if (closingRequested) return false
         if (action == ContinuousEditorAction.CloseVocalCoach) return closeVocalCoach()
         if (coach.value != null && action != ContinuousEditorAction.OpenVocalCoach && action != ContinuousEditorAction.StopAll &&
             action !is ContinuousEditorAction.CopyDiagnostics && !closeVocalCoach()) return false
@@ -686,6 +694,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         // Cancel preparation before waiting for a UI edit; Stop cannot queue behind decoding.
         if (interrupts(action)) interrupt(action)
         return serialized.withLock {
+        if (closingRequested) return@withLock false
         try {
             // A stop that finds no take or pass (the song already ended it) leaves its message in place, and so does
             // letting go of a PAD, which a pass ending under a held finger sends.
@@ -726,7 +735,10 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 is ContinuousEditorAction.ExportTail -> { view.update { it.copy(exportTail = action.include) }; true }
                 is ContinuousEditorAction.BankPadEdit -> bankPadEditor.dispatch(action.action)
                 is ContinuousEditorAction.Lyrics -> if (action.action != LyricAction.Close &&
-                    (studio.work.value.jobId != null || studio.work.value.preparationId != null)) false else lyricEditor.dispatch(action.action)
+                    (studio.work.value.jobId != null || studio.work.value.preparationId != null)) false
+                    else if (action.action == LyricAction.Import || action.action is LyricAction.Export)
+                        withPlatformPicker { lyricEditor.dispatch(action.action) } ?: false
+                    else lyricEditor.dispatch(action.action)
                 ContinuousEditorAction.OpenVocalPunch -> openVocalPunch()
                 ContinuousEditorAction.CloseVocalPunch -> closeVocalPunch()
                 ContinuousEditorAction.OpenVocalTakes -> { if (!closeVocalPunch()) false else openVocalTakes() }
@@ -774,7 +786,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                     else { withPlatformPicker { ports.openSpotifyMetadata() }; true }
                 }
                 ContinuousEditorAction.NewProject -> if (bankPadBlock(view.value, studio.work.value) != null) false else {
-                    view.update { it.copy(newProjectRevision = studio.document.value.revision) }; true
+                    view.update { it.copy(newProjectRevision = studio.document.value.revision, pendingProjectOpen = null) }; true
                 }
                 ContinuousEditorAction.CancelNewProject -> { view.update { it.copy(newProjectRevision = null) }; true }
                 is ContinuousEditorAction.ConfirmNewProject -> newProject(action)
@@ -793,9 +805,11 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                     true
                 }
                 ContinuousEditorAction.OpenProject -> if (workBusy()) { refusal = ContinuousStatus.BUSY; false }
-                    else withPlatformPicker { ports.chooseOpen() }?.let { openFile(it) } ?: cancelled()
+                    else withPlatformPicker { ports.chooseOpen() }?.let { requestOpen(it) } ?: cancelled()
                 is ContinuousEditorAction.OpenProjectFile -> if (studio.work.value.jobId != null || studio.work.value.preparationId != null) false
-                    else openFile(action.location)
+                    else requestOpen(action.location)
+                ContinuousEditorAction.CancelOpenProject -> { view.update { it.copy(pendingProjectOpen = null) }; true }
+                is ContinuousEditorAction.ConfirmOpenProject -> confirmOpen(action)
                 ContinuousEditorAction.RevealCompletedOutput -> view.value.completedOutput?.let {
                     ports.revealOutput(it.second).also { shown -> if (!shown) refusal = ContinuousStatus.OUTPUT_UNAVAILABLE }
                 } ?: false
@@ -1255,7 +1269,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         ContinuousEditorAction.OpenScratch, ContinuousEditorAction.OpenLiveChopTiming, ContinuousEditorAction.BeginLiveChop, ContinuousEditorAction.ImportAudio, ContinuousEditorAction.ImportLibrary,
         ContinuousEditorAction.ImportOnline, ContinuousEditorAction.SeparateSource, ContinuousEditorAction.OpenProject,
         is ContinuousEditorAction.ImportAudioFile, is ContinuousEditorAction.OpenProjectFile,
-        ContinuousEditorAction.NewProject, is ContinuousEditorAction.ConfirmNewProject,
+        ContinuousEditorAction.NewProject, is ContinuousEditorAction.ConfirmNewProject, is ContinuousEditorAction.ConfirmOpenProject,
         ContinuousEditorAction.RecordSource, ContinuousEditorAction.RecordSystemSource, ContinuousEditorAction.RecordVoice,
         ContinuousEditorAction.RecordHits -> true
         else -> false
@@ -2671,7 +2685,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     }
 
     private fun endsScratch(action: ContinuousEditorAction): Boolean = action == ContinuousEditorAction.CloseScratch ||
-        action == ContinuousEditorAction.ScratchLetGo || action is ContinuousEditorAction.ConfirmNewProject || action == ContinuousEditorAction.StopAll || action == ContinuousEditorAction.ReloadAudio ||
+        action == ContinuousEditorAction.ScratchLetGo || action is ContinuousEditorAction.ConfirmNewProject || action is ContinuousEditorAction.ConfirmOpenProject || action == ContinuousEditorAction.StopAll || action == ContinuousEditorAction.ReloadAudio ||
         action == ContinuousEditorAction.StopOriginal || (action is ContinuousEditorAction.Navigate && action.stage != ContinuousStage.BEAT)
 
     private fun cancelScratchOpening() {
@@ -2850,9 +2864,30 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         Rejection.ENGINE_REFUSED -> ContinuousStatus.NO_OUTPUT
         else -> ContinuousStatus.FAILED
     }
-    private suspend fun <T> withPlatformPicker(open: suspend () -> T): T {
+    private suspend fun <T> withPlatformPicker(open: suspend () -> T): T? = coroutineScope {
+        if (closingRequested) return@coroutineScope null
+        val picker = async(start = CoroutineStart.LAZY) { open() }
+        platformPicker = picker
         platformPickerOpen = true
-        try { return open() } finally { platformPickerOpen = false }
+        try {
+            if (closingRequested) picker.cancel()
+            picker.await().takeUnless { closingRequested }
+        } catch (cancel: CancellationException) {
+            if (!currentCoroutineContext().isActive) throw cancel
+            null
+        } finally { platformPicker = null; platformPickerOpen = false }
+    }
+
+    /** Release the owned picker before finishRecording waits for the serialized edit. */
+    suspend fun prepareToClose() {
+        closingRequested = true
+        view.update { it.copy(closing = true) }
+        platformPicker?.cancelAndJoin()
+    }
+    /** A failed final save can return to this same document, Undo history and picker services. */
+    fun cancelClose() {
+        closingRequested = false
+        view.update { it.copy(closing = false) }
     }
     private suspend fun acknowledgeRecording(pending: PendingRecording): Boolean {
         // A cleanup failure may be retried, but must never add the same clip/take twice.
@@ -2918,16 +2953,34 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     }
     private fun workBusy() = studio.work.value.let { it.jobId != null || it.preparationId != null } || view.value.pendingRecording != null || hasPendingInput()
     private suspend fun importFile(location: Location): Boolean {
+        if (closingRequested) return false
         if (workBusy()) { refusal = ContinuousStatus.BUSY; return false }
         releaseHeld()
         return stopOriginal() && send(Action.Import(location))
     }
-    private suspend fun openFile(location: Location): Boolean {
-        if (workBusy()) { refusal = ContinuousStatus.BUSY; return false }
+    private suspend fun requestOpen(location: Location): Boolean {
+        if (closingRequested) return false
+        if (workBusy() || bankPadBlock(view.value, studio.work.value) != null) { refusal = ContinuousStatus.BUSY; return false }
+        val document = studio.document.value
+        if (document.savedRevision != document.revision) {
+            view.update { it.copy(pendingProjectOpen = PendingProjectOpen(location, document.revision), newProjectRevision = null) }
+            return true
+        }
+        return openFile(location, document.revision)
+    }
+    private suspend fun confirmOpen(action: ContinuousEditorAction.ConfirmOpenProject): Boolean {
+        val pending = view.value.pendingProjectOpen ?: return false
+        if (pending.revision != action.revision || !prepareProjectSwitch(action.saveCurrent, action.revision)) return false
+        return openFile(pending.location, pending.revision).also { accepted ->
+            if (accepted) view.update { it.copy(pendingProjectOpen = null) }
+        }
+    }
+    private suspend fun openFile(location: Location, expectedRevision: Long): Boolean {
+        if (workBusy() || studio.document.value.revision != expectedRevision) { refusal = ContinuousStatus.BUSY; return false }
         releaseHeld()
-        if (!stopOriginal()) return false
+        if (!stopOriginal() || closingRequested) return false
         view.update { it.copy(openingProject = true) }
-        return send(Action.Open(location)).also { if (!it) view.update { v -> v.copy(openingProject = false) } }
+        return send(Action.Open(location, expectedRevision)).also { if (!it) view.update { v -> v.copy(openingProject = false) } }
     }
     private suspend fun history(redo: Boolean): Boolean {
         val document = studio.document.value
@@ -2944,9 +2997,18 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     }
     private suspend fun newProject(action: ContinuousEditorAction.ConfirmNewProject): Boolean {
         val before = studio.document.value
-        if (view.value.newProjectRevision != action.revision || before.revision != action.revision || workBusy() ||
-            bankPadBlock(view.value, studio.work.value) != null) return false
-        if (action.saveCurrent) {
+        if (view.value.newProjectRevision != action.revision || !prepareProjectSwitch(action.saveCurrent, action.revision)) return false
+        if (!stopOriginal() || closingRequested) return false
+        releaseHeld()
+        if (!send(Action.New(Project(id = "project-${before.revision + 1}"), before.revision))) return false
+        loopModes.clear()
+        view.update { it.copy(newProjectRevision = null, pendingProjectOpen = null, clip = null, track = null, stage = ContinuousStage.CAPTURE) }
+        return true
+    }
+    private suspend fun prepareProjectSwitch(saveCurrent: Boolean, expectedRevision: Long): Boolean {
+        val before = studio.document.value
+        if (before.revision != expectedRevision || workBusy() || bankPadBlock(view.value, studio.work.value) != null) return false
+        if (saveCurrent) {
             val location = withPlatformPicker { ports.chooseSave() } ?: return cancelled()
             if (studio.document.value.revision != before.revision || workBusy()) return false
             val saved = coroutineScope {
@@ -2962,12 +3024,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 refusal = ContinuousStatus.SAVE_FAILED; return false
             }
         }
-        if (!stopOriginal()) return false
-        releaseHeld()
-        if (!send(Action.New(Project(id = "project-${before.revision + 1}")))) return false
-        loopModes.clear()
-        view.update { it.copy(newProjectRevision = null, clip = null, track = null, stage = ContinuousStage.CAPTURE) }
-        return true
+        return !closingRequested && studio.document.value.revision == expectedRevision
     }
     private fun cancelled(): Boolean { view.update { it.copy(status = ContinuousStatus.CANCELLED) }; return false }
     private suspend fun edit(intent: Intent): Boolean = send(Action.Edit(intent))
@@ -3087,6 +3144,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
         return value
     }
     suspend fun close() {
+        prepareToClose()
         loopOpeningCancelled = true
         closeAutoChop()
         analysis.getAndUpdate { null }?.dispose()
@@ -3215,7 +3273,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
             ContinuousCapability.ORIGINAL_MONITOR_GAIN, ContinuousCapability.ORIGINAL_PITCH, ContinuousCapability.SOURCE_RANGE,
             ContinuousCapability.LIVE_CHOP, ContinuousCapability.SCRATCH, ContinuousCapability.RELOAD_AUDIO))
         val kitSounds = p.pads.map { pad -> pad.assetHash?.let { DrumKits.identify(p.asset(it)) } }
-        return ContinuousEditorState(stage = v.stage, projectTitle = p.title, documentRevision = input.document.revision, newProjectRevision = v.newProjectRevision, original = source,
+        return ContinuousEditorState(stage = v.stage, projectTitle = p.title, documentRevision = input.document.revision, newProjectRevision = v.newProjectRevision, openProjectRevision = v.pendingProjectOpen?.revision, closing = v.closing, original = source,
             pendingRecording = v.pendingRecording != null || hasPendingInput(), pendingRecordingApplied = pendingRecording()?.applied == true,
             pendingRecordingCanRecoverSource = v.pendingRecording?.punch?.let { it.project != p || it.revision != input.document.revision } == true,
             assetWaveforms = v.assetWaveforms, assetWaveformNames = p.assets.associate { it.hash to it.name }, recordingPunch = v.punchRecording,

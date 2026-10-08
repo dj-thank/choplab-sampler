@@ -76,6 +76,15 @@ import kotlin.math.roundToLong
             val scrollRecordingStatus = compact && state.stage == ContinuousStage.BEAT && maxHeight < 480.dp
             Column(Modifier.fillMaxSize().padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 CEHeader(state, onAction, compact, readout, refreshKey)
+                if (state.closing) Row(Modifier.fillMaxWidth().testTag("ce-closing-project")
+                    .semantics { liveRegion = LiveRegionMode.Polite }, horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.size(24.dp))
+                    Column {
+                        Text(stringResource(Res.string.ce_closing_project), fontWeight = FontWeight.Bold)
+                        Text(stringResource(Res.string.ce_closing_project_hint))
+                    }
+                }
                 if (!scrollRecordingStatus) CERecordingStatus(state, onAction, readout, refreshKey)
                 if (state.autosaveFailed) Text(stringResource(Res.string.ce_autosave_failed),
                     Modifier.testTag("ce-autosave-failed").semantics { liveRegion = LiveRegionMode.Polite }, color = CEColor.Ink)
@@ -138,6 +147,20 @@ import kotlin.math.roundToLong
                     onAction(ContinuousEditorAction.ConfirmNewProject(false, revision))
                 }, enabled = state.documentRevision == revision && state.permits(ContinuousCapability.NEW_PROJECT), tag = "ce-new-discard")
                     CEButton(stringResource(Res.string.ce_cancel), { onAction(ContinuousEditorAction.CancelNewProject) }, tag = "ce-new-cancel") } })
+        }
+        state.openProjectRevision?.let { revision ->
+            AlertDialog(onDismissRequest = { onAction(ContinuousEditorAction.CancelOpenProject) },
+                title = { Text(stringResource(Res.string.ce_open_project)) },
+                text = { Text(stringResource(Res.string.ce_open_project_save_hint)) },
+                confirmButton = { CEButton(stringResource(Res.string.ce_save_then_open), {
+                    onAction(ContinuousEditorAction.ConfirmOpenProject(true, revision))
+                }, enabled = state.documentRevision == revision && state.permits(ContinuousCapability.NEW_PROJECT), tag = "ce-open-save") },
+                dismissButton = { Column {
+                    CEButton(stringResource(Res.string.ce_open_without_save), {
+                        onAction(ContinuousEditorAction.ConfirmOpenProject(false, revision))
+                    }, enabled = state.documentRevision == revision && state.permits(ContinuousCapability.NEW_PROJECT), tag = "ce-open-discard")
+                    CEButton(stringResource(Res.string.ce_cancel), { onAction(ContinuousEditorAction.CancelOpenProject) }, tag = "ce-open-cancel")
+                } })
         }
         CELyricsPanel(state, onAction, readout, refreshKey)
         lyricProposal?.let { CELyricProposalDialog(it, onAction) }

@@ -256,6 +256,7 @@ class ContinuousEditorPresenterTest {
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.Undo))
             h.until { it.selectedTrackId == "a" }
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenProjectFile(Location("project"))))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ConfirmOpenProject(false, h.studio.document.value.revision)))
             h.until { it.selectedClipId == null && it.selectedTrackId == null }
         } finally { h.close() }
     }
@@ -3261,6 +3262,7 @@ class ContinuousEditorPresenterTest {
             try {
                 h.ports.openLocation = Location("old.choplab")
                 assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenProject))
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.ConfirmOpenProject(false, h.studio.document.value.revision)))
                 h.until { it.status == status }
                 assertNull(h.studio.document.value.savedRevision, "A rescued document is new until it is saved")
             } finally { h.close() }
@@ -3279,6 +3281,7 @@ class ContinuousEditorPresenterTest {
         try {
             h.ports.openLocation = Location("old.choplab")
             assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenProject))
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.ConfirmOpenProject(false, h.studio.document.value.revision)))
             withTimeout(5_000) { while (h.studio.work.value.jobId != null || h.studio.work.value.preparationId != null) delay(5) }
             // A mailbox turn after Open's completion ensures its notice was emitted before the dispatcher is released.
             h.studio.dispatch(Action.RefreshTransport)

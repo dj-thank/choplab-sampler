@@ -176,6 +176,8 @@ enum class ContinuousScratchSensitivity { FINE, NORMAL, WIDE }
     val projectTitle: String = "",
     val documentRevision: Long = 0,
     val newProjectRevision: Long? = null,
+    val openProjectRevision: Long? = null,
+    val closing: Boolean = false,
     val autosaveFailed: Boolean = false,
     val pendingRecording: Boolean = false,
     val pendingRecordingApplied: Boolean = false,
@@ -359,6 +361,8 @@ sealed interface ContinuousEditorAction {
     data object StopSourceRecording : ContinuousEditorAction
     data object DiscardSourceRecording : ContinuousEditorAction
     data object OpenProject : ContinuousEditorAction
+    data class ConfirmOpenProject(val saveCurrent: Boolean, val revision: Long) : ContinuousEditorAction
+    data object CancelOpenProject : ContinuousEditorAction
     data class OpenProjectFile(val location: com.choplab.core.Location) : ContinuousEditorAction
     data object SaveProject : ContinuousEditorAction
     data class Mixer(val action: com.choplab.ui.mixer.MixerAction) : ContinuousEditorAction
