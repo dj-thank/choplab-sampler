@@ -76,6 +76,8 @@ class VoiceRecorder(private val input: MicInput, scratch: Path, maxSeconds: Int,
     @Volatile private var running = true
     @Volatile private var ended = false
     @Volatile private var abandoned = false
+    /** A discard is already owned by the capture thread until that thread really ends. */
+    internal val discardRequested: Boolean get() = abandoned
     private val stopRequested = java.util.concurrent.atomic.AtomicBoolean()
 
     /** The take reached its length limit and records nothing more. */

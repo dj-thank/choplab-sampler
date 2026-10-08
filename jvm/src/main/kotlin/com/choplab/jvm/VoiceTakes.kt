@@ -50,6 +50,14 @@ class VoiceTakes(
     private var closed = false
     private val openingEpoch = java.util.concurrent.atomic.AtomicLong()
 
+    /** Call under [lock]. A timed-out discard keeps ownership until capture and its cleanup have ended. */
+    private fun releaseTerminatedRecorder() {
+        val current = retiring ?: return
+        if (!current.terminated) return
+        if (pending === current && current.discardRequested && current.recoveryFile == null) pending = null
+        retiring = null
+    }
+
     init {
         require(captureChannels in 1..2)
         // Durable hosts offer crash remnants for explicit recovery/discard; never delete an unaccepted original.
@@ -81,7 +89,7 @@ class VoiceTakes(
         require(window == null || (waitForCue && window.frames48k * passes <= maxSeconds * 48_000L))
         synchronized(lock) {
             if (closed || epoch != openingEpoch.get()) return@withContext Start.NO_INPUT
-            if (retiring?.terminated == true) retiring = null
+            releaseTerminatedRecorder()
             if (retiring != null) return@withContext Start.NO_INPUT
             check(recorder == null) { "A take is already recording" }
             if (pending != null || recovered.isNotEmpty() || opener.busy) return@withContext Start.NO_INPUT
@@ -145,8 +153,14 @@ class VoiceTakes(
     val rightPeak: Float? get() = synchronized(lock) { recorder }?.takeIf { it.inputChannels == 2 }?.rightPeak
     val pendingAccepted: Boolean get() = synchronized(lock) { recovered.firstOrNull() in recoveredAccepted }
     val interruption: InputInterruption? get() = synchronized(lock) { recorder ?: pending }?.interruption
-    val pendingSave: Boolean get() = synchronized(lock) { pending != null || recovered.isNotEmpty() }
-    val inputBusy: Boolean get() = synchronized(lock) { recorder != null || pending != null || retiring != null } || opener.busy
+    val pendingSave: Boolean get() = synchronized(lock) {
+        releaseTerminatedRecorder()
+        pending?.let { !it.discardRequested || it !== retiring } == true || recovered.isNotEmpty()
+    }
+    val inputBusy: Boolean get() = synchronized(lock) {
+        releaseTerminatedRecorder()
+        recorder != null || pending != null || retiring != null
+    } || opener.busy
     fun cancelOpening() { openingEpoch.incrementAndGet(); opener.cancel() }
 
     /** The running take stopped by itself: the input went away or it could not be written. */
@@ -159,6 +173,8 @@ class VoiceTakes(
 
     private fun finish(name: String): Pair<VoiceTake?, List<VocalCapturedPass>> {
         val current = synchronized(lock) {
+            releaseTerminatedRecorder()
+            if (pending?.let { it.discardRequested && it === retiring } == true) return null to emptyList()
             (pending ?: recorder).also { recorder = null; if (it != null) { retiring = it; if (durableTakes) pending = it } }
         }
         if (current == null) {
@@ -216,7 +232,7 @@ class VoiceTakes(
                 current.discard()
                 file?.let(RecordingAcceptance::remove)
                 synchronized(lock) { if (pending === current) pending = null }
-            } finally { synchronized(lock) { if (current.terminated && retiring === current) retiring = null } }
+            } finally { synchronized(lock) { releaseTerminatedRecorder() } }
         }
     }
 
