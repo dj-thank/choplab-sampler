@@ -52,7 +52,10 @@ data class LiveChopTimingState(
     fun close() = onAction(ContinuousEditorAction.CloseLiveChopTiming)
     AlertDialog(onDismissRequest = ::close, modifier = Modifier.testTag("ce-live-timing-panel"),
         containerColor = CEColor.Cream, titleContentColor = CEColor.Ink, textContentColor = CEColor.Ink,
-        title = { Text(stringResource(Res.string.chop_timing_title), fontSize = 20.sp, fontWeight = FontWeight.Bold) },
+        title = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(stringResource(Res.string.chop_timing_title), fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            CEButton(stringResource(Res.string.ce_stop_all), { onAction(ContinuousEditorAction.StopAll) }, Modifier.fillMaxWidth(), tag = "ce-live-timing-stop-all")
+        } },
         text = {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 CELiveChopTimingLabel(state)
@@ -81,7 +84,6 @@ data class LiveChopTimingState(
                     }
                     Text(stringResource(Res.string.chop_timing_manual_hint))
                 }
-                CEButton(stringResource(Res.string.ce_stop_all), { onAction(ContinuousEditorAction.StopAll) }, Modifier.fillMaxWidth(), tag = "ce-live-timing-stop-all")
             }
         }, confirmButton = { CEButton(stringResource(Res.string.chop_timing_apply), {
             state.route?.let { onAction(ContinuousEditorAction.SetLiveChopCorrection(it, draft)) }

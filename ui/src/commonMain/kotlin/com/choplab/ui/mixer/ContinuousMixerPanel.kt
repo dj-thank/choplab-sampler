@@ -149,7 +149,8 @@ import kotlin.math.roundToInt
         enabled = enabled, singleLine = true, isError = field in state.invalidFields,
         keyboardOptions = KeyboardOptions(keyboardType = if (field.minimum < 0) KeyboardType.Text else KeyboardType.Decimal),
         label = { Text(label) }, supportingText = {
-            Text(stringResource(Res.string.mixer_range, compact(field.minimum), compact(field.maximum)))
+            Text(if (field == MixerField.DELAY_TIME) stringResource(Res.string.mixer_delay_range)
+                else stringResource(Res.string.mixer_range, compact(field.minimum), compact(field.maximum)))
         })
 }
 

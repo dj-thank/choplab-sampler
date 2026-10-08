@@ -38,4 +38,8 @@
     <string name="coach_exclusion_partial">Only the part of this line inside the selected range is observed.</string>
     <string name="coach_invalid">Check the range and selected takes. Up to 30 seconds per analysis.</string>
     <string name="coach_no_guide">No audible guide in this range. Check guide placement, mute, solo and gain.</string>
+    <string name="coach_time_number">Enter a finite number of seconds.</string>
+    <string name="coach_time_bounds">Enter a time from 0 to %1$d seconds.</string>
+    <string name="coach_time_order">End must be after start, by at least one frame.</string>
+    <string name="coach_time_limit">Select a range of 30 seconds or less.</string>
 </resources>

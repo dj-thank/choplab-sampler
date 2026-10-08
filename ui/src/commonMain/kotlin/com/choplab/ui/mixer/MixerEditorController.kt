@@ -25,7 +25,7 @@ enum class MixerField(val minimum: Double, val maximum: Double, val scale: Float
     LOW_DB(-18.0, 18.0), MID_DB(-18.0, 18.0), HIGH_DB(-18.0, 18.0), CUTOFF(20.0, 20_000.0),
     THRESHOLD(-60.0, 0.0), RATIO(1.0, 20.0), ATTACK(.1, 200.0), RELEASE(5.0, 2000.0), MAKEUP(0.0, 18.0),
     DELAY_SEND(0.0, 100.0, 100f), REVERB_SEND(0.0, 100.0, 100f),
-    DELAY_TIME(0.0, 2000.0), FEEDBACK(0.0, 60.0, 100f), DELAY_RETURN(0.0, 200.0, 100f),
+    DELAY_TIME(1.0 / 48.0, 2000.0), FEEDBACK(0.0, 60.0, 100f), DELAY_RETURN(0.0, 200.0, 100f),
     REVERB_DECAY(.1, 3.0), DAMPING(0.0, 95.0, 100f), REVERB_RETURN(0.0, 200.0, 100f),
 }
 
@@ -67,8 +67,7 @@ internal class MixerEditorController(
     suspend fun dispatch(action: MixerAction): Boolean = when (action) {
         is MixerAction.Open -> if (view.value.applying || view.value.draft != null) false
             else open(action.target ?: MixerTarget.Bank(studio.selection.value.padId / 16))
-        is MixerAction.Select -> if (view.value.applying || pending == null) false else if (
-            view.value.draft != pending?.initial) refuse(MixerProblem.UNAPPLIED) else open(action.target)
+        is MixerAction.Select -> select(action.target)
         is MixerAction.Change -> change { draft ->
             if (action.text.length > 64 || action.field !in draft.fields) null
             else draft.copy(fields = draft.fields + (action.field to action.text))
@@ -87,6 +86,16 @@ internal class MixerEditorController(
 
     private fun unavailable(): MixerProblem? = blocked() ?: MixerProblem.BUSY.takeIf {
         studio.work.value.jobId != null || studio.work.value.preparationId != null
+    }
+
+    private fun select(target: MixerTarget): Boolean {
+        val captured = pending ?: return false
+        val draft = view.value.draft ?: return false
+        if (view.value.applying) return false
+        if (draft.channel.target == target) return true
+        val candidate = candidate(captured, draft)
+        return if (candidate.invalid.isNotEmpty() || candidate.changed) refuse(MixerProblem.UNAPPLIED)
+            else open(target)
     }
 
     private fun open(target: MixerTarget): Boolean {

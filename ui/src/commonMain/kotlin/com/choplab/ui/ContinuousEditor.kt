@@ -668,9 +668,9 @@ import kotlin.math.roundToLong
             Text(if (semitones) stringResource(Res.string.ce_semitones, (if (value >= 0) "+" else "") + value.roundToInt()) else stringResource(Res.string.ce_percent, (value * 100).roundToInt()),
                 Modifier.weight(1f, fill = false).widthIn(min = 56.dp), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
             CEButton("−", { onValue(if (semitones) (value - 1).coerceAtLeast(-24f) else (value - .05f).coerceAtLeast(0f)) },
-                enabled = state.permits(capability), reason = CEReason(state, capability), modifier = Modifier.semantics { contentDescription = decrease })
+                enabled = state.permits(capability) && value > (if (semitones) -24f else 0f), reason = CEReason(state, capability), modifier = Modifier.semantics { contentDescription = decrease })
             CEButton("+", { onValue(if (semitones) (value + 1).coerceAtMost(24f) else (value + .05f).coerceAtMost(maximum)) },
-                enabled = state.permits(capability), reason = CEReason(state, capability), modifier = Modifier.semantics { contentDescription = increase })
+                enabled = state.permits(capability) && value < (if (semitones) 24f else maximum), reason = CEReason(state, capability), modifier = Modifier.semantics { contentDescription = increase })
         }
     }
 }

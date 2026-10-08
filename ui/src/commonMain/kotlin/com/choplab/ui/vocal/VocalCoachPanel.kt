@@ -37,21 +37,21 @@ import kotlin.math.abs
                         itemsIndexed(state.takes, key = { _, take -> take.id }) { index, take ->
                             CEButton(stringResource(Res.string.coach_take, index + 1, state.project.asset(take.assetHash).name),
                                 { send(CoachAction.Take(take.id)) }, Modifier.fillMaxWidth().semantics { selected = state.takeId == take.id },
-                                enabled = state.editable, primary = state.takeId == take.id, tag = "coach-take-${take.id}")
+                                enabled = state.editable, primary = state.takeId == take.id, choiceSelected = state.takeId == take.id, tag = "coach-take-${take.id}")
                         }
                     }
                     Text(stringResource(Res.string.coach_reference))
                     CEButton(stringResource(Res.string.coach_no_reference), { send(CoachAction.Reference(null)) }, Modifier.fillMaxWidth(),
-                        enabled = state.editable, primary = state.referenceId == null, tag = "coach-reference-none")
+                        enabled = state.editable, primary = state.referenceId == null, choiceSelected = state.referenceId == null, tag = "coach-reference-none")
                     LazyColumn(Modifier.fillMaxWidth().height(120.dp).testTag("coach-references")) {
                         itemsIndexed(state.takes.filter { it.id != state.takeId }, key = { _, take -> take.id }) { index, take ->
                             CEButton(stringResource(Res.string.coach_take, index + 1, state.project.asset(take.assetHash).name),
                                 { send(CoachAction.Reference(take.id)) }, Modifier.fillMaxWidth(), enabled = state.editable,
-                                primary = state.referenceId == take.id, tag = "coach-reference-${take.id}")
+                                primary = state.referenceId == take.id, choiceSelected = state.referenceId == take.id, tag = "coach-reference-${take.id}")
                         }
                     }
                     for (mode in CoachMode.entries) CEButton(stringResource(if (mode == CoachMode.SINGING) Res.string.coach_singing else Res.string.coach_rap),
-                        { send(CoachAction.Mode(mode)) }, Modifier.fillMaxWidth(), enabled = state.editable, primary = state.mode == mode,
+                        { send(CoachAction.Mode(mode)) }, Modifier.fillMaxWidth(), enabled = state.editable, primary = state.mode == mode, choiceSelected = state.mode == mode,
                         tag = "coach-mode-${mode.name}")
                     Text(stringResource(Res.string.coach_input_hint))
                     for (input in CoachVoiceInput.entries) CEButton(stringResource(when (input) {
@@ -59,10 +59,13 @@ import kotlin.math.abs
                         CoachVoiceInput.VOICE_ONLY -> Res.string.coach_input_clean
                         CoachVoiceInput.ACCOMPANIMENT_PRESENT -> Res.string.coach_input_bleed
                     }), { send(CoachAction.Input(input)) }, Modifier.fillMaxWidth(), enabled = state.editable,
-                        primary = state.input == input, tag = "coach-input-${input.name}")
+                        primary = state.input == input, choiceSelected = state.input == input, tag = "coach-input-${input.name}")
+                    val range = state.validateRange()
                     OutlinedTextField(state.startSeconds, { send(CoachAction.Range(it, state.endSeconds)) }, enabled = state.editable,
+                        isError = range.startProblem != null, supportingText = { CoachRangeHint(range.startProblem) },
                         label = { Text(stringResource(Res.string.practice_start)) }, modifier = Modifier.fillMaxWidth().testTag("coach-start"), singleLine = true)
                     OutlinedTextField(state.endSeconds, { send(CoachAction.Range(state.startSeconds, it)) }, enabled = state.editable,
+                        isError = range.endProblem != null, supportingText = { CoachRangeHint(range.endProblem) },
                         label = { Text(stringResource(Res.string.practice_end)) }, modifier = Modifier.fillMaxWidth().testTag("coach-end"), singleLine = true)
                     CEButton(stringResource(Res.string.coach_analyze), { send(CoachAction.Analyze) }, Modifier.fillMaxWidth(),
                         enabled = state.editable && state.request() != null, tag = "coach-analyze")
@@ -70,7 +73,7 @@ import kotlin.math.abs
                     state.report?.let { report ->
                         report.lines.forEachIndexed { index, line ->
                             CEButton(line.text.ifEmpty { stringResource(Res.string.coach_selected_range) }, { send(CoachAction.SelectLine(index)) },
-                                Modifier.fillMaxWidth(), enabled = state.editable, primary = index == state.selectedLine, tag = "coach-line-$index")
+                                Modifier.fillMaxWidth(), enabled = state.editable, primary = index == state.selectedLine, choiceSelected = index == state.selectedLine, tag = "coach-line-$index")
                         }
                         report.suggestedLine?.let { line -> Text(stringResource(Res.string.coach_suggested, line.text.ifEmpty { stringResource(Res.string.coach_selected_range) }),
                             Modifier.testTag("coach-suggested")) }
@@ -128,4 +131,16 @@ private fun problem(value: CoachProblem): StringResource = when (value) {
     CoachProblem.CANCELLED -> Res.string.practice_cancelled
     CoachProblem.NO_GUIDE -> Res.string.coach_no_guide
     CoachProblem.PREVIEW_FAILED -> Res.string.practice_restore_failed
+}
+
+@Composable private fun CoachRangeHint(problem: CoachRangeProblem?) {
+    if (problem == null) return
+    val message = when (problem) {
+        CoachRangeProblem.NUMBER -> stringResource(Res.string.coach_time_number)
+        CoachRangeProblem.BOUNDS -> stringResource(Res.string.coach_time_bounds,
+            (com.choplab.core.model.ProjectLimits.MAX_TIMELINE_FRAMES / 48_000).toInt())
+        CoachRangeProblem.ORDER -> stringResource(Res.string.coach_time_order)
+        CoachRangeProblem.TOO_LONG -> stringResource(Res.string.coach_time_limit)
+    }
+    Text(message, Modifier.semantics { liveRegion = LiveRegionMode.Polite })
 }
