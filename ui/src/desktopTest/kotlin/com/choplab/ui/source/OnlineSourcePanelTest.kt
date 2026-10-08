@@ -190,20 +190,25 @@ class OnlineSourcePanelTest {
     private suspend fun ImageComposeScene.reach(value: String, width: Int, height: Int) {
         val scroll = requireNotNull(tag("online-scroll"))
         val node = requireNotNull(tag(value))
-        scroll.config[SemanticsActions.ScrollBy].action!!.invoke(0f, node.positionInRoot.y - scroll.boundsInRoot.top - 12)
+        // Await the suspending accessibility action itself. Stable-looking rounded pixels
+        // do not prove that an animation has ended, especially on a busy CI render thread.
+        coroutineScope {
+            val clock = androidx.compose.runtime.BroadcastFrameClock()
+            val scrolling = async(clock) { scroll.config[SemanticsActions.ScrollByOffset].invoke(
+                androidx.compose.ui.geometry.Offset(0f, node.positionInRoot.y - scroll.boundsInRoot.top - 12)) }
+            withTimeout(10_000) {
+                while (!scrolling.isCompleted) {
+                    clock.sendFrame(System.nanoTime())
+                    render(System.nanoTime()).close()
+                    delay(8)
+                }
+            }
+            scrolling.await()
+        }
         until {
             val bounds = requireNotNull(tag(value)).boundsInRoot
             val visible = requireNotNull(tag("online-scroll")).boundsInRoot
             bounds.top >= visible.top && bounds.top < visible.bottom && bounds.bottom > visible.top
-        }
-        // Semantic ScrollBy animates. Wait for its final position before a pointer press/release or viewport snapshot.
-        var previousY = Float.NaN
-        var stableFrames = 0
-        until {
-            val currentY = requireNotNull(tag(value)).positionInRoot.y
-            stableFrames = if (currentY == previousY) stableFrames + 1 else 0
-            previousY = currentY
-            stableFrames >= 4
         }
         // A long format description may exceed the viewport; its visible upper section is still a complete button target.
         val bounds = requireNotNull(tag(value)).boundsInRoot
