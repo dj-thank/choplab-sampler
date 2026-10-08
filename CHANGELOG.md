@@ -5,6 +5,9 @@
 - Consolidate product contracts into nine documents, with ROADMAP as the only current progress and acceptance index.
 - Preserve ADR1–5 and research; record Android/Windows focus and concise development governance in ADR6–7.
 - Retire superseded planning/status documents through the immutable 0.18.0 archive. This documentation change does not implement the planned engine, five-screen UI, AI or schema10.
+- Add a Mac NEXT preview build (`mac-preview.yml`): an ad-hoc signed, not notarized Apple Silicon app for CI artifact review. It is not a public release.
+- Spotify import browses by artist and album and adds only the tracks chosen; connecting an account no longer downloads the whole library.
+- Move the strict project JSON codec (schema 15) into `core` common so JVM and iPadOS hosts share one reader and writer; JVM output bytes are unchanged.
 
 ## 0.18.0 baseline
 
