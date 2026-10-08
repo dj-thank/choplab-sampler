@@ -163,7 +163,7 @@ class VocalPitchHostIntegrationTest {
                     val restored = NextBackend.create(directory.resolve("restored"), sinkFactory = { error("No native device") }, microphone = { null })
                     try {
                         assertTrue(restored.openProject(archive).accepted)
-                        until { restored.studio.work.value.jobId == null }
+                        awaitIdle(restored.studio, "restored ${locale.language}/${width}px/font$font")
                         assertEquals(applied.project, restored.studio.document.value.project)
                         assertContentEquals(Files.readAllBytes(sourcePath), restored.assets.read(source))
                         assertContentEquals(backend.assets.read(applied.project.asset(applied.project.clips.single().assetHash)),
@@ -312,6 +312,11 @@ class VocalPitchHostIntegrationTest {
     }
 
     private suspend fun until(ready: () -> Boolean) = withTimeout(10_000) { while (!ready()) delay(5) }
+    /** Same 10 s bound as [until]; a timeout names the Studio work still running, so the stalled stage is visible. */
+    private suspend fun awaitIdle(studio: Studio, label: String) {
+        val idle = withTimeoutOrNull(10_000) { while (studio.work.value.jobId != null) delay(5); true }
+        assertTrue(idle == true, "$label still busy after 10 s: ${studio.work.value}")
+    }
     private fun ImageComposeScene.nodes(): List<SemanticsNode> = buildList {
         fun visit(node: SemanticsNode) { add(node); node.children.forEach(::visit) }
         semanticsOwners.forEach { visit(it.unmergedRootSemanticsNode) }
