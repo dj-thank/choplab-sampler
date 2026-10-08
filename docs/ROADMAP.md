@@ -34,6 +34,8 @@ Library/Onlineの14件は[PR238](https://github.com/dj-thank/choplab-sampler/pul
 
 制作UX候補の初回CIはApple共通基盤と履歴が成功し、Linux/Windowsとも非協調入力の破棄試験1件が失敗した。破棄待ちの録音を保存待ちとして再取得していた製品回帰であり、修正 `1ab09033` はcapture threadが終わるまで録音slotと原本を所有し、破棄完了後だけ解放する。停止済み原本の削除失敗では再保存/再破棄を維持する。元assertと2秒停止deadlineのまま修正前FAILを再現し、durable/non-durable双方とslot再利用を含む関連8class37件が成功。修正headのCIを再確認してから統合する。先行Mac候補の制作/codec結果はその範囲に限り、最終配布ではこの録音修正を含む同一sourceから再梱包する。
 
+録音修正後のCIではApple/履歴が成功し、Linux/Windows共通でUI351件中3件が失敗した。修正 `e868a6cd` は広い配置面のclip設定を2列へ整理し、タイムラインを404pxから503pxへ確保して4段目の94px clip全体を維持する。狭幅/文字2倍では音量と数値操作を縦に配置し48dpを保つ。くり返せない理由は自身の長さ超過と別clipの転記先占有を区別し、拒否判定は保持する。再読込fixtureも実際の未保存確認を操作する。元の表示閾値を下げず3失敗を解消し、日英の操作矩形を含む関連5class72件が成功（failure/error/skip0）。この修正を含む最新headの必須CIを確認して統合する。
+
 前回build33の配布sourceは[PR236](https://github.com/dj-thank/choplab-sampler/pull/236)を統合したmain `a56972ff`、build33。5人の65指摘から重複と実機/provider条件を分けた60件を実装し、検証head `5ee5b279` の必須3job・Mac配布・Apple共通基盤が成功した後に統合した。NEXT/Previewの両DMGをread-only mount・同梱Javaで受け入れ、同梱installerからapp/manifestを対で更新した。旧app/manifestと利用者dataを保全し、導入済みの通常起動/終了/再開も両app各2回成功した。以下の候補/初回CI記録は経緯であり、現在の受入を上書きしない。
 
 2026-10-08 UTC、画面解除後に同じbuild33 NEXTの275fileと署名を照合し、同梱Java/helperで実システム音のPCM16/float32、左右分離、親Javaの自音除外が成功した。スピーカーをミュートにしたままの再確認でも成功し、自音除外は各-91.39/-80.58dB。OS音量設定は変更せず、生音声は残していない。これは出力ミュート下の内部音声取得の受入であり、マイク入力gainや聴感/遅延の合格を意味しない。実Finderで合成保存fileの選択表示も成功した。native key入力の試験は前面/フォーカスの安定確認ができず未受入。物理操作・VoiceOver、実Spotify API、許可変更/機器抜き差し、聴感/遅延、Developer ID/公証とPUBLIC_PASS/HUMAN_GOは引き続き別条件。
