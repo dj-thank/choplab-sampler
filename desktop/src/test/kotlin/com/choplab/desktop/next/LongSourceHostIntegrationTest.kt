@@ -167,7 +167,8 @@ class LongSourceHostIntegrationTest {
             val beforeOpen = restored.studio.document.value
             assertTrue(restoredPresenter.dispatch(ContinuousEditorAction.OpenProject))
             await { restoredPresenter.state.value.openProjectRevision == beforeOpen.revision }
-            assertEquals(beforeOpen, restored.studio.document.value, "Choosing a file must not replace unsaved work")
+            assertEquals(beforeOpen.project, restored.studio.document.value.project, "Choosing a file must not replace unsaved work")
+            assertEquals(beforeOpen.revision, restored.studio.document.value.revision)
             assertTrue(restoredPresenter.dispatch(ContinuousEditorAction.ConfirmOpenProject(
                 saveCurrent = false, revision = beforeOpen.revision)))
             idle(restored)

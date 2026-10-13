@@ -635,6 +635,17 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
 
     suspend fun dispatch(action: ContinuousEditorAction): Boolean {
         if (closingRequested) return false
+        if (action == ContinuousEditorAction.OpenProject || action is ContinuousEditorAction.OpenProjectFile ||
+            action is ContinuousEditorAction.ConfirmOpenProject || action == ContinuousEditorAction.NewProject ||
+            action is ContinuousEditorAction.ConfirmNewProject) {
+            // Ask before a picker or document replacement; never hold the edit mutex while the draft
+            // controller may be awaiting a selected-PAD command through this same presenter.
+            val controller = patterns.value
+            if (controller != null) {
+                if (!controller.requestClose()) return false
+                patterns.compareAndSet(controller, null)
+            }
+        }
         if (action == ContinuousEditorAction.CloseVocalCoach) return closeVocalCoach()
         if (coach.value != null && action != ContinuousEditorAction.OpenVocalCoach && action != ContinuousEditorAction.StopAll &&
             action !is ContinuousEditorAction.CopyDiagnostics && !closeVocalCoach()) return false
@@ -736,7 +747,8 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
                 is ContinuousEditorAction.BankPadEdit -> bankPadEditor.dispatch(action.action)
                 is ContinuousEditorAction.Lyrics -> if (action.action != LyricAction.Close &&
                     (studio.work.value.jobId != null || studio.work.value.preparationId != null)) false
-                    else if (action.action == LyricAction.Import || action.action is LyricAction.Export)
+                    else if (action.action == LyricAction.Import || action.action is LyricAction.Export ||
+                        action.action is LyricAction.ApplyDraftAndExport)
                         withPlatformPicker { lyricEditor.dispatch(action.action) } ?: false
                     else lyricEditor.dispatch(action.action)
                 ContinuousEditorAction.OpenVocalPunch -> openVocalPunch()
@@ -2972,7 +2984,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     }
     private suspend fun requestOpen(location: Location): Boolean {
         if (closingRequested) return false
-        if (workBusy() || bankPadBlock(view.value, studio.work.value) != null) { refusal = ContinuousStatus.BUSY; return false }
+        if (patterns.value != null || workBusy() || bankPadBlock(view.value, studio.work.value) != null) { refusal = ContinuousStatus.BUSY; return false }
         val document = studio.document.value
         if (document.savedRevision != document.revision) {
             view.update { it.copy(pendingProjectOpen = PendingProjectOpen(location, document.revision), newProjectRevision = null) }
@@ -3019,7 +3031,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     }
     private suspend fun prepareProjectSwitch(saveCurrent: Boolean, expectedRevision: Long): Boolean {
         val before = studio.document.value
-        if (before.revision != expectedRevision || workBusy() || bankPadBlock(view.value, studio.work.value) != null) return false
+        if (patterns.value != null || before.revision != expectedRevision || workBusy() || bankPadBlock(view.value, studio.work.value) != null) return false
         if (saveCurrent) {
             val location = withPlatformPicker { ports.chooseSave() } ?: return cancelled()
             if (studio.document.value.revision != before.revision || workBusy()) return false

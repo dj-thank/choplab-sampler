@@ -24,6 +24,8 @@
 
 ### 現在の修正対象と再開点
 
+同日のPR239レビュー追補ではrootが3件の製品境界を修正する。Desktopのファイル選択→上書き確認は単一の取消handlerが現在の窓だけを所有し、同じcontinuationへの二重登録をなくす。歌詞の下書き適用後のLRC書出しも所有pickerへ通し、全停止の即時経路と終了時取消を維持する。制作を開く/新規へ切り替える前にSTEPの下書き・配置待ちを確認し、保存済み文書への外部file-openでも破棄を黙認しない。対象は `DesktopEditorPorts`/`DesktopPickerCancellation`、`ContinuousEditorPresenter` と対応するDesktop/ProjectTransition回帰。元の4工程・PAD・音声/保存schemaは維持。単一handlerの切替/取消/完了、LRC picker中の停止/終了、STEP下書きとqueueの保持/明示破棄を検証対象へ追加し、CI結果が出るまで未検証候補とする。完了条件とrollbackは上記限定修正と同じ。
+
 2026-10-13のブラッシュアップ再開では、rootがPR239 head `97b13593` のWindows CI（run37836759444）の4失敗を調査した。対象は `desktop/src/test/kotlin/com/choplab/desktop/` 内の `audio/FakeSystemAudioHelper.kt` と `next/{LongSourceHostIntegrationTest,StepPatternHostIntegrationTest,VocalTakeHostTest}.kt`。合成helperの終了行を本番Swiftと同じLFへ固定し、STEPは下書き確認の継続・明示破棄、長尺制作の再開は未保存確認、comp適用はTAKE所有の停止overloadを通す。元のPCM/左右/保存再開/1Undo/待機上限は維持する。完了条件は更新headのWindows既存4回帰を含む必須CI成功。クラウド作業環境のHTTP proxyへ接続できず依存取得・ローカルGradleは未実行で、ソース照合だけをLOCAL_PASSとしない。最新CI確認・main統合・Mac10件と最終DMG導入は未完。rollbackはこの限定追加commitのrevertで、利用者dataや本番音声経路は変更しない。
 
 現在の導入済みMacは[PR237](https://github.com/dj-thank/choplab-sampler/pull/237)統合main `a6a8c455` のbuild34（NEXT/Preview）。2026-10-08の追加監査は同sourceを基準に5人から57件を受領し、重複整理後に実装を開始した。利用者の追記により50件未満でも確認された残件を全て扱う。rootが統合・Mac導入を所有し、各項目を実装・検証・統合・配布へ対応させる。57件すべての実装とローカル確認を終え、Library14件をmainへ統合した。残る33件の制作/録音/操作と10件のMac起動/導入を順に統合し、同じ最終sourceからbuild35を配布する。候補の成功を配布完了とはしない。

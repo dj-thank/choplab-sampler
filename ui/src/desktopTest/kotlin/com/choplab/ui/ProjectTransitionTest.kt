@@ -2,7 +2,9 @@ package com.choplab.ui
 
 import com.choplab.core.*
 import com.choplab.core.edit.Intent
+import com.choplab.core.lyrics.LrcFormat
 import com.choplab.core.model.*
+import com.choplab.ui.pattern.PatternAction
 import com.choplab.engine.EngineCommand
 import com.choplab.engine.EngineProgram
 import com.choplab.jvm.closeAfterAutosave
@@ -79,17 +81,24 @@ class ProjectTransitionTest {
     @Test fun quitCancelsOnlyOwnedPickerBeforeOneFinalSaveAndCanResumeAfterFailure() = runBlocking<Unit> {
         val h = Harness()
         try {
-            for (kind in listOf("library", "save", "open", "lyrics-import", "lyrics-export")) {
-                h.blockPicker = kind; h.pickerEntered = CompletableDeferred(); h.pickerCancelled = false
+            for (kind in listOf("library", "save", "open", "lyrics-import", "lyrics-export", "lyrics-draft-export")) {
+                h.blockPicker = if (kind == "lyrics-draft-export") "lyrics-export" else kind
+                h.pickerEntered = CompletableDeferred(); h.pickerCancelled = false
                 val action = when (kind) {
                     "library" -> ContinuousEditorAction.ImportLibrary
                     "save" -> ContinuousEditorAction.SaveProject
                     "lyrics-import" -> ContinuousEditorAction.Lyrics(LyricAction.Import)
                     "lyrics-export" -> ContinuousEditorAction.Lyrics(LyricAction.Export())
+                    "lyrics-draft-export" -> ContinuousEditorAction.Lyrics(LyricAction.ApplyDraftAndExport(
+                        listOf(LyricAction.Text("line", "Applied draft")), h.studio.document.value.revision, LrcFormat.EXTENDED))
                     else -> ContinuousEditorAction.OpenProject
                 }
                 val choosing = async { h.presenter.dispatch(action) }
                 h.pickerEntered.await()
+                if (kind == "lyrics-draft-export") {
+                    assertEquals("Applied draft", h.studio.document.value.project.lyrics.single().text)
+                    assertTrue(h.studio.document.value.canUndo)
+                }
                 val before = h.studio.document.value
                 withTimeout(2000) { h.presenter.prepareToClose() }
                 assertFalse(choosing.await()); assertTrue(h.pickerCancelled)
@@ -113,11 +122,66 @@ class ProjectTransitionTest {
         } finally { h.close() }
     }
 
-    private class Harness {
+    @Test fun projectSwitchPreservesUnsavedPatternAndQueuedArrangementEvenWhenTheDocumentIsSaved() = runBlocking<Unit> {
+        for (queued in listOf(false, true)) {
+            val h = Harness()
+            try {
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.SaveProject))
+                h.until { h.studio.document.value.savedRevision == h.studio.document.value.revision }
+                h.until { it.permits(ContinuousCapability.STEP_PATTERNS) }
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenStepPatterns))
+                val controller = assertNotNull(h.presenter.stepPatterns.value)
+                h.until { controller.state.value.editable }
+                assertTrue(controller.dispatch(if (queued) PatternAction.Queue else PatternAction.Name("Keep this draft")))
+                val draft = controller.state.value
+                val before = h.studio.document.value
+                for (action in listOf(ContinuousEditorAction.OpenProject,
+                    ContinuousEditorAction.OpenProjectFile(Location("chosen")), ContinuousEditorAction.NewProject)) {
+                    assertFalse(h.presenter.dispatch(action))
+                    assertSame(controller, h.presenter.stepPatterns.value)
+                    assertTrue(controller.state.value.closeConfirmation)
+                    assertEquals(draft.name, controller.state.value.name)
+                    assertEquals(draft.sequence, controller.state.value.sequence)
+                    assertEquals(before, h.studio.document.value)
+                    assertEquals(0, h.opens)
+                    controller.keepEditing()
+                    assertTrue(controller.state.value.editable)
+                }
+                assertTrue(controller.requestClose(discard = true))
+                assertTrue(h.presenter.dispatch(ContinuousEditorAction.OpenProjectFile(Location("chosen"))))
+                h.until { it.projectTitle == "Chosen project" }
+                assertEquals(1, h.opens)
+            } finally { h.close() }
+        }
+    }
+
+    @Test fun stopAllDoesNotWaitForTheAppliedLyricDraftExportPicker() = runBlocking<Unit> {
+        val h = Harness(monitorAvailable = true)
+        try {
+            h.blockPicker = "lyrics-export"
+            val choosing = async { h.presenter.dispatch(ContinuousEditorAction.Lyrics(
+                LyricAction.ApplyDraftAndExport(listOf(LyricAction.Text("line", "Keep after cancel")),
+                    h.studio.document.value.revision, LrcFormat.EXTENDED))) }
+            withTimeout(2000) { h.pickerEntered.await() }
+            val before = h.studio.document.value
+            val stopsBefore = h.originalStops
+            h.presenter.onAction(ContinuousEditorAction.StopAll)
+            withTimeout(2000) { while (h.originalStops == stopsBefore) delay(5) }
+            assertFalse(choosing.isCompleted, "All-stop must work while the file picker stays open")
+            assertFalse(h.pickerCancelled)
+            withTimeout(2000) { h.presenter.prepareToClose() }
+            assertFalse(choosing.await())
+            assertTrue(h.pickerCancelled)
+            assertEquals(before.project, h.studio.document.value.project)
+        } finally { h.close() }
+    }
+
+    private class Harness(private val monitorAvailable: Boolean = false) {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         val asset = Asset("d".repeat(64), "wav", 48, 48_000, 1, 1, "Original")
         val original = byteArrayOf(0, 0, 0, 1)
         var saves = 0; var opens = 0; var saveFails = false
+        @Volatile var originalStops = 0
         var saved: Project? = null; var openedLocation: Location? = null
         var saveChoice: Location? = Location("safe")
         var saveEntered: CompletableDeferred<Unit>? = null; var saveRelease: CompletableDeferred<Unit>? = null
@@ -147,6 +211,8 @@ class ProjectTransitionTest {
             }
         }
         val presenter = ContinuousEditorPresenter(studio, scope, object : ContinuousEditorPorts {
+            override val stepPatternsAvailable = true
+            override val originalAvailable = monitorAvailable
             override val lyricFiles = object : LyricFiles {
                 override suspend fun importLrc(): String? { picker("lyrics-import"); return null }
                 override suspend fun exportLrc(text: String): Boolean { picker("lyrics-export"); return false }
@@ -160,7 +226,7 @@ class ProjectTransitionTest {
             override suspend fun peaks(asset: Asset) = listOf(.5f)
             override fun readout() = ContinuousEditorReadout()
             override suspend fun setSongMonitorGain(gain: Float) = true
-            override suspend fun stopOriginal() = true
+            override suspend fun stopOriginal(): Boolean { originalStops++; return true }
         })
         suspend fun until(condition: (ContinuousEditorState) -> Boolean) = withTimeout(5000) { while (!condition(presenter.state.value)) delay(5) }
         suspend fun close() { presenter.close(); studio.dispatch(Action.Close); scope.cancel() }

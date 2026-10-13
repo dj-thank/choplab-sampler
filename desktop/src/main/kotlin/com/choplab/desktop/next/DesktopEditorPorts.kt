@@ -249,18 +249,19 @@ internal class DesktopEditorPorts(
     }
     private fun suggestedName(extension: String) = nextSuggestedFilename(backend.studio.document.value.project.title, extension, japanese)
     private suspend fun choose(save: Boolean, extensions: List<String>, title: String, suggestedName: String? = null): Path? = suspendCancellableCoroutine { answer ->
+        val cancellation = DesktopPickerCancellation(answer)
         SwingUtilities.invokeLater {
             if (!answer.isActive) return@invokeLater
             val extension = extensions.first()
             val file = if (isMacOsHost()) {
                 val picker = FileDialog(parent() as? Frame, title, if (save) FileDialog.SAVE else FileDialog.LOAD)
-                answer.invokeOnCancellation { SwingUtilities.invokeLater { picker.dispose() } }
+                cancellation.own { picker.dispose() }
                 try {
                     if (save && suggestedName != null) picker.file = suggestedName
                     picker.filenameFilter = java.io.FilenameFilter { _, name -> extensions.any { name.endsWith(".$it", true) } }
-                    picker.isVisible = true
+                    if (answer.isActive) picker.isVisible = true
                     picker.files.firstOrNull()?.toPath() ?: picker.file?.let { Path.of(picker.directory, it) }
-                } finally { picker.dispose() }
+                } finally { cancellation.clear(); picker.dispose() }
             } else {
                 val picker = JFileChooser().apply {
                     dialogTitle = title
@@ -268,8 +269,11 @@ internal class DesktopEditorPorts(
                     fileFilter = FileNameExtensionFilter(extensions.joinToString(", ") { it.uppercase() }, *extensions.toTypedArray())
                     isAcceptAllFileFilterUsed = false
                 }
-                answer.invokeOnCancellation { SwingUtilities.invokeLater { picker.cancelSelection() } }
-                val result = if (save) picker.showSaveDialog(parent()) else picker.showOpenDialog(parent())
+                cancellation.own { picker.cancelSelection() }
+                val result = try {
+                    if (!answer.isActive) JFileChooser.CANCEL_OPTION
+                    else if (save) picker.showSaveDialog(parent()) else picker.showOpenDialog(parent())
+                } finally { cancellation.clear() }
                 if (result == JFileChooser.APPROVE_OPTION) picker.selectedFile.toPath() else null
             }
             var selected: Path? = null
@@ -280,8 +284,8 @@ internal class DesktopEditorPorts(
                     val prompt = JOptionPane(if (japanese) "同じ名前のファイルを置き換えますか？" else "Replace the existing file?",
                         JOptionPane.QUESTION_MESSAGE, JOptionPane.YES_NO_OPTION)
                     val dialog = prompt.createDialog(parent(), title)
-                    answer.invokeOnCancellation { SwingUtilities.invokeLater { dialog.dispose() } }
-                    try { if (answer.isActive) dialog.isVisible = true } finally { dialog.dispose() }
+                    cancellation.own { dialog.dispose() }
+                    try { if (answer.isActive) dialog.isVisible = true } finally { cancellation.clear(); dialog.dispose() }
                     if (prompt.value != JOptionPane.YES_OPTION) selected = null
                 }
             }
