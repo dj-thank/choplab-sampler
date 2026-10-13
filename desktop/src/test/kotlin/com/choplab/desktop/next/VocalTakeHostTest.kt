@@ -9,6 +9,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.Density
 import com.choplab.core.*
 import com.choplab.core.ai.VocalPreviewPort
+import com.choplab.core.ai.VocalPreviewOwner
 import com.choplab.core.ai.TtsResult
 import com.choplab.core.edit.Intent
 import com.choplab.core.model.*
@@ -41,9 +42,11 @@ class VocalTakeHostTest {
             override val onlineSource = idleOnlineHost {}
             override val vocalTakes = object : VocalTakePort by real.vocalTakes {
                 override val preview = object : VocalPreviewPort by real.vocalTakes.preview {
-                    override suspend fun stop(): TtsResult<Unit> {
-                        if (stopBlocked) { applying.complete(Unit); release.await() }
-                        return real.vocalTakes.preview.stop()
+                    override suspend fun stop(owner: VocalPreviewOwner): TtsResult<Unit> {
+                        if (stopBlocked && owner == VocalPreviewOwner.TAKE) {
+                            applying.complete(Unit); release.await()
+                        }
+                        return real.vocalTakes.preview.stop(owner)
                     }
                 }
                 override suspend fun render(project: Project, draft: VocalCompDraft, name: String): Asset =

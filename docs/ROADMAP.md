@@ -24,6 +24,8 @@
 
 ### 現在の修正対象と再開点
 
+2026-10-13のブラッシュアップ再開では、rootがPR239 head `97b13593` のWindows CI（run37836759444）の4失敗を調査した。対象は `desktop/src/test/kotlin/com/choplab/desktop/` 内の `audio/FakeSystemAudioHelper.kt` と `next/{LongSourceHostIntegrationTest,StepPatternHostIntegrationTest,VocalTakeHostTest}.kt`。合成helperの終了行を本番Swiftと同じLFへ固定し、STEPは下書き確認の継続・明示破棄、長尺制作の再開は未保存確認、comp適用はTAKE所有の停止overloadを通す。元のPCM/左右/保存再開/1Undo/待機上限は維持する。完了条件は更新headのWindows既存4回帰を含む必須CI成功。クラウド作業環境のHTTP proxyへ接続できず依存取得・ローカルGradleは未実行で、ソース照合だけをLOCAL_PASSとしない。最新CI確認・main統合・Mac10件と最終DMG導入は未完。rollbackはこの限定追加commitのrevertで、利用者dataや本番音声経路は変更しない。
+
 現在の導入済みMacは[PR237](https://github.com/dj-thank/choplab-sampler/pull/237)統合main `a6a8c455` のbuild34（NEXT/Preview）。2026-10-08の追加監査は同sourceを基準に5人から57件を受領し、重複整理後に実装を開始した。利用者の追記により50件未満でも確認された残件を全て扱う。rootが統合・Mac導入を所有し、各項目を実装・検証・統合・配布へ対応させる。57件すべての実装とローカル確認を終え、Library14件をmainへ統合した。残る33件の制作/録音/操作と10件のMac起動/導入を順に統合し、同じ最終sourceからbuild35を配布する。候補の成功を配布完了とはしない。
 
 Library/Onlineの14件は[PR238](https://github.com/dj-thank/choplab-sampler/pull/238)のhead `6b93acdd` でLinux検証・Windows配布・Apple共通基盤・履歴検査が成功し、main `60afbdfc` へ統合済み。FLAC/MP3の観測タグでartist/album/曲順を分類し、再追加時の保存bytes照合、破損原本の保全、部分取込、一覧位置、未知進捗/サイズ上限/再試行を整えた。関連85試験と最後のadapter5試験、原本hash、Android compileが成功。初回Linuxの一覧復帰試験の1pixel差はpointer押下時のfocus移動が起点だった。実viewport幾何条件まで押下を保ち、Inspect時点と復帰を元の0.01pixel許容で比較して成功した。製品ScrollStateや許容値は変更していない。

@@ -18,7 +18,8 @@ object FakeSystemAudioHelper {
             repeat(48_000) { frame -> bytes.putFloat(.1234567f + frame / 1_000_000f); bytes.putFloat(-.2345678f - frame / 1_000_000f) }
             for (at in bytes.array().indices step 7) { out.write(bytes.array(), at, minOf(7, bytes.capacity() - at)); out.flush() }
             if (mode == "float-permission" || mode == "float-error") {
-                System.err.println("CHOPLAB-END ${if (mode == "float-permission") "PERMISSION" else "READ_FAILED"}")
+                // The native helper's control protocol uses LF on every host, including Windows tests.
+                System.err.write("CHOPLAB-END ${if (mode == "float-permission") "PERMISSION" else "READ_FAILED"}\n".toByteArray())
                 System.err.flush(); exitProcess(2)
             }
             if (mode == "float-dies") exitProcess(2)

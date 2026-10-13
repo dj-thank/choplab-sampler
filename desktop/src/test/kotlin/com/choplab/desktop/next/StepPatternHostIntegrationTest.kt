@@ -69,6 +69,15 @@ class StepPatternHostIntegrationTest {
                     until { presenter.stepPatterns.value != null }
                     scene.setText("pattern-name", "Discard me")
                     scene.pointer("ce-step-patterns-close")
+                    scene.awaitOwners(3)
+                    assertEquals("Discard me", requireNotNull(presenter.stepPatterns.value).state.value.name)
+                    assertEquals(original, backend.studio.document.value, "Requesting close must preserve the draft and document")
+                    scene.pointer("pattern-close-keep")
+                    scene.awaitOwners(2)
+                    assertEquals("Discard me", requireNotNull(presenter.stepPatterns.value).state.value.name)
+                    scene.pointer("ce-step-patterns-close")
+                    scene.awaitOwners(3)
+                    scene.pointer("pattern-close-discard")
                     scene.awaitOwners(1)
                     assertEquals(original, backend.studio.document.value)
 
