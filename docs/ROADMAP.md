@@ -24,6 +24,8 @@
 
 ### 現在の修正対象と再開点
 
+2026-10-13のhead `9b717f23` はMac梱包/制作再開、Apple共通、履歴、Android（共通単体・lint・APK・API36・Preview）が成功。WindowsはDesktop474件中471成功・2skip・制作通しのstretch編集可能待ち1件が30秒timeoutとなり、梱包未到達。録音終了フラグが非通知のvolatile値で、編集可否flowはview/workだけを観測していた。録音受理をStudio準備より前で止める制御試験は旧コードで2秒timeoutを再現し、フラグをEditorViewへ移して開始/解除を通知した修正版では既存の録音終了試験と合わせ2件成功した。元のWindows XMLには可否状態がなく、同一原因と断定せず、制作通しにはphase/availability/problem/revisionの失敗診断を追加し30秒上限を保持する。関連Desktopの制作通し・ループ録音・stretchはLinuxで成功、更新headのWindows再検証を完了条件とする。rollbackはこの状態通知修正のrevert。
+
 2026-10-13のLinux/JDK21全体検証はJVM266件が成功、UI354件中ミキサーの横長・文字200%だけ1件失敗した。844×390では固定見出しにより入力領域が162pxとなり、167pxのdelay時間欄が5px欠けていた。高さ480dp未満だけ見出しをscroll内へ移し、取消/適用/全停止を固定したまま領域を確保する。製品修正後の既存ミキサー2試験（日英×通常/縦長/横長を含む）は失敗・skip 0。判定や待機は弱めない。直前head `5a304ea8` のMac梱包・同梱制作/終了再開・Apple共通・履歴CIは成功したが、このミキサー修正版のCI成功へ転用しない。rollbackはこの表示修正のrevert、制作data不変。
 
 2026-10-13の最終スコープは利用者指定のコード修正とCIまでとし、Mac実機導入は今回の対象外。制作切替の回帰試験は失敗時にも所有pickerを取消・回収してからhostを閉じ、CI全体のハングを防ぐ。旧Presenter（`7f7733ff`）だけへ戻した独立worktreeでは、未保存STEP保全・歌詞draft書出し中の全停止・終了時picker取消の3件が期待どおり失敗し、修正Presenterでは5件すべて成功した。待機上限・文書保全のassertionは維持する。

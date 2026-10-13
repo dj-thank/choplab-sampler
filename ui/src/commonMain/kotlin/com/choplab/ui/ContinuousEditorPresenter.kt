@@ -244,6 +244,7 @@ private data class EditorView(
     val vocalPreview: Boolean = false,
     val punchRecording: Boolean = false,
     val punchSaving: Boolean = false,
+    val finishingTake: Boolean = false,
     val pendingRecording: PendingRecording? = null,
     val voiceEstimateMillis: Long? = null,
     val systemEstimateMillis: Long? = null,
@@ -305,7 +306,9 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     /** Why the action being dispatched was refused, when there is more to say than that it failed. Held under [serialized]. */
     private var refusal: ContinuousStatus? = null
     /** A finished take is being added: a stop pressed meanwhile must not cancel that edit. */
-    @Volatile private var finishingTake = false
+    private var finishingTake: Boolean
+        get() = view.value.finishingTake
+        set(value) { view.update { it.copy(finishingTake = value) } }
     @Volatile private var loopOpeningCancelled = false
     @Volatile private var openingSource = false
     @Volatile private var platformPickerOpen = false
@@ -1911,7 +1914,7 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
     }
 
     private fun bankPadBlock(editor: EditorView, work: WorkState): BankPadEditProblem? = when {
-        editor.voice != null || editor.startingVoice || editor.punchRecording || editor.hits != null || editor.overdub != null || editor.recordingSource || editor.startingSource || finishingTake -> BankPadEditProblem.RECORDING
+        editor.voice != null || editor.startingVoice || editor.punchRecording || editor.hits != null || editor.overdub != null || editor.recordingSource || editor.startingSource || editor.finishingTake -> BankPadEditProblem.RECORDING
         work.jobId != null || work.preparationId != null || editor.pendingRecording != null || hasPendingInput() -> BankPadEditProblem.BUSY
         else -> null
     }
