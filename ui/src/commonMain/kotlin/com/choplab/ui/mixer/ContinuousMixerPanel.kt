@@ -50,13 +50,16 @@ import kotlin.math.roundToInt
     val editable = !state.applying && state.problem != MixerProblem.STALE
     Dialog({ if (!state.applying) onAction(MixerAction.Cancel) }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         BoxWithConstraints(Modifier.fillMaxSize().padding(8.dp), contentAlignment = Alignment.Center) {
+            val compactHeight = maxHeight < 480.dp
             Surface(Modifier.widthIn(max = 600.dp).fillMaxWidth().heightIn(max = maxHeight).testTag("ce-mixer-panel"),
                 shape = RoundedCornerShape(12.dp), color = CEColor.Cream, border = BorderStroke(2.dp, CEColor.Ink)) {
                 Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(stringResource(Res.string.mixer_open), fontSize = 18.sp,
+                    if (!compactHeight) Text(stringResource(Res.string.mixer_open), fontSize = 18.sp,
                         fontWeight = FontWeight.Bold, modifier = Modifier.testTag("ce-mixer-title"))
                     Column(Modifier.weight(1f, fill = false).fillMaxWidth().verticalScroll(rememberScrollState()).testTag("ce-mixer-fields"),
                         verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (compactHeight) Text(stringResource(Res.string.mixer_open), fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold, modifier = Modifier.testTag("ce-mixer-title"))
                         ChannelSelector(state, editable, onAction)
                         Text(stringResource(Res.string.mixer_draft_hint), fontSize = 14.sp)
                         MixerMeters(draft.channel, readMeters, active)
