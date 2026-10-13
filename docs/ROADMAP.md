@@ -24,6 +24,8 @@
 
 ### 現在の修正対象と再開点
 
+2026-10-13の利用者指定により、仕上げはMacの既存制作フローを最優先とする。接続可能な実機がないため今回のMac導入・実音は未実施。PR239 `a87e9510` の履歴CIは構造検査の累積268,787,888 bytesが旧256 MiB上限を超えて停止した。rootが `scripts/check_public_surface.py` の全履歴I/O上限だけを512 MiBへ更新する。個別archive/秘密情報の検査、履歴範囲、件数とspool上限は保持する。`scripts/tests/test_public_surface.py` に合計上限ちょうどの全件検査と1 byte超過時の読取り前拒否を追加し、関連146件はLinux/Python 3.12で成功。実履歴と製品の最新head CIは別途確認し、成功前に統合しない。rollbackはこの上限更新のrevert。
+
 同日のPR239レビュー追補ではrootが3件の製品境界を修正する。Desktopのファイル選択→上書き確認は単一の取消handlerが現在の窓だけを所有し、同じcontinuationへの二重登録をなくす。歌詞の下書き適用後のLRC書出しも所有pickerへ通し、全停止の即時経路と終了時取消を維持する。制作を開く/新規へ切り替える前にSTEPの下書き・配置待ちを確認し、保存済み文書への外部file-openでも破棄を黙認しない。対象は `DesktopEditorPorts`/`DesktopPickerCancellation`、`ContinuousEditorPresenter` と対応するDesktop/ProjectTransition回帰。元の4工程・PAD・音声/保存schemaは維持。単一handlerの切替/取消/完了、LRC picker中の停止/終了、STEP下書きとqueueの保持/明示破棄を検証対象へ追加し、CI結果が出るまで未検証候補とする。完了条件とrollbackは上記限定修正と同じ。
 
 2026-10-13のブラッシュアップ再開では、rootがPR239 head `97b13593` のWindows CI（run37836759444）の4失敗を調査した。対象は `desktop/src/test/kotlin/com/choplab/desktop/` 内の `audio/FakeSystemAudioHelper.kt` と `next/{LongSourceHostIntegrationTest,StepPatternHostIntegrationTest,VocalTakeHostTest}.kt`。合成helperの終了行を本番Swiftと同じLFへ固定し、STEPは下書き確認の継続・明示破棄、長尺制作の再開は未保存確認、comp適用はTAKE所有の停止overloadを通す。元のPCM/左右/保存再開/1Undo/待機上限は維持する。完了条件は更新headのWindows既存4回帰を含む必須CI成功。クラウド作業環境のHTTP proxyへ接続できず依存取得・ローカルGradleは未実行で、ソース照合だけをLOCAL_PASSとしない。最新CI確認・main統合・Mac10件と最終DMG導入は未完。rollbackはこの限定追加commitのrevertで、利用者dataや本番音声経路は変更しない。
