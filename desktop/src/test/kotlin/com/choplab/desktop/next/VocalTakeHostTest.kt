@@ -20,6 +20,7 @@ import com.choplab.ui.source.*
 import com.choplab.ui.vocal.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import java.nio.file.Files
 import java.util.Locale
 import java.util.concurrent.locks.LockSupport
@@ -154,8 +155,12 @@ class VocalTakeHostTest {
                 assertEquals(before.project.takes.map { it.id }, editor.state.value.draft!!.segments.map { it.takeId })
                 for (tag in listOf("vocal-preview-comp", "vocal-apply", "vocal-close")) scene.fullHit(tag, width, height)
                 val energy = f.sink.leftEnergy
+                // Observe before pointer settling: the short comp may finish while frames are rendered.
+                val previewStarted = async(start = CoroutineStart.UNDISPATCHED) {
+                    withTimeout(10_000) { editor.state.first { it.previewing } }
+                }
                 scene.pointer("vocal-preview-comp")
-                until { editor.state.value.previewing }
+                previewStarted.await()
                 until { f.sink.leftEnergy > energy }
                 assertEquals(before, studio.document.value)
                 scene.pointer("vocal-apply"); until { editor.state.value.applied }

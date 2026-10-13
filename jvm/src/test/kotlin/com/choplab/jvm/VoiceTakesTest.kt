@@ -50,6 +50,9 @@ class VoiceTakesTest {
 
         assertEquals(VoiceTakes.Start.NO_INPUT, takes.start(10), "No microphone")
         assertNull(takes.stop("VOICE 1"), "Nothing ran")
+        // NO_INPUT is returned before the independent opening worker releases its slot.
+        withinSeconds(5) { !takes.inputBusy }
+        assertFalse(takes.inputBusy, "A finished empty opening releases its slot before retry")
 
         val mic = ScriptedMic().also { it.buffers.put(FloatArray(4_800) { .25f }) }
         mics += mic

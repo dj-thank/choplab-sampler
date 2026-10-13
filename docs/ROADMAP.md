@@ -24,6 +24,12 @@
 
 ### 現在の修正対象と再開点
 
+2026-10-13の完全checkout検証では、JDK21と環境の信頼CA/proxyを用意し、所有picker3件・制作切替5件・録音開始取消/保全・Desktopの長尺再開/STEP/システム音経路を検証した。短いcomp試聴は実pointerの描画待ち中に終わるため、`VocalTakeHostTest` はclick前からStateFlowの再生開始を監視し、元の10秒境界と実出力energy判定を保持して4件成功した。Windows `b1168769` は空入力の戻り直後、独立openerがslotを解放する前に次を開始するfixture競合でJVM1件失敗。既存5秒境界内でslot解放を確認してから再試行する。本番録音処理は変更しない。
+
+同headのMac CIはOpenSSL 4.0.3のnative集合変更で停止した。rootが `config/mac-media-tool-files-20261013.txt` の完全な40file集合を追加し、20261006集合から `libcrypto.3/libssl.3` → `libcrypto.4/libssl.4` の2fileだけを変更した。旧集合・片側更新/欠落/追加の拒否を保持し、Homebrew recipeとupstream Apache-2.0本文を照合、NOTICE/source indexを更新。Python424件中422件成功・PowerShell不在2件skip。最新headのMac梱包/制作通しはCI結果待ちで、実機導入の代替ではない。
+
+追加レビューの64track性能は同一Linux/amd64 JDK21で再測定し、192frame・warmup/測定各10,000block・32同時clip/full FX/stemsで、16track p99=0.522ms/max=2.490ms、64track p99=0.821ms/max=5.979ms、追加割当0・PCM欠落0だった。これは合成JVM測定であり、既存Mac p99=2.059msを撤回せずPixel/Mac実機のCPU目標や10分underrun合格としない。加工済みclipのtrim後の再編集拒否は現mainのVocalPitch/BeatStretch境界でも存在する。複製時のrecipeは原音・全renderの対応を保持するが、trim済みの再編集は未対応で、native/48k端点とWSOLA範囲を保つ後続設計・回帰が必要。レビュー残件と実機受入を含む全面完了・build35配布は未宣言。
+
 PR239 `a87e9510` のApple共通基盤CIは成功。Windows run38363318340はJVM266件中、遅延permission取消の `VoiceTakesTest` 1件で停止した。取消callerのjoinは独立opener workerの終了を保証しないため、fixtureはnative openを保留したまま2秒内の取消完了とslot所有を確認し、解放後は既存の5秒cleanup境界内でmic解放・slot解放・録音未公開を検査する。本番入力処理と停止deadlineは変更しない。更新headのJVM/desktop回帰はCI確認待ち。
 
 2026-10-13の利用者指定により、仕上げはMacの既存制作フローを最優先とする。接続可能な実機がないため今回のMac導入・実音は未実施。PR239 `a87e9510` の履歴CIは構造検査の累積268,787,888 bytesが旧256 MiB上限を超えて停止した。rootが `scripts/check_public_surface.py` の全履歴I/O上限だけを512 MiBへ更新する。個別archive/秘密情報の検査、履歴範囲、件数とspool上限は保持する。`scripts/tests/test_public_surface.py` に合計上限ちょうどの全件検査と1 byte超過時の読取り前拒否を追加し、関連146件はLinux/Python 3.12で成功。実履歴と製品の最新head CIは別途確認し、成功前に統合しない。rollbackはこの上限更新のrevert。
