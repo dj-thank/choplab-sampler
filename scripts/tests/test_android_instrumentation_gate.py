@@ -34,10 +34,17 @@ class AndroidInstrumentationGateTests(unittest.TestCase):
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(text, encoding="utf-8")
 
-    def run_gate(self, gradle_status: int = 0) -> tuple[int, str, str]:
+    def run_gate(self, gradle_status: int = 0, *, produces_reports: bool = True) -> tuple[int, str, str]:
+        # Existing fixtures describe the reports produced by this Gradle invocation.
+        reports = {path: path.read_bytes() for path in self.root.rglob("*.xml")} if produces_reports else {}
+        def complete(*args: object, **kwargs: object) -> subprocess.CompletedProcess:
+            for path, content in reports.items():
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(content)
+            return subprocess.CompletedProcess([], gradle_status)
         output, errors = io.StringIO(), io.StringIO()
         with (
-            patch.object(gate.subprocess, "run", return_value=subprocess.CompletedProcess([], gradle_status)) as run,
+            patch.object(gate.subprocess, "run", side_effect=complete) as run,
             redirect_stdout(output),
             redirect_stderr(errors),
         ):
@@ -88,6 +95,99 @@ class AndroidInstrumentationGateTests(unittest.TestCase):
 
     def test_missing_xml_fails(self) -> None:
         self.assertEqual(self.run_gate()[0], 1)
+
+    def test_old_green_xml_cannot_pass_a_run_that_produces_no_reports(self) -> None:
+        self.write_xml(GREEN)
+        other = self.root / "app/build/test-results/connected/TEST-old.xml"
+        self.write_xml(GREEN, other)
+
+        status, output, _ = self.run_gate(produces_reports=False)
+
+        self.assertEqual(status, 1)
+        self.assertEqual(json.loads(output)["tests"], 0)
+        self.assertFalse(self.result.exists())
+        self.assertFalse(other.exists())
+
+    def test_old_failed_xml_does_not_contaminate_fresh_green_results(self) -> None:
+        old = self.root / "app/build/test-results/connected/TEST-old.xml"
+        self.write_xml('<testsuite tests="1"><testcase name="old"><failure/></testcase></testsuite>', old)
+        def complete(*args: object, **kwargs: object) -> subprocess.CompletedProcess:
+            self.write_xml(GREEN)
+            return subprocess.CompletedProcess([], 0)
+        output = io.StringIO()
+        with patch.object(gate.subprocess, "run", side_effect=complete), redirect_stdout(output):
+            self.assertEqual(gate.run_gate(self.root), 0)
+        self.assertEqual(json.loads(output.getvalue())["tests"], 1)
+
+    def test_report_cleanup_preserves_host_reports_and_other_build_files(self) -> None:
+        host = self.root / "app/build/test-results/testDebugUnitTest/TEST-unit.xml"
+        nested = self.root / "app/build/unrelated/test-results/connected/TEST-other.xml"
+        other = self.result.with_name("device-log.txt")
+        self.write_xml(GREEN, host)
+        self.write_xml(GREEN, nested)
+        self.write_xml("keep diagnostic", other)
+        self.write_xml(GREEN)
+
+        self.assertEqual(self.run_gate(produces_reports=False)[0], 1)
+        self.assertEqual(host.read_text(encoding="utf-8"), GREEN)
+        self.assertEqual(nested.read_text(encoding="utf-8"), GREEN)
+        self.assertEqual(other.read_text(encoding="utf-8"), "keep diagnostic")
+
+    def test_report_symlinks_are_preserved_and_do_not_count_as_fresh_reports(self) -> None:
+        external = self.root / "saved-results/TEST-saved.xml"
+        self.write_xml(GREEN, external)
+        self.result.parent.mkdir(parents=True, exist_ok=True)
+        self.result.symlink_to(external)
+        linked_directory = self.root / "app/build/test-results/connected"
+        linked_directory.parent.mkdir(parents=True, exist_ok=True)
+        linked_directory.symlink_to(external.parent, target_is_directory=True)
+
+        self.assertEqual(self.run_gate(produces_reports=False)[0], 1)
+        self.assertTrue(self.result.is_symlink())
+        self.assertTrue(linked_directory.is_symlink())
+        self.assertEqual(external.read_text(encoding="utf-8"), GREEN)
+
+    def test_symlinked_app_or_build_is_rejected_before_touching_external_reports(self) -> None:
+        for relative in (Path("app"), Path("app/build")):
+            with self.subTest(relative=relative), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory) / "repo"
+                linked = root / relative
+                external = Path(directory) / "external"
+                report_root = external / "build" if relative == Path("app") else external
+                reports = [report_root / path for path in (
+                    "outputs/androidTest-results/connected/debug/TEST-saved.xml",
+                    "test-results/connected/TEST-saved.xml",
+                )]
+                for report in reports:
+                    report.parent.mkdir(parents=True, exist_ok=True)
+                    report.write_text(GREEN, encoding="utf-8")
+                linked.parent.mkdir(parents=True, exist_ok=True)
+                linked.symlink_to(external, target_is_directory=True)
+
+                with (
+                    patch.object(gate.subprocess, "run", return_value=subprocess.CompletedProcess([], 0)) as run,
+                    redirect_stderr(io.StringIO()),
+                    redirect_stdout(io.StringIO()),
+                ):
+                    self.assertEqual(gate.run_gate(root), 1)
+
+                self.assertTrue(linked.is_symlink())
+                for report in reports:
+                    self.assertTrue(report.is_file(), "External reports must be preserved")
+                    self.assertEqual(report.read_text(encoding="utf-8"), GREEN)
+                run.assert_not_called()
+
+    def test_cleanup_failure_stops_before_gradle_is_started(self) -> None:
+        self.write_xml(GREEN)
+        with (
+            patch.object(Path, "unlink", side_effect=OSError("cannot remove previous report")),
+            patch.object(gate.subprocess, "run") as run,
+            redirect_stderr(io.StringIO()) as errors,
+        ):
+            self.assertEqual(gate.run_gate(self.root), 1)
+        run.assert_not_called()
+        self.assertIn("previous", errors.getvalue())
+        self.assertEqual(self.result.read_text(encoding="utf-8"), GREEN)
 
     def test_missing_xml_preserves_gradle_failure(self) -> None:
         self.assertEqual(self.run_gate(9)[0], 9)
@@ -158,11 +258,13 @@ class FailingCaseReportTests(unittest.TestCase):
 
     def run_gate_with(self, xml: str) -> tuple[int, str, str]:
         result = self.root / "app/build/outputs/androidTest-results/connected/debug/TEST-AVD.xml"
-        result.parent.mkdir(parents=True, exist_ok=True)
-        result.write_text(xml, encoding="utf-8")
+        def complete(*args: object, **kwargs: object) -> subprocess.CompletedProcess:
+            result.parent.mkdir(parents=True, exist_ok=True)
+            result.write_text(xml, encoding="utf-8")
+            return subprocess.CompletedProcess([], 1)
         output, errors = io.StringIO(), io.StringIO()
         with (
-            patch.object(gate.subprocess, "run", return_value=subprocess.CompletedProcess([], 1)),
+            patch.object(gate.subprocess, "run", side_effect=complete),
             redirect_stdout(output),
             redirect_stderr(errors),
         ):
