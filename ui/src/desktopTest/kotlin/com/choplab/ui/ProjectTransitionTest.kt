@@ -80,6 +80,7 @@ class ProjectTransitionTest {
 
     @Test fun quitCancelsOnlyOwnedPickerBeforeOneFinalSaveAndCanResumeAfterFailure() = runBlocking<Unit> {
         val h = Harness()
+        var pendingPicker: Job? = null
         try {
             for (kind in listOf("library", "save", "open", "lyrics-import", "lyrics-export", "lyrics-draft-export")) {
                 h.blockPicker = if (kind == "lyrics-draft-export") "lyrics-export" else kind
@@ -93,7 +94,7 @@ class ProjectTransitionTest {
                         listOf(LyricAction.Text("line", "Applied draft")), h.studio.document.value.revision, LrcFormat.EXTENDED))
                     else -> ContinuousEditorAction.OpenProject
                 }
-                val choosing = async { h.presenter.dispatch(action) }
+                val choosing = async { h.presenter.dispatch(action) }.also { pendingPicker = it }
                 h.pickerEntered.await()
                 if (kind == "lyrics-draft-export") {
                     assertEquals("Applied draft", h.studio.document.value.project.lyrics.single().text)
@@ -101,7 +102,7 @@ class ProjectTransitionTest {
                 }
                 val before = h.studio.document.value
                 withTimeout(2000) { h.presenter.prepareToClose() }
-                assertFalse(choosing.await()); assertTrue(h.pickerCancelled)
+                assertFalse(withTimeout(2000) { choosing.await() }); assertTrue(h.pickerCancelled)
                 assertTrue(withTimeout(2000) { h.presenter.finishRecording() })
                 var saves = 0; var closes = 0
                 assertFalse(closeAfterAutosave({ saves++; error("Synthetic final save failure") }, { false }) { closes++ })
@@ -119,7 +120,7 @@ class ProjectTransitionTest {
             h.presenter.prepareToClose()
             assertTrue(closeAfterAutosave({ check(h.presenter.finishRecording()); saves++ }, { error("Successful save asks nothing") }) { closes++ })
             assertEquals(1, saves); assertEquals(1, closes)
-        } finally { h.close() }
+        } finally { pendingPicker?.cancelAndJoin(); h.close() }
     }
 
     @Test fun projectSwitchPreservesUnsavedPatternAndQueuedArrangementEvenWhenTheDocumentIsSaved() = runBlocking<Unit> {
@@ -157,11 +158,12 @@ class ProjectTransitionTest {
 
     @Test fun stopAllDoesNotWaitForTheAppliedLyricDraftExportPicker() = runBlocking<Unit> {
         val h = Harness(monitorAvailable = true)
+        var pendingPicker: Job? = null
         try {
             h.blockPicker = "lyrics-export"
             val choosing = async { h.presenter.dispatch(ContinuousEditorAction.Lyrics(
                 LyricAction.ApplyDraftAndExport(listOf(LyricAction.Text("line", "Keep after cancel")),
-                    h.studio.document.value.revision, LrcFormat.EXTENDED))) }
+                    h.studio.document.value.revision, LrcFormat.EXTENDED))) }.also { pendingPicker = it }
             withTimeout(2000) { h.pickerEntered.await() }
             val before = h.studio.document.value
             val stopsBefore = h.originalStops
@@ -170,10 +172,10 @@ class ProjectTransitionTest {
             assertFalse(choosing.isCompleted, "All-stop must work while the file picker stays open")
             assertFalse(h.pickerCancelled)
             withTimeout(2000) { h.presenter.prepareToClose() }
-            assertFalse(choosing.await())
+            assertFalse(withTimeout(2000) { choosing.await() })
             assertTrue(h.pickerCancelled)
             assertEquals(before.project, h.studio.document.value.project)
-        } finally { h.close() }
+        } finally { pendingPicker?.cancelAndJoin(); h.close() }
     }
 
     private class Harness(private val monitorAvailable: Boolean = false) {

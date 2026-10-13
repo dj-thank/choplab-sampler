@@ -24,6 +24,8 @@
 
 ### 現在の修正対象と再開点
 
+2026-10-13の最終スコープは利用者指定のコード修正とCIまでとし、Mac実機導入は今回の対象外。制作切替の回帰試験は失敗時にも所有pickerを取消・回収してからhostを閉じ、CI全体のハングを防ぐ。旧Presenter（`7f7733ff`）だけへ戻した独立worktreeでは、未保存STEP保全・歌詞draft書出し中の全停止・終了時picker取消の3件が期待どおり失敗し、修正Presenterでは5件すべて成功した。待機上限・文書保全のassertionは維持する。
+
 2026-10-13の完全checkout検証では、JDK21と環境の信頼CA/proxyを用意し、所有picker3件・制作切替5件・録音開始取消/保全・Desktopの長尺再開/STEP/システム音経路を検証した。短いcomp試聴は実pointerの描画待ち中に終わるため、`VocalTakeHostTest` はclick前からStateFlowの再生開始を監視し、元の10秒境界と実出力energy判定を保持して4件成功した。Windows `b1168769` は空入力の戻り直後、独立openerがslotを解放する前に次を開始するfixture競合でJVM1件失敗。既存5秒境界内でslot解放を確認してから再試行する。本番録音処理は変更しない。
 
 同headのMac CIはOpenSSL 4.0.3のnative集合変更で停止した。rootが `config/mac-media-tool-files-20261013.txt` の完全な40file集合を追加し、20261006集合から `libcrypto.3/libssl.3` → `libcrypto.4/libssl.4` の2fileだけを変更した。旧集合・片側更新/欠落/追加の拒否を保持し、Homebrew recipeとupstream Apache-2.0本文を照合、NOTICE/source indexを更新。Python424件中422件成功・PowerShell不在2件skip。最新headのMac梱包/制作通しはCI結果待ちで、実機導入の代替ではない。
