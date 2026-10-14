@@ -2,7 +2,7 @@
 
 音を取り込み、好きな部分を切り出し、PADで鳴らしてビートを作る Android 10+ / Windows 向けサンプラーです。自分の音声を端末内で編集・保存でき、オリジナルの合成ドラムからも始められます。
 
-現在は **0.18.0 を土台に再構築中**です。Macでも全制作機能を使う要件を追加し、機能ごとに検証しています（[ADR8](docs/adr/ADR-0008-mac-function-parity.md)）。現行版は「入れる → チョップ → ビート → 保存」の4工程。計画している「歌う」、AI作詞、統一音声エンジン、ミキサーなどは、受入が終わるまで現行機能として案内しません。実装・配布・確認の最新状況は [ROADMAP](docs/ROADMAP.md) にまとめています。
+現在は **0.18.0 を土台に再構築中**です。Macでも全制作機能を使う要件を追加し、機能ごとに検証しています（[ADR8](docs/adr/ADR-0008-mac-function-parity.md)）。現行版は「入れる → チョップ → ビート → 保存」の4工程。NEXTのソースには録音・歌詞、統一音声エンジン、ミキサーなどを実装しています。実装済み・試用版・実機で受入済みの範囲は区別しています。実装・配布・確認の最新状況は [ROADMAP](docs/ROADMAP.md) にまとめています。
 
 ## 入手と使い方
 
@@ -33,7 +33,7 @@ iPad A16向けの対応を再開しました（[対応方針](docs/adr/ADR-0010-
 
 ## 開発と文書
 
-開発の再開・クラウドへの引継ぎは、まず [ROADMAPの現状・SSOT・修正対象](docs/ROADMAP.md#最初に読む現状とssot2026-10-01照合) を参照してください。元セッションの意図と最新の訂正を反映し、[承認済み画面](docs/DESIGN.md#承認済み画像設計参照) も保存しています。
+開発の再開・クラウドへの引継ぎは、まず [ROADMAPの現在地と残課題](docs/ROADMAP.md#現在地) を参照してください。共有の開発ブランチはmainに集約し、未完の要件もROADMAPで追跡します。[承認済み画面](docs/DESIGN.md#承認済み画像設計参照) も保存しています。
 
 - [参加・ローカル起動](CONTRIBUTING.md) / [変更ルール](AGENTS.md)
 - [PRODUCT](docs/PRODUCT.md) — できることと再構築の要件
@@ -47,4 +47,4 @@ iPad A16向けの対応を再開しました（[対応方針](docs/adr/ADR-0010-
 
 ## English
 
-Earth Song (internal project name: ChopLab) is an Android 10+ and Windows sampler. Import your audio, chop it onto pads, make a beat, and save or export it. The 0.18.0 baseline is being rebuilt in stages, with Mac feature parity and resumed iPadOS development included in the requirements. An installable iPad build is not available yet. See the [roadmap](docs/ROADMAP.md) for implemented scope, available builds and remaining verification; planned vocal and AI features are not yet a release promise.
+Earth Song (internal project name: ChopLab) is an Android 10+ and Windows sampler. Import your audio, chop it onto pads, make a beat, and save or export it. The 0.18.0 baseline is being rebuilt in stages, with Mac feature parity and resumed iPadOS development included in the requirements. An installable iPad build is not available yet. See the [roadmap](docs/ROADMAP.md) for implemented scope, available builds and remaining verification; implemented NEXT features are not automatically a stable release or device-acceptance promise.

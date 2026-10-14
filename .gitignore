@@ -3,16 +3,12 @@
 /local.properties
 /.idea/
 .DS_Store
-/build/
+**/build/
 /dist/
 /captures/
 .externalNativeBuild/
 .cxx/
 __pycache__/
-app/build/
-desktop/build/
-shared/build/
-jvm-core/build/
 
 # Native and IDE output
 /.kotlin/
@@ -69,7 +65,3 @@ compile_commands.json
 *.choplab
 *.choplib
 *.onnx
-engine/build/
-core/build/
-ui/build/
-jvm/build/

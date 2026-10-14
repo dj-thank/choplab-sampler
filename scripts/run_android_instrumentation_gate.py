@@ -19,22 +19,31 @@ from instrumentation_summary import failing_instrumentation_cases, summarize_ins
 def instrumentation_xml_paths(build_root: Path) -> list[Path]:
     """Select only regular instrumentation XML files, not host-unit reports."""
     results: list[Path] = []
-    for path in build_root.rglob("*.xml"):
-        relative = "/" + path.relative_to(build_root).as_posix()
-        if (
-            not path.is_symlink()
-            and path.is_file()
-            and (
-                "/outputs/androidTest-results/" in relative
-                or "/test-results/connected/" in relative
-            )
-        ):
-            results.append(path)
+    if build_root.is_symlink():
+        return results
+    for directory in (build_root / "outputs/androidTest-results", build_root / "test-results/connected"):
+        if directory.is_symlink() or directory.parent.is_symlink():
+            continue
+        for path in directory.rglob("*.xml"):
+            if not path.is_symlink() and path.is_file():
+                results.append(path)
     return sorted(results)
 
 
 def run_gate(repo_root: Path) -> int:
     """An all-green XML result can never hide a failed Gradle invocation."""
+    build_root = repo_root / "app" / "build"
+    if any(path.is_symlink() for path in (repo_root, build_root.parent, build_root)):
+        print("Android instrumentation requires regular repository, app and build directories.", file=sys.stderr)
+        return 1
+    try:
+        # Only reports from this invocation can attest to its instrumentation result.
+        # Keep host-unit reports, diagnostic logs and other build outputs intact.
+        for path in instrumentation_xml_paths(build_root):
+            path.unlink()
+    except OSError as error:
+        print(f"Could not remove previous Android instrumentation XML: {error}", file=sys.stderr)
+        return 1
     try:
         completed = subprocess.run(
             ["./gradlew", "--stacktrace", ":app:connectedDebugAndroidTest",
@@ -50,7 +59,7 @@ def run_gate(repo_root: Path) -> int:
 
     summary_status = 1
     try:
-        paths = instrumentation_xml_paths(repo_root / "app" / "build")
+        paths = instrumentation_xml_paths(build_root)
         summary = summarize_instrumentation_xml_files(paths)
         print(json.dumps(asdict(summary), ensure_ascii=False, separators=(",", ":")))
         summary_status = 0 if summary.passed else 1

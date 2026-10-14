@@ -3490,17 +3490,39 @@ class DesktopSamplerControllerTest {
 
     @Test
     fun h13CapturePadDuringRecordingNeitherEditsNorAuditions() = withH13CaptureFixture { controller, engine, recorder ->
-        controller.toggleMicrophoneRecording()
-        awaitCondition { recorder.isRecording && controller.state.value.recordingSession is RecordingSession.Active }
-        val before = controller.state.value
+        val opening = CountDownLatch(1)
+        val releaseOpening = CountDownLatch(1)
+        recorder.opening = {
+            opening.countDown()
+            check(releaseOpening.await(5, TimeUnit.SECONDS)) { "Fixture did not release recording startup" }
+        }
+        fun assertCaptureBlocked(phase: RecordingPhase) {
+            val before = controller.state.value
+            assertEquals(RecordingSession.Active(RecordingKind.SOURCE_MICROPHONE, phase), before.recordingSession)
 
-        controller.capturePad(1)
+            controller.capturePad(1)
 
-        assertTrue(before.pads == controller.state.value.pads, "Recording must keep the assigned Chop unchanged")
-        assertEquals(before.recordingSession, controller.state.value.recordingSession)
-        assertEquals(before.canUndo, controller.state.value.canUndo)
-        assertTrue(engine.triggered.isEmpty())
-        assertEquals("録音をSTOPしてから編集してください", controller.state.value.statusMessage)
+            assertEquals(before.pads, controller.state.value.pads, "$phase must keep the assigned Chop unchanged")
+            assertEquals(before.recordingSession, controller.state.value.recordingSession)
+            assertEquals(before.canUndo, controller.state.value.canUndo)
+            assertTrue(engine.triggered.isEmpty())
+            assertEquals("録音をSTOPしてから編集してください", controller.state.value.statusMessage)
+        }
+        try {
+            controller.toggleMicrophoneRecording()
+            assertTrue(opening.await(2, TimeUnit.SECONDS), "Recording startup did not reach the recorder")
+            assertCaptureBlocked(RecordingPhase.STARTING)
+            releaseOpening.countDown()
+            // The recorder flag becomes true before the controller publishes RECORDING.
+            // Observe that published phase before comparing state around a capture command.
+            awaitCondition {
+                controller.state.value.recordingSession ==
+                    RecordingSession.Active(RecordingKind.SOURCE_MICROPHONE, RecordingPhase.RECORDING) && recorder.isRecording
+            }
+            assertCaptureBlocked(RecordingPhase.RECORDING)
+        } finally {
+            releaseOpening.countDown()
+        }
     }
 
     @Test
