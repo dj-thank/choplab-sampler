@@ -20,7 +20,7 @@ internal data class MacAudioEndpoint(val key: String, val label: String,
 internal class NextMacAudio(
     private val enumerate: () -> List<MacAudioEndpoint> = ::javaSoundEndpoints,
     private val permissions: MacMicrophonePermission = MacMicrophonePermission(),
-    private val permission: () -> MacMicrophonePermission.Status = permissions::request,
+    private val permission: (() -> Boolean) -> MacMicrophonePermission.Status = permissions::request,
 ) {
     private val gate = Any()
     private val selected = MutableStateFlow(MacAudioSelection())
@@ -53,7 +53,7 @@ internal class NextMacAudio(
     suspend fun openMicrophone(): MicInput? {
         synchronized(gate) { if (changing) return null; opening++ }
         return try {
-            microphonePermission = permission()
+            microphonePermission = permission(com.choplab.jvm.inputOpeningActive())
             if (microphonePermission != MacMicrophonePermission.Status.AUTHORIZED) return null
             val id = selection.value.inputId
             val open = synchronized(gate) { endpoints[id]?.openInput }
@@ -68,6 +68,7 @@ internal class NextMacAudio(
                 override val channels get() = input.channels
                 override val bufferFrames get() = input.bufferFrames
                 override val routeRevision get() = input.routeRevision
+                override val terminationReason get() = input.terminationReason
                 override fun onCaptureThread() = input.onCaptureThread()
                 override fun read(buffer: FloatArray) = input.read(buffer)
                 override fun stop() = input.stop()

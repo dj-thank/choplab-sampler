@@ -164,7 +164,13 @@ class LongSourceHostIntegrationTest {
             override suspend fun chooseExport(frames: Long) = ExportRequest(restored.files.register(second), frames.toInt(), bits = 24)
         })
         try {
+            val beforeOpen = restored.studio.document.value
             assertTrue(restoredPresenter.dispatch(ContinuousEditorAction.OpenProject))
+            await { restoredPresenter.state.value.openProjectRevision == beforeOpen.revision }
+            assertEquals(beforeOpen.project, restored.studio.document.value.project, "Choosing a file must not replace unsaved work")
+            assertEquals(beforeOpen.revision, restored.studio.document.value.revision)
+            assertTrue(restoredPresenter.dispatch(ContinuousEditorAction.ConfirmOpenProject(
+                saveCurrent = false, revision = beforeOpen.revision)))
             idle(restored)
             assertEquals(saved, restored.studio.document.value.project)
             assertTrue(restoredPresenter.dispatch(ContinuousEditorAction.ExportWav))

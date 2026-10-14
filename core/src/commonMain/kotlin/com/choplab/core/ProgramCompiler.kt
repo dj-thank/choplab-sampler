@@ -19,7 +19,7 @@ class ProgramCompiler(private val pcm: PcmPort) {
         val timeline = if (target is PlaybackTarget.Arrangement) planArrangement(project, target) else null
         val trackIds = (timeline?.audible.orEmpty().map { it.track.id } + project.pads.filter { it.assetHash != null }
             .mapNotNull { project.banks[it.id / 16].trackId }).distinct()
-        require(trackIds.size <= Arrangement.MAX_TRACKS) { "Mixer exceeds 16 routed tracks" }
+        require(trackIds.size <= Arrangement.MAX_TRACKS) { "Mixer exceeds ${Arrangement.MAX_TRACKS} routed tracks" }
         val tracksById = project.tracks.associateBy { it.id }
         val mixer = com.choplab.engine.MixerProgram(trackIds.map { tracksById.getValue(it).fx }, project.mix, trackIds)
         val anySolo = project.tracks.any { it.solo }

@@ -10,7 +10,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /** Worker/control orchestration. The native frame gate itself remains on VoiceRecorder's capture thread. */
 class VocalPunchCapture(private val studio: Studio, private val engine: StreamingEnginePort,
-                        private val voice: VoiceTakes, private val permission: suspend () -> Boolean = { true }) : VocalPunchPort {
+                        private val voice: VoiceTakes, private val permission: suspend () -> Boolean = { true },
+                        private val inputFailure: () -> PunchProblem = { PunchProblem.NO_INPUT },
+                        private val cancelOpening: () -> Unit = voice::cancelOpening) : VocalPunchPort {
     private val mutex = Mutex()
     private val stop = AtomicBoolean()
     private val lost = AtomicBoolean()
@@ -18,7 +20,7 @@ class VocalPunchCapture(private val studio: Studio, private val engine: Streamin
     private var generation = 0L
     private val mutable = MutableStateFlow(VocalPunchProgress())
     override val progress = mutable.asStateFlow()
-    override fun requestStop() { stop.set(true); opener?.cancel() }
+    override fun requestStop() { stop.set(true); cancelOpening(); opener?.cancel() }
     override fun interrupt() { lost.set(true); requestStop() }
 
     override suspend fun capture(project: Project, expectedRevision: Long, request: VocalPunchRequest, stopped: () -> Boolean): VocalPunchResult = coroutineScope {
@@ -58,10 +60,13 @@ class VocalPunchCapture(private val studio: Studio, private val engine: Streamin
                 if (!currentCoroutineContext().isActive) throw cancel
                 null
             } finally { opener = null }
+            // Native cancellation may finish the open with NO_INPUT before the Deferred observes it.
+            if (stopping() && started != VoiceTakes.Start.STARTED)
+                return@coroutineScope VocalPunchResult(problem = PunchProblem.CANCELLED)
             when (started) {
                 VoiceTakes.Start.STARTED -> inputOwned = true
                 VoiceTakes.Start.NO_ROOM -> return@coroutineScope VocalPunchResult(problem = PunchProblem.NO_ROOM)
-                VoiceTakes.Start.NO_INPUT -> return@coroutineScope VocalPunchResult(problem = if (denied) PunchProblem.PERMISSION else PunchProblem.NO_INPUT)
+                VoiceTakes.Start.NO_INPUT -> return@coroutineScope VocalPunchResult(problem = if (denied) PunchProblem.PERMISSION else inputFailure())
                 null -> return@coroutineScope VocalPunchResult(problem = PunchProblem.CANCELLED)
             }
             val output = engine.health()

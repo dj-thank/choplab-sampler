@@ -40,6 +40,7 @@ import com.choplab.ui.onboarding.*
 import kotlinx.coroutines.delay
 import org.jetbrains.compose.resources.stringResource
 import com.choplab.ui.chop.*
+import kotlin.time.Duration.Companion.seconds
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
@@ -76,6 +77,15 @@ import kotlin.math.roundToLong
             val scrollRecordingStatus = compact && state.stage == ContinuousStage.BEAT && maxHeight < 480.dp
             Column(Modifier.fillMaxSize().padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 CEHeader(state, onAction, compact, readout, refreshKey)
+                if (state.closing) Row(Modifier.fillMaxWidth().testTag("ce-closing-project")
+                    .semantics { liveRegion = LiveRegionMode.Polite }, horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.size(24.dp))
+                    Column {
+                        Text(stringResource(Res.string.ce_closing_project), fontWeight = FontWeight.Bold)
+                        Text(stringResource(Res.string.ce_closing_project_hint))
+                    }
+                }
                 if (!scrollRecordingStatus) CERecordingStatus(state, onAction, readout, refreshKey)
                 if (state.autosaveFailed) Text(stringResource(Res.string.ce_autosave_failed),
                     Modifier.testTag("ce-autosave-failed").semantics { liveRegion = LiveRegionMode.Polite }, color = CEColor.Ink)
@@ -98,6 +108,7 @@ import kotlin.math.roundToLong
                                     maximumPadSide = maximumPadSide)
                             }
                             CEStatus(state.status)
+                            CEWaveformStatus(state, onAction)
                         }
                     }
                 } else {
@@ -112,7 +123,7 @@ import kotlin.math.roundToLong
                     }
                 }
                 if (state.stage == ContinuousStage.BEAT || state.stage == ContinuousStage.SAVE) CESongTransport(state, onAction, readout, refreshKey)
-                if (!compact || state.stage != ContinuousStage.BEAT) CEStatus(state.status)
+                if (!compact || state.stage != ContinuousStage.BEAT) { CEStatus(state.status); CEWaveformStatus(state, onAction) }
             }
         }
         autoChop?.let { CEAutoChopDialog(it, { onAction(ContinuousEditorAction.CloseAutoChop) }, { onAction(ContinuousEditorAction.StopAll) }) }
@@ -137,6 +148,20 @@ import kotlin.math.roundToLong
                     onAction(ContinuousEditorAction.ConfirmNewProject(false, revision))
                 }, enabled = state.documentRevision == revision && state.permits(ContinuousCapability.NEW_PROJECT), tag = "ce-new-discard")
                     CEButton(stringResource(Res.string.ce_cancel), { onAction(ContinuousEditorAction.CancelNewProject) }, tag = "ce-new-cancel") } })
+        }
+        state.openProjectRevision?.let { revision ->
+            AlertDialog(onDismissRequest = { onAction(ContinuousEditorAction.CancelOpenProject) },
+                title = { Text(stringResource(Res.string.ce_open_project)) },
+                text = { Text(stringResource(Res.string.ce_open_project_save_hint)) },
+                confirmButton = { CEButton(stringResource(Res.string.ce_save_then_open), {
+                    onAction(ContinuousEditorAction.ConfirmOpenProject(true, revision))
+                }, enabled = state.documentRevision == revision && state.permits(ContinuousCapability.NEW_PROJECT), tag = "ce-open-save") },
+                dismissButton = { Column {
+                    CEButton(stringResource(Res.string.ce_open_without_save), {
+                        onAction(ContinuousEditorAction.ConfirmOpenProject(false, revision))
+                    }, enabled = state.documentRevision == revision && state.permits(ContinuousCapability.NEW_PROJECT), tag = "ce-open-discard")
+                    CEButton(stringResource(Res.string.ce_cancel), { onAction(ContinuousEditorAction.CancelOpenProject) }, tag = "ce-open-cancel")
+                } })
         }
         CELyricsPanel(state, onAction, readout, refreshKey)
         lyricProposal?.let { CELyricProposalDialog(it, onAction) }
@@ -176,14 +201,19 @@ import kotlin.math.roundToLong
     val section = ContinuousClipEdits.barsFrames(from, state.tempo, bars)
     // The same checks as the edit, so the panel says what applying does or why it cannot.
     val copied = state.clips.filter { it.timelineStartFrame in section && ContinuousClipEdits.sounds(it) }
+    val copiedIds = copied.mapTo(mutableSetOf()) { it.id }
     val count = copied.size
     val outlasting = copied.any { it.timelineDurationFrames > section.last + 1 - section.first }
     val after = ContinuousClipEdits.barsFrames(from, state.tempo, bars, 1).first..ContinuousClipEdits.barsFrames(from, state.tempo, bars, times).last
-    val occupied = state.clips.any { it.timelineStartFrame in after }
+    val occupied = state.clips.any { ContinuousClipEdits.overlapsFrames(it.timelineStartFrame, it.timelineDurationFrames, after) }
+    val occupiedByOther = state.clips.any { it.id !in copiedIds && ContinuousClipEdits.overlapsFrames(it.timelineStartFrame, it.timelineDurationFrames, after) }
     val (fromBar, toBar) = first + bars to first + bars.toLong() * (times + 1) - 1
     val refused = count == 0 || outlasting || occupied
     val plan = when {
         count == 0 -> stringResource(Res.string.ce_repeat_empty)
+        // A source clip can occupy its own destination. Explain its length unless another
+        // placement also blocks the destination; that placement still needs attention.
+        outlasting && !occupiedByOther -> stringResource(Res.string.ce_repeat_outlasting)
         occupied && fromBar == toBar -> stringResource(Res.string.ce_repeat_occupied_one, fromBar)
         occupied -> stringResource(Res.string.ce_repeat_occupied, fromBar, toBar)
         outlasting -> stringResource(Res.string.ce_repeat_outlasting)
@@ -332,10 +362,18 @@ import kotlin.math.roundToLong
                         onAction(ContinuousEditorAction.SetPadChoke(id, group)) }
                 }
                 Text(stringResource(Res.string.ce_choke_help), fontSize = 12.sp, lineHeight = 18.sp, color = CEColor.Border)
-                var armed by remember(pad) { mutableStateOf(false) }
-                CEButton(stringResource(if (armed) Res.string.ce_clear_pad_confirm else Res.string.ce_clear_pad),
-                    { if (armed) onAction(ContinuousEditorAction.ClearPad(id)) else armed = true }, Modifier.fillMaxWidth(),
-                    primary = armed, tag = "ce-clear-pad")
+                var confirmation by remember(pad, state.documentRevision, state.selectedPadSnapshot) { mutableStateOf<PadClearConfirmation?>(null) }
+                LaunchedEffect(confirmation) { if (confirmation != null) { delay(5_000); confirmation = null } }
+                CEButton(stringResource(if (confirmation != null) Res.string.ce_clear_pad_confirm else Res.string.ce_clear_pad), {
+                    val question = confirmation
+                    if (question != null && !question.expiresAt.hasPassedNow()) {
+                        confirmation = null
+                        onAction(ContinuousEditorAction.ClearPad(id, question))
+                    } else confirmation = state.selectedPadSnapshot?.let {
+                        PadClearConfirmation(it, state.documentRevision, kotlin.time.TimeSource.Monotonic.markNow() + 5.seconds)
+                    }
+                }, Modifier.fillMaxWidth(), enabled = state.selectedPadSnapshot?.id == id && state.permits(ContinuousCapability.PAD_PLAY),
+                    primary = confirmation != null, tag = "ce-clear-pad")
             }
         },
         confirmButton = { CEButton(stringResource(Res.string.ce_close), close, tag = "ce-pad-play-close") })
@@ -668,9 +706,9 @@ import kotlin.math.roundToLong
             Text(if (semitones) stringResource(Res.string.ce_semitones, (if (value >= 0) "+" else "") + value.roundToInt()) else stringResource(Res.string.ce_percent, (value * 100).roundToInt()),
                 Modifier.weight(1f, fill = false).widthIn(min = 56.dp), fontSize = 12.sp, fontFamily = FontFamily.Monospace)
             CEButton("−", { onValue(if (semitones) (value - 1).coerceAtLeast(-24f) else (value - .05f).coerceAtLeast(0f)) },
-                enabled = state.permits(capability), reason = CEReason(state, capability), modifier = Modifier.semantics { contentDescription = decrease })
+                enabled = state.permits(capability) && value > (if (semitones) -24f else 0f), reason = CEReason(state, capability), modifier = Modifier.semantics { contentDescription = decrease })
             CEButton("+", { onValue(if (semitones) (value + 1).coerceAtMost(24f) else (value + .05f).coerceAtMost(maximum)) },
-                enabled = state.permits(capability), reason = CEReason(state, capability), modifier = Modifier.semantics { contentDescription = increase })
+                enabled = state.permits(capability) && value < (if (semitones) 24f else maximum), reason = CEReason(state, capability), modifier = Modifier.semantics { contentDescription = increase })
         }
     }
 }
@@ -890,6 +928,7 @@ private val CE_SWINGS = listOf(500, 540, 580, 620, 660, 710)
         ContinuousStatus.SYSTEM_NO_DISPLAY -> Res.string.ce_system_no_display
         ContinuousStatus.SYSTEM_UNAVAILABLE -> Res.string.ce_system_unavailable
         ContinuousStatus.SYSTEM_TIMEOUT -> Res.string.ce_system_timeout
+        ContinuousStatus.INPUT_TIMEOUT -> Res.string.ce_input_open_timeout
         ContinuousStatus.SYSTEM_EMPTY -> Res.string.ce_system_empty
         ContinuousStatus.VOICE_SAVED -> Res.string.ce_voice_saved; ContinuousStatus.VOICE_SAVED_SONG_ONLY -> Res.string.ce_voice_saved_song_only
         ContinuousStatus.VOICE_SAVED_TAKE_ONLY -> Res.string.vocal_take_saved_only

@@ -1,5 +1,6 @@
 package com.choplab.ui.vocal
 
+import com.choplab.ui.CreationRevisionNotifications
 import com.choplab.core.DocumentState
 import com.choplab.core.edit.*
 import com.choplab.core.model.*
@@ -7,9 +8,26 @@ import com.choplab.core.vocal.VocalPitchDraft
 import com.choplab.engine.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlin.test.*
 
 class VocalPitchControllerTest {
+    @Test fun oldDocumentNotificationAfterReloadCannotInvalidateNewPreparedWork() = runBlocking {
+        val notifications = CreationRevisionNotifications()
+        val f = Fixture(observeDocument = notifications::observe)
+        try {
+            withTimeout(5000) { notifications.captured.await() }
+            f.document.value = f.document.value.copy(revision = 1)
+            assertTrue(f.controller.dispatch(PitchAction.Reload))
+            assertTrue(f.controller.dispatch(PitchAction.Prepare))
+            notifications.release.complete(Unit)
+            withTimeout(5000) { notifications.delivered.await() }
+            assertTrue(f.controller.state.value.prepared)
+            assertNull(f.controller.state.value.problem)
+            assertEquals(1L, f.controller.state.value.revision)
+        } finally { notifications.release.complete(Unit); f.close() }
+    }
+
     @Test fun lateStopNotificationCannotEraseANewerAuditionButAnActualStopDoes() = runBlocking {
         val f = Fixture(Dispatchers.Unconfined)
         try {
@@ -112,6 +130,7 @@ class VocalPitchControllerTest {
     }
 
     private class Fixture(dispatcher: CoroutineDispatcher = Dispatchers.Default,
+                          val observeDocument: (StateFlow<DocumentState>) -> StateFlow<DocumentState> = { it },
                           private val rendering: suspend (VocalPitchDraft) -> PreparedVocalPitch = { prepared(it) }) {
         val session = EditSession(Project(assets = frozenListOf(source), tracks = frozenListOf(Track("voice", "Voice", TrackKind.VOCAL)),
             clips = frozenListOf(Clip("clip", "voice", source.hash, FrameRange(0, source.frames))),
@@ -122,7 +141,7 @@ class VocalPitchControllerTest {
         val previewing = MutableStateFlow(false)
         var actuallyPreviewing = false
         var renders = 0; var previews = 0; var acceptPreview = true; var acceptApply = true
-        val controller = VocalPitchController(document, availability, object : VocalPitchPorts {
+        val controller = VocalPitchController(observeDocument(document), availability, object : VocalPitchPorts {
             override val previewing = this@Fixture.previewing
             override fun isPreviewing() = actuallyPreviewing
             override suspend fun render(project: Project, draft: VocalPitchDraft, progress: (PitchCorrectionPhase, Int, Int) -> Unit): PreparedVocalPitch {

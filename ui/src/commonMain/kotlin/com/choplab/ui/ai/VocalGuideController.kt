@@ -127,15 +127,47 @@ class VocalGuideController(
         }
     }
     private fun editable() = !closing.value && !cancelling && state.value.phase !in listOf(VocalGuidePhase.APPLYING, VocalGuidePhase.APPLIED) && document.value.revision == snapshot.revision
-    private fun invalidate(value: VocalGuideState) {
-        generation.update { it + 1 }; work?.cancel(); preview.requestStop()
-        publish(planned(value.copy(phase = VocalGuidePhase.EDITING, rows = value.rows.map { it.copy(prepared = null, failure = null) },
-            preparingLine = null, densityConfirmed = false, failure = null)))
+    /** Audio depends on the row's reading/duration and the effective voice/settings, not its title or absolute position. */
+    private fun updateDraft(value: VocalGuideState) {
+        val before = state.value
+        if (value == before) return
+        val audioChanged = value.language != before.language || value.voice != before.voice || value.settings != before.settings
+        val rowAudioChanged = value.rows.any { row -> before.rows.firstOrNull { it.line.id == row.line.id }?.let {
+            it.reading != row.reading || it.mode != row.mode || it.confirmed != row.confirmed
+        } != false }
+        val timingChanged = value.startBeat != before.startBeat || value.rows.map { it.mode } != before.rows.map { it.mode }
+        if (audioChanged || rowAudioChanged || timingChanged) {
+            generation.update { it + 1 }; work?.cancel(); preview.requestStop()
+        }
+        val next = planned(value)
+        val rows = next.rows.map { row ->
+            val old = before.rows.firstOrNull { it.line.id == row.line.id }
+            if (audioChanged || old == null || old.reading != row.reading || old.mode != row.mode || !row.confirmed)
+                row.copy(prepared = null, failure = null)
+            else {
+                val target = next.plan?.rows?.firstOrNull { it.line.id == row.line.id }?.line
+                val prepared = old.prepared?.let { prepared ->
+                    if (target == null) prepared else {
+                        val offset = target.startTick - prepared.line.startTick
+                        prepared.copy(line = target.copy(words = prepared.line.words.map {
+                            it.copy(startTick = it.startTick + offset, endTick = it.endTick + offset)
+                        }.frozen()))
+                    }
+                }
+                row.copy(prepared = prepared, failure = old.failure)
+            }
+        }
+        publish(next.copy(rows = rows,
+            phase = if (!audioChanged && !rowAudioChanged && !timingChanged) before.phase
+                else if (next.plan != null && rows.all { it.prepared != null }) VocalGuidePhase.READY else VocalGuidePhase.EDITING,
+            preparingLine = if (!audioChanged && !rowAudioChanged && !timingChanged) before.preparingLine else null,
+            densityConfirmed = before.densityConfirmed && !audioChanged && !rowAudioChanged,
+            failure = null))
     }
     suspend fun placement(title: String = state.value.title, language: LyricLanguage = state.value.language,
                           startBeat: Long = state.value.startBeat): Boolean = mutex.withLock {
         if (!editable() || title.length > 160 || startBeat !in 1..(ProjectLimits.MAX_TIMELINE_TICKS / ProjectLimits.PPQ)) return@withLock false
-        invalidate(state.value.copy(title = title, language = language, startBeat = startBeat,
+        updateDraft(state.value.copy(title = title, language = language, startBeat = startBeat,
             voice = state.value.voice?.takeIf { it.language == language } ?: state.value.voices.firstOrNull { it.language == language },
             rows = state.value.rows.map { if (language == state.value.language) it else it.copy(confirmed = false) }))
         true
@@ -143,22 +175,23 @@ class VocalGuideController(
     suspend fun reading(lineId: String, value: String, confirm: Boolean = false): Boolean = mutex.withLock {
         if (!editable() || value.length > 512 || value.any { it < ' ' || it == '\u007f' }) return@withLock false
         val line = state.value.rows.firstOrNull { it.line.id == lineId } ?: return@withLock false
+        if (value == line.reading && (!confirm || line.confirmed)) return@withLock true
         val valid = runCatching { LyricReading.create(lineId, line.line.text, value, state.value.language) }.isSuccess
-        invalidate(state.value.copy(rows = state.value.rows.map { if (it.line.id == lineId) it.copy(reading = value, confirmed = confirm && valid) else it }))
+        updateDraft(state.value.copy(rows = state.value.rows.map { if (it.line.id == lineId) it.copy(reading = value, confirmed = confirm && valid) else it }))
         valid || !confirm
     }
     suspend fun mode(lineId: String?, value: FlowMode): Boolean = mutex.withLock {
         if (!editable()) return@withLock false
-        invalidate(state.value.copy(rows = state.value.rows.map { if (lineId == null || it.line.id == lineId) it.copy(mode = value) else it }))
+        updateDraft(state.value.copy(rows = state.value.rows.map { if (lineId == null || it.line.id == lineId) it.copy(mode = value) else it }))
         true
     }
     suspend fun voice(value: TtsVoice): Boolean = mutex.withLock {
         if (!editable() || value !in state.value.voices || value.language != state.value.language) return@withLock false
-        invalidate(state.value.copy(voice = value)); true
+        updateDraft(state.value.copy(voice = value)); true
     }
     suspend fun settings(value: TtsSettings): Boolean = mutex.withLock {
         if (!editable()) return@withLock false
-        invalidate(state.value.copy(settings = value)); true
+        updateDraft(state.value.copy(settings = value)); true
     }
     suspend fun confirmDensity(value: Boolean) = mutex.withLock { if (editable()) publish(state.value.copy(densityConfirmed = value)) }
 
@@ -172,8 +205,9 @@ class VocalGuideController(
         if (blocked is TtsResult.Failure) { publish(state.value.copy(failure = blocked.failure)); return@withLock false }
         val plan = state.value.plan ?: return@withLock false
         val voice = state.value.voice ?: run { publish(state.value.copy(failure = TtsFailure(TtsProblem.NO_OFFLINE_VOICE))); return@withLock false }
-        val rows = plan.rows.filter { lineId == null || it.line.id == lineId }
-        if (rows.isEmpty()) return@withLock false
+        val rows = plan.rows.filter { row -> (lineId == null || row.line.id == lineId) &&
+            (regenerate || state.value.rows.first { it.line.id == row.line.id }.prepared == null) }
+        if (rows.isEmpty()) return@withLock state.value.rows.all { it.prepared != null }
         preview.requestStop()
         val token = generation.updateAndGet { it + 1 }
         val settings = state.value.settings
@@ -224,12 +258,23 @@ class VocalGuideController(
                 is TtsResult.Success -> { publish(state.value.copy(phase = VocalGuidePhase.APPLYING)); edit.value }
             }
         }
-        val operation = jobs.async { preview.stop() is TtsResult.Success && actions.apply(intent, snapshot.revision) }
+        val operation = jobs.async {
+            when (val stopped = preview.stop()) {
+                is TtsResult.Failure -> stopped
+                is TtsResult.Success -> if (document.value.revision != snapshot.revision) ttsFailure(TtsProblem.STALE_DOCUMENT)
+                    else if (actions.apply(intent, snapshot.revision)) TtsResult.Success(Unit) else ttsFailure(TtsProblem.APPLY_REJECTED)
+            }
+        }
         work = operation
-        val accepted = try { operation.await() }
-            catch (cancel: CancellationException) { throw cancel } catch (_: Exception) { false }
-        mutex.withLock { if (!closing.value) publish(state.value.copy(phase = if (accepted) VocalGuidePhase.APPLIED else VocalGuidePhase.FAILED,
-            failure = if (accepted) null else TtsFailure(TtsProblem.APPLY_REJECTED))) }
+        val result = try { operation.await() }
+            catch (cancel: CancellationException) { throw cancel } catch (_: Exception) { ttsFailure(TtsProblem.APPLY_REJECTED) }
+        val accepted = result is TtsResult.Success
+        mutex.withLock { if (!closing.value) {
+            val stale = !accepted && document.value.revision != snapshot.revision
+            publish(state.value.copy(phase = when { accepted -> VocalGuidePhase.APPLIED; stale -> VocalGuidePhase.FAILED; else -> VocalGuidePhase.READY },
+                rows = if (stale) state.value.rows.map { it.copy(prepared = null) } else state.value.rows,
+                failure = when { accepted -> null; stale -> TtsFailure(TtsProblem.STALE_DOCUMENT); else -> (result as TtsResult.Failure).failure }))
+        } }
         return accepted
     }
     /** Synchronous cancellation fence for Stop, permission opening, stage change and disposal. */
@@ -238,9 +283,15 @@ class VocalGuideController(
         cancelling = true
         val token = generation.updateAndGet { it + 1 }; work?.cancel(); preview.requestStop()
         jobs.launch(start = CoroutineStart.UNDISPATCHED) { mutex.withLock {
-            if (!closing.value && generation.value == token) publish(state.value.copy(
-                phase = if (problem == TtsProblem.STALE_DOCUMENT) VocalGuidePhase.FAILED else VocalGuidePhase.EDITING,
-                rows = state.value.rows.map { it.copy(prepared = null) }, preparingLine = null, failure = TtsFailure(problem)))
+            if (!closing.value && generation.value == token) {
+                val keep = problem == TtsProblem.CANCELLED && document.value.revision == snapshot.revision
+                val rows = if (keep) state.value.rows else state.value.rows.map { it.copy(prepared = null) }
+                publish(state.value.copy(phase = when {
+                    problem == TtsProblem.STALE_DOCUMENT -> VocalGuidePhase.FAILED
+                    keep && state.value.plan != null && rows.all { it.prepared != null } -> VocalGuidePhase.READY
+                    else -> VocalGuidePhase.EDITING
+                }, rows = rows, preparingLine = null, failure = TtsFailure(problem)))
+            }
             cancelling = false
         } }
     }

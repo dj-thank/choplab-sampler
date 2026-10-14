@@ -1,0 +1,7 @@
+<resources>
+    <string name="ce_open_project_save_hint">Save the current project to a file before opening another project?</string>
+    <string name="ce_save_then_open">Save and open</string>
+    <string name="ce_open_without_save">Open without saving</string>
+    <string name="ce_closing_project">Closing project</string>
+    <string name="ce_closing_project_hint">Preserving recordings and checking the final save.</string>
+</resources>

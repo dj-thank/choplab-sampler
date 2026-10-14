@@ -72,11 +72,14 @@ internal object CEColor {
 
 @Composable internal fun CEButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier,
                                   enabled: Boolean = true, primary: Boolean = false, dark: Boolean = false,
-                                  reason: String = "", tag: String? = null) {
+                                  reason: String = "", tag: String? = null, choiceSelected: Boolean? = null) {
     val shape = RoundedCornerShape(8.dp)
     Button(onClick, modifier.heightIn(min = 48.dp).widthIn(min = 48.dp)
         .then(if (tag == null) Modifier else Modifier.testTag(tag))
-        .semantics { if (!enabled && reason.isNotBlank()) stateDescription = reason }, enabled = enabled,
+        .semantics {
+            if (!enabled && reason.isNotBlank()) stateDescription = reason
+            choiceSelected?.let { selected = it }
+        }, enabled = enabled,
         shape = shape, border = BorderStroke(2.dp, if (dark) CEColor.Border else CEColor.Ink),
         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
         colors = ButtonDefaults.buttonColors(
@@ -84,6 +87,7 @@ internal object CEColor {
             contentColor = if (dark && !primary) CEColor.Cream else CEColor.Ink,
             disabledContainerColor = if (dark) CEColor.Empty else CEColor.Tan,
             disabledContentColor = if (dark) CEColor.Tan.copy(alpha = .65f) else CEColor.Ink.copy(alpha = .55f))) {
+        if (choiceSelected == true) Text("✓", Modifier.padding(end = 6.dp).clearAndSetSemantics { }, fontWeight = FontWeight.Bold)
         Text(label, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
     }
 }

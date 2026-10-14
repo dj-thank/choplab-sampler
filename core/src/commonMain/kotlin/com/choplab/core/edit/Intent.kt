@@ -60,7 +60,9 @@ sealed interface Intent {
                               val assets: FrozenList<Asset> = frozenListOf(),
                               val vocalComps: FrozenList<VocalComp>? = null,
                               /** A placement can establish its BANK routes atomically with its clips. */
-                              val banks: FrozenList<Bank>? = null) : Intent
+                              val banks: FrozenList<Bank>? = null,
+                              val pitchCorrections: FrozenList<VocalPitchCorrection>? = null,
+                              val beatStretches: FrozenList<BeatStretch>? = null) : Intent
     data class SetLyrics(val lines: FrozenList<LyricLine>) : Intent
     data class SetStructuredLyrics(val lines: FrozenList<LyricLine>, val structure: LyricStructure) : Intent
     /** A confirmed guide proposal joins its rendered sounds and lyric alignment in one Undo. */
@@ -249,7 +251,9 @@ object Reducer {
                 }
                 before.copy(assets = if (intent.assets.isEmpty()) before.assets else mergeAssets(before.assets, intent.assets),
                     tracks = intent.tracks, clips = intent.clips, takes = intent.takes,
-                    vocalComps = intent.vocalComps ?: before.vocalComps, banks = intent.banks ?: before.banks)
+                    vocalComps = intent.vocalComps ?: before.vocalComps, banks = intent.banks ?: before.banks,
+                    pitchCorrections = intent.pitchCorrections ?: before.pitchCorrections,
+                    beatStretches = intent.beatStretches ?: before.beatStretches)
             }
             is Intent.SetLyrics -> before.copy(lyrics = intent.lines, lyricStructure = before.lyricStructure?.retainFor(intent.lines))
             is Intent.SetStructuredLyrics -> before.copy(lyrics = intent.lines, lyricStructure = intent.structure)

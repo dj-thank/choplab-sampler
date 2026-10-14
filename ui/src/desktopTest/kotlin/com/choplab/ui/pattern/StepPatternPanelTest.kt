@@ -4,6 +4,11 @@ package com.choplab.ui.pattern
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.ImageComposeScene
+import androidx.compose.ui.input.key.*
+import com.choplab.ui.CEStepPatternsDialog
+import com.choplab.ui.ContinuousEditorAction
+import com.choplab.core.model.Pattern
+import com.choplab.core.model.frozenListOf
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.unit.Density
 import kotlinx.coroutines.*
@@ -12,6 +17,51 @@ import java.util.Locale
 import kotlin.test.*
 
 class StepPatternPanelTest {
+    @Test fun headerFooterAndEscapeUseTheSameDraftAndQueueCloseConfirmation() = runBlocking {
+        for (dirty in listOf(false, true)) for (entrance in listOf("ce-step-patterns-close", "pattern-close", "escape")) {
+            val f = PatternTestFixture()
+            var closed = false
+            val scene = ImageComposeScene(width = 1200, height = 1000, coroutineContext = coroutineContext) {
+                MaterialTheme { CEStepPatternsDialog(f.controller) { if (it == ContinuousEditorAction.CloseStepPatterns) closed = true } }
+            }
+            try {
+                scene.settle()
+                assertTrue(f.action(PatternAction.Queue)); assertTrue(f.action(PatternAction.FirstBar(3)))
+                if (dirty) { assertTrue(f.action(PatternAction.Name("draft"))); assertTrue(f.action(PatternAction.Toggle(0))) }
+                scene.settle()
+                val before = f.controller.state.value
+                if (entrance == "escape") {
+                    scene.sendKeyEvent(KeyEvent(Key.Escape, KeyEventType.KeyDown)); scene.sendKeyEvent(KeyEvent(Key.Escape, KeyEventType.KeyUp)); scene.settle()
+                } else scene.click(entrance)
+                assertFalse(closed); assertTrue(f.controller.state.value.closeConfirmation, "dirty=$dirty close=$entrance")
+                scene.click("pattern-close-keep"); assertEquals(before, f.controller.state.value)
+                scene.click("ce-step-patterns-close"); scene.click("pattern-close-discard")
+                assertTrue(closed); assertEquals(PatternPhase.CLOSED, f.controller.state.value.phase)
+                assertEquals(0L, f.document.value.revision); assertTrue(f.edits.isEmpty())
+            } finally { scene.close(); f.close() }
+        }
+    }
+    @Test fun queuedRangeShowsTheInclusiveLastBarForOneAndSeveralRepeatedPatterns() = runBlocking {
+        val previous = Locale.getDefault()
+        try { for (locale in listOf(Locale.JAPAN, Locale.US)) {
+            Locale.setDefault(locale)
+            val f = PatternTestFixture(PatternTestFixture.project().copy(patterns =
+                frozenListOf(Pattern("pattern-1"), Pattern("pattern-2", bars = 3))))
+            val scene = ImageComposeScene(width = 1200, height = 1000, coroutineContext = coroutineContext) {
+                MaterialTheme { StepPatternPanel(f.controller, {}) }
+            }
+            try {
+                scene.settle(); assertTrue(f.action(PatternAction.Queue)); scene.settle()
+                assertEquals(1, f.controller.state.value.lastQueuedBar)
+                assertTrue(f.action(PatternAction.FirstBar(3))); assertTrue(f.action(PatternAction.Repeats(4)))
+                assertTrue(f.action(PatternAction.Select("pattern-2"))); assertTrue(f.action(PatternAction.Queue)); scene.settle()
+                assertEquals(15, f.controller.state.value.lastQueuedBar)
+                val label = scene.tag("pattern-queue-range")!!.config[SemanticsProperties.Text].joinToString { it.text }
+                assertTrue(label.contains("3")); assertTrue(label.contains("15"))
+                assertTrue(f.edits.isEmpty())
+            } finally { scene.close(); f.close() }
+        } } finally { Locale.setDefault(previous) }
+    }
     @Test fun jaEnDesktopAndPhoneLargeTextCanEditTheLastTripletStepSavePlaceAndClose() = runBlocking<Unit> {
         val previous = Locale.getDefault()
         try {

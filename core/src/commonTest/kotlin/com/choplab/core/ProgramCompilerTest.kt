@@ -6,6 +6,22 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.*
 
 class ProgramCompilerTest {
+    @Test fun sixtyFourTrackAdmissionStillRejectsCombinedPcmBeforeAnyDecode() = runTest {
+        val assets = listOf("a", "b").map { Asset(it.repeat(64), "wav", 72_000_044, 48_000, 2, 9_000_000, "$it.wav") }
+        val tracks = List(64) { Track("t-$it", "Track $it", TrackKind.BANK) }
+        val project = Project(assets = assets.frozen(), tracks = tracks.frozen(), clips = tracks.mapIndexed { i, track ->
+            Clip("clip-$i", track.id, assets[i % 2].hash, FrameRange(0, 10), timelineStartFrame = i * 10L)
+        }.frozen())
+        assertTrue(ProgramCompiler.songFits(project))
+        var loads = 0
+        val compiler = ProgramCompiler(object : PcmPort {
+            override suspend fun load(asset: Asset): PcmAsset { loads++; error("PCM preflight must run before decoding") }
+        })
+        assertFailsWith<IllegalArgumentException> { compiler.compile(project, PlaybackTarget.Arrangement(), 0) }
+        assertEquals(0, loads)
+        assertEquals(128L * 1024 * 1024, com.choplab.engine.EngineFormat.MAX_RESIDENT_BYTES)
+    }
+
     @Test fun combinedResidencyIsRejectedBeforeAnyAssetIsLoaded() = runTest {
         val assets = listOf("a", "b").map { Asset(it.repeat(64), "wav", 72_000_044, 48_000, 2, 9_000_000, "$it.wav") }
         val project = Project(assets = assets.frozen(), pads = (0..127).map { index ->
@@ -51,9 +67,9 @@ class ProgramCompilerTest {
         assertFalse(ProgramCompiler.canAddAudioClips(project, selected, 0, 100, listOf(a.id, b.id)))
         val muted = project.copy(tracks = frozenListOf(a, b.copy(mute = true), voice))
         assertTrue(ProgramCompiler.canAddAudioClips(muted, selected, 0, 100, listOf(a.id, b.id)))
-        val tracks = List(16) { Track("track-$it", "Track $it", TrackKind.BANK) }
+        val tracks = List(64) { Track("track-$it", "Track $it", TrackKind.BANK) }
         val union = Project(assets = frozenListOf(asset), tracks = tracks.frozen(),
-            clips = (8..15).map { Clip("clip-$it", tracks[it].id, asset.hash, FrameRange(0, 100), 0) }.frozen(),
+            clips = (8..63).map { Clip("clip-$it", tracks[it].id, asset.hash, FrameRange(0, 100), timelineStartFrame = it * 100L) }.frozen(),
             banks = Project().banks.map { it.copy(trackId = tracks[it.id].id) }.frozen(),
             pads = Project().pads.map { if (it.id % 16 == 0) it.copy(assetHash = asset.hash, range = FrameRange(0, 100)) else it }.frozen())
         assertFalse(ProgramCompiler.canAddAudioClips(union, PlaybackTarget.Arrangement(), 0, 100, listOf(null)))

@@ -65,4 +65,8 @@
     <string name="pattern_editor_recording">録音を終えてからパターンを編集・配置してください。</string>
     <string name="pattern_editor_apply_failed">変更が受け付けられませんでした。制作は変更していません。</string>
     <string name="pattern_editor_closed">このパターン編集窓は閉じています。</string>
+    <string name="pattern_close_draft_title">STEPの変更を残しますか？</string>
+    <string name="pattern_close_draft_hint">未適用のパターン編集、または未配置の並び順があります。編集を続けるか、破棄して閉じるかを選んでください。</string>
+    <string name="pattern_close_discard">破棄して閉じる</string>
+    <string name="pattern_close_keep">編集を続ける</string>
 </resources>

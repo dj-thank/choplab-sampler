@@ -16,16 +16,27 @@ class VoiceTakesTest {
         val mic = ScriptedMic()
         val takes = VoiceTakes(store, scratch) { opening.countDown(); release.await(5, TimeUnit.SECONDS); mic }
         val start = async(Dispatchers.Default) { takes.start(300, waitForCue = true) }
-        assertTrue(opening.await(5, TimeUnit.SECONDS))
-        start.cancel()
-        release.countDown()
-        start.join()
-        assertNotNull(mic.closedBy)
-        assertFalse(takes.cueAt(System.nanoTime()))
-        assertNull(takes.stop("LATE"))
-        assertEquals(0, store.storedBytes())
-        assertEquals(0, Files.list(scratch).use { it.count() })
-        takes.close()
+        try {
+            assertTrue(opening.await(5, TimeUnit.SECONDS))
+            start.cancel()
+            // Cancellation returns while native permission/open is still blocked.
+            withTimeout(2_000) { start.join() }
+            assertNull(mic.closedBy)
+            assertTrue(takes.inputBusy, "A late input still owns its opening slot")
+            release.countDown()
+            // The opener owns late cleanup; joining the cancelled caller cannot join that worker.
+            withinSeconds(5) { mic.closedBy != null && !takes.inputBusy }
+            assertNotNull(mic.closedBy)
+            assertFalse(takes.inputBusy)
+            assertFalse(takes.cueAt(System.nanoTime()))
+            assertNull(takes.stop("LATE"))
+            assertEquals(0, store.storedBytes())
+            assertEquals(0, Files.list(scratch).use { it.count() })
+        } finally {
+            release.countDown()
+            start.cancelAndJoin()
+            takes.close()
+        }
     }
     @Test fun oneTakeAtATimeGoesToTheStore() = runBlocking<Unit> {
         val store = FileAssetStore(Files.createTempDirectory("choplab-takes-store-"))
@@ -39,6 +50,9 @@ class VoiceTakesTest {
 
         assertEquals(VoiceTakes.Start.NO_INPUT, takes.start(10), "No microphone")
         assertNull(takes.stop("VOICE 1"), "Nothing ran")
+        // NO_INPUT is returned before the independent opening worker releases its slot.
+        withinSeconds(5) { !takes.inputBusy }
+        assertFalse(takes.inputBusy, "A finished empty opening releases its slot before retry")
 
         val mic = ScriptedMic().also { it.buffers.put(FloatArray(4_800) { .25f }) }
         mics += mic

@@ -66,7 +66,12 @@ object NextDesktopFileSelfTest {
             check(presenter.dispatch(ContinuousEditorAction.DiscardSourceRecording))
             check(presenter.dispatch(ContinuousEditorAction.Undo))
             check(backend.studio.document.value.project != saved)
+            val beforeOpen = backend.studio.document.value
             check(presenter.dispatch(projectDrop.action(backend.files))); idle(backend)
+            val confirmation = withTimeout(5_000) { presenter.state.first { it.openProjectRevision == beforeOpen.revision } }
+            check(backend.studio.document.value == beforeOpen)
+            check(presenter.dispatch(ContinuousEditorAction.ConfirmOpenProject(false, requireNotNull(confirmation.openProjectRevision))))
+            idle(backend)
             check(backend.studio.document.value.project == saved)
 
             val broken = directory.resolve("Broken.wav").also { Files.writeString(it, "invalid audio fixture") }

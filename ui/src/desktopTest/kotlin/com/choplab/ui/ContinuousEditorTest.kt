@@ -423,6 +423,38 @@ class ContinuousEditorTest {
         } finally { Locale.setDefault(previous) }
     }
 
+    @Test fun clipSettingsKeepReachableTargetsAndFourWideTracksInBothLanguages() = runBlocking<Unit> {
+        val previous = Locale.getDefault()
+        try {
+            for (locale in listOf(Locale.JAPANESE, Locale.ENGLISH)) for ((width, height, font) in listOf(
+                Triple(1440, 1024, 1f), Triple(390, 844, 2f))) {
+                Locale.setDefault(locale)
+                val scene = ImageComposeScene(width, height, Density(1f, font), coroutineContext = coroutineContext) {
+                    ContinuousEditor(ContinuousEditorFixture.state().copy(compactPane = ContinuousPane.TIMELINE), {}, ContinuousEditorFixture::readout)
+                }
+                try {
+                    scene.settle()
+                    if (width == 1440) {
+                        val last = requireNotNull(scene.tag("ce-clip-scratch-1"))
+                        println("CLIP_LAYOUT locale=${locale.language} timeline=${scene.tag("ce-timeline")?.boundsInRoot} last=${last.boundsInRoot} size=${last.size}")
+                        assertTrue(last.boundsInRoot.height >= 93.9f, "$locale: ${last.boundsInRoot} / ${last.size}")
+                    }
+                    for (tag in listOf("ce-clip-gain", "ce-clip-position-exact", "ce-clip-exact", "ce-clip-track")) {
+                        scene.reach(tag)
+                        val node = requireNotNull(scene.tag(tag))
+                        val bounds = node.boundsInWindow
+                        assertTrue(bounds.width >= 48f && bounds.height >= 48f, "$locale $width $tag: $bounds")
+                        assertEquals(node.size.width.toFloat(), bounds.width, .5f, "$locale $width $tag width")
+                        assertEquals(node.size.height.toFloat(), bounds.height, .5f, "$locale $width $tag height")
+                        assertTrue(bounds.left >= 0f && bounds.right <= width && bounds.top >= 0f && bounds.bottom <= height,
+                            "$locale $width $tag: $bounds")
+                    }
+                    scene.capture("clip-settings-${locale.language}-$width-font${(font * 100).toInt()}.png")
+                } finally { scene.close() }
+            }
+        } finally { Locale.setDefault(previous) }
+    }
+
     @Test fun renderExactReferenceStagesAndCompactLargeFonts() = runBlocking<Unit> {
         val previous = Locale.getDefault()
         Locale.setDefault(Locale.JAPAN)
@@ -444,7 +476,9 @@ class ContinuousEditorTest {
                             assertTrue(bounds.height >= 48 && bounds.bottom <= 1024f, "Instrument actions scroll into view: $tag $bounds")
                         }
                         assertTrue(requireNotNull(scene.tag("ce-song-seek")).boundsInRoot.width > 600, "Wide song transport must use the available width")
-                        assertTrue(requireNotNull(scene.tag("ce-clip-scratch-1")).boundsInRoot.height >= 93.9f, "All four reference tracks must fit without clipping the last clip")
+                        val lastClip = requireNotNull(scene.tag("ce-clip-scratch-1"))
+                        assertTrue(lastClip.boundsInRoot.height >= 93.9f,
+                            "All four reference tracks must fit without clipping the last clip: ${lastClip.boundsInRoot} / ${lastClip.size}; timeline=${scene.tag("ce-timeline")?.boundsInRoot}")
                     }
                     scene.capture(if (stage == ContinuousStage.BEAT) "beat-desktop-controls.png" else "${stage.name.lowercase()}-desktop.png")
                 }
@@ -1091,9 +1125,11 @@ class ContinuousEditorTest {
                 scene.click("ce-repeat-bars-8")
                 assertEquals(true, requireNotNull(scene.tag("ce-repeat-bars-8")).config.getOrNull(SemanticsProperties.Selected))
                 assertEquals("この範囲の配置8個を、12〜19小節目にくり返します。", text("ce-repeat-plan"))
-                // One bar once goes into one bar, the fifth, which already holds clips.
+                // The source also lasts beyond one bar, but another clip in the fifth bar blocks the destination too.
                 scene.click("ce-repeat-bars-1")
                 assertEquals("5小節目には、もう配置があります。先に空けるか、長さか回数を変えてください。", text("ce-repeat-plan"))
+                assertFalse(enabled())
+                assertEquals(text("ce-repeat-plan"), requireNotNull(scene.tag("ce-repeat-apply")).config.getOrNull(SemanticsProperties.StateDescription))
                 scene.click("ce-repeat-bars-8")
                 assertTrue(enabled())
                 assertTrue(actions.none { it is ContinuousEditorAction.RepeatBars }, "Choosing repeats nothing")
@@ -1263,7 +1299,7 @@ class ContinuousEditorTest {
         val previous = Locale.getDefault()
         Locale.setDefault(Locale.JAPAN)
         try {
-            val state = mutableStateOf(ContinuousEditorFixture.state())
+            val state = mutableStateOf(ContinuousEditorFixture.state().copy(selectedPadSnapshot = com.choplab.core.model.Pad(2)))
             val actions = mutableListOf<ContinuousEditorAction>()
             fun update(pad: (ContinuousPad) -> ContinuousPad) {
                 state.value = state.value.copy(pads = state.value.pads.map { if (it.id == state.value.selectedPadId) pad(it) else it })
@@ -1330,7 +1366,8 @@ class ContinuousEditorTest {
                 scene.click("ce-clear-pad")
                 assertEquals(again, actions.size, "Asked again after the change")
                 scene.click("ce-clear-pad")
-                assertEquals(ContinuousEditorAction.ClearPad(2), actions.last())
+                assertEquals(2, assertIs<ContinuousEditorAction.ClearPad>(actions.last()).padId)
+                assertNotNull((actions.last() as ContinuousEditorAction.ClearPad).confirmation)
                 scene.click("ce-pad-play-close")
                 assertEquals(ContinuousEditorAction.ClosePadPlay, actions.last())
                 assertNull(scene.tag("ce-pad-play-panel"))

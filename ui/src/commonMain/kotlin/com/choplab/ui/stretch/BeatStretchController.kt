@@ -69,8 +69,8 @@ class BeatStretchController(private val document: StateFlow<DocumentState>, priv
     private val mutable = MutableStateFlow(snapshot())
     val state = mutable.asStateFlow()
     init {
-        jobs.launch { document.collect { value -> mutex.withLock {
-            if (!closed.value && value.revision != state.value.revision && state.value.phase != StretchPhase.APPLYING) {
+        jobs.launch { document.collect { mutex.withLock {
+            if (!closed.value && document.value.revision != state.value.revision && state.value.phase != StretchPhase.APPLYING) {
                 invalidate(); mutable.value = state.value.copy(phase = StretchPhase.EDITING, problem = StretchProblem.STALE, prepared = false, audition = StretchAudition.NONE)
             }
         } } }

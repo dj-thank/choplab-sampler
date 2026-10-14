@@ -31,4 +31,5 @@
     <string name="vocal_take_apply_failed">The comp was not applied. Existing takes and placements are unchanged.</string>
     <string name="vocal_take_saved_only">The recording is saved in Vocal takes. Its placement could not be added; existing song clips are unchanged.</string>
     <string name="vocal_preview_source_owned">Vocal preview · source controls return after Stop</string>
+    <string name="vocal_take_preview_failed">The preview stopped because audio could not be played. Your take selections are kept; try previewing again.</string>
 </resources>

@@ -28,7 +28,10 @@ import org.jetbrains.compose.resources.stringResource
     val settings = state.settings
     AlertDialog(onDismissRequest = close, modifier = Modifier.testTag("ce-auto-chop-panel"),
         containerColor = CEColor.Cream, titleContentColor = CEColor.Ink, textContentColor = CEColor.Ink,
-        title = { Text(stringResource(Res.string.chop_auto_title), fontSize = 20.sp, fontWeight = FontWeight.Bold) },
+        title = { Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(stringResource(Res.string.chop_auto_title), fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            CEButton(stringResource(Res.string.ce_stop_all), stopAll, Modifier.fillMaxWidth(), tag = "ce-auto-stop-all")
+        } },
         text = {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(stringResource(Res.string.chop_auto_range, ceTime(state.source.range.start, state.sampleRate, true),
@@ -87,7 +90,6 @@ import org.jetbrains.compose.resources.stringResource
                         Text(stringResource(if (state.previewPhase == VocalPreviewPhase.LOADING) Res.string.chop_auto_preview_loading else Res.string.chop_auto_preview_playing))
                     CEButton(stringResource(Res.string.chop_auto_stop_preview), { act(AutoChopAction.StopPreview) }, Modifier.fillMaxWidth(), tag = "ce-auto-preview-stop")
                 }
-                CEButton(stringResource(Res.string.ce_stop_all), stopAll, Modifier.fillMaxWidth(), tag = "ce-auto-stop-all")
             }
         }, confirmButton = { CEButton(stringResource(Res.string.chop_auto_apply), { act(AutoChopAction.Apply) },
             primary = true, enabled = state.canApply, tag = "ce-auto-apply") },

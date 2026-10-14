@@ -10,6 +10,48 @@ import kotlinx.coroutines.*
 import kotlin.test.*
 
 class ContinuousLyricsControllerTest {
+    @Test fun textAndOldWordDraftsCannotSilentlyDropEitherEditInAnUnorderedBatch() = runBlocking {
+        val h = Harness()
+        try {
+            h.files.text = "[00:01.000]<00:01.000>old<00:02.000>"
+            assertTrue(h.editor.dispatch(LyricAction.Import)); assertTrue(h.editor.dispatch(LyricAction.ApplyImport))
+            val before = h.studio.document.value
+            val id = before.project.lyrics.single().id
+            val edits = listOf(LyricAction.WordTiming(id, 0, 1100, 1900), LyricAction.Text(id, "new"))
+            for (order in listOf(edits, edits.reversed())) {
+                assertFalse(h.editor.dispatch(LyricAction.ApplyDraftAndExport(order, before.revision, LrcFormat.EXTENDED)))
+                assertEquals(before, h.studio.document.value)
+                assertNull(h.files.written)
+                assertEquals(LyricProblem.UNKNOWN_WORD, h.editor.view.value.issue?.problem)
+            }
+        } finally { h.close() }
+    }
+
+    @Test fun explicitDraftApplyThenExportIsOneUndoAndSavedExportFailuresPreserveDocument() = runBlocking {
+        for (format in LrcFormat.entries) {
+            val h = Harness()
+            try {
+                h.files.text = "[00:01.000]old"
+                assertTrue(h.editor.dispatch(LyricAction.Import)); assertTrue(h.editor.dispatch(LyricAction.ApplyImport))
+                val before = h.studio.document.value
+                val id = before.project.lyrics.single().id
+                val edits = listOf(LyricAction.Text(id, "new text"), LyricAction.Timing(id, 2000, 4000))
+                assertTrue(h.editor.dispatch(LyricAction.ApplyDraftAndExport(edits, before.revision, format)))
+                assertTrue(h.files.written!!.contains("new text")); assertTrue(h.files.written!!.contains("00:02.000"))
+                assertEquals(before.revision + 1, h.studio.document.value.revision)
+                assertTrue(h.studio.dispatch(Action.Undo).accepted); assertEquals(before.project, h.studio.document.value.project)
+                assertFalse(h.editor.dispatch(LyricAction.ApplyDraftAndExport(edits, before.revision, format)))
+                val unchanged = h.studio.document.value
+                h.files.exportResult = false
+                assertTrue(h.editor.dispatch(LyricAction.Export(format))); assertEquals(unchanged, h.studio.document.value)
+                assertEquals(LyricEditorNotice.CANCELLED, h.editor.view.value.notice)
+                h.files.exportFails = true
+                assertFalse(h.editor.dispatch(LyricAction.Export(format))); assertEquals(unchanged, h.studio.document.value)
+                assertEquals(LyricEditorNotice.WRITE_FAILED, h.editor.view.value.notice)
+            } finally { h.close() }
+        }
+    }
+
     @Test fun confirmedDeletionCannotApplyToAChangedLineOrRevision() = runBlocking<Unit> {
         val h = Harness()
         try {
@@ -119,9 +161,11 @@ class ContinuousLyricsControllerTest {
     private class Files : LyricFiles {
         var text: String? = null
         var written: String? = null
+        var exportResult = true
+        var exportFails = false
         var beforeRead: suspend () -> Unit = {}
         override suspend fun importLrc(): String? { beforeRead(); return text }
-        override suspend fun exportLrc(text: String): Boolean { written = text; return true }
+        override suspend fun exportLrc(text: String): Boolean { if (exportFails) error("Synthetic write failure"); written = text; return exportResult }
     }
     private class Engine : EnginePort {
         val commands = mutableListOf<EngineCommand>()

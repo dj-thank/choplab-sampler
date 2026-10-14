@@ -8,10 +8,13 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
@@ -67,9 +70,9 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
             // While a take or pass records, the PAD pane (where its stop button is) says so from the timeline pane too.
             CEButton(stringResource(if (state.recordingVoice || state.recordingHits) Res.string.ce_pads_recording else Res.string.ce_pads),
                 { onAction(ContinuousEditorAction.SelectCompactPane(ContinuousPane.PADS)) }, Modifier.weight(1f),
-                primary = state.compactPane == ContinuousPane.PADS, tag = "ce-pane-pads")
+                primary = state.compactPane == ContinuousPane.PADS, choiceSelected = state.compactPane == ContinuousPane.PADS, tag = "ce-pane-pads")
             CEButton(stringResource(Res.string.ce_timeline), { onAction(ContinuousEditorAction.SelectCompactPane(ContinuousPane.TIMELINE)) }, Modifier.weight(1f),
-                primary = state.compactPane == ContinuousPane.TIMELINE, tag = "ce-pane-timeline")
+                primary = state.compactPane == ContinuousPane.TIMELINE, choiceSelected = state.compactPane == ContinuousPane.TIMELINE, tag = "ce-pane-timeline")
         }
         if (state.compactPane == ContinuousPane.PADS) CEPadsPanel(state, onAction, readout, Modifier.fillMaxWidth(), null, null,
             compactDetails = true, maximumPadSide = maximumPadSide)
@@ -83,7 +86,10 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
         Row(Modifier.fillMaxSize()) {
             CEPadsPanel(state, onAction, readout, Modifier.width(usable * fraction).fillMaxHeight(), { draggedPad = it }, drop)
             val dividerLabel = stringResource(Res.string.ce_divider)
+            var dividerFocused by remember { mutableStateOf(false) }
             Box(Modifier.width(18.dp).fillMaxHeight().testTag("ce-divider")
+                .border(if (dividerFocused) 3.dp else 0.dp, if (dividerFocused) CEColor.Ink else Color.Transparent, RoundedCornerShape(6.dp))
+                .onFocusChanged { dividerFocused = it.isFocused }
                 .semantics {
                     contentDescription = dividerLabel
                     progressBarRangeInfo = ProgressBarRangeInfo(fraction, minimum..maximum)
@@ -209,7 +215,7 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
             CEAdjustment(stringResource(Res.string.ce_tone), pad?.tone ?: 1f, state, ContinuousCapability.PAD_TONE,
                 { onAction(ContinuousEditorAction.SetPadTone(state.selectedPadId, it)) }, modifier = Modifier.weight(1f), maximum = 1f)
             CEAdjustment(stringResource(Res.string.ce_gain), pad?.gain ?: 1f, state, ContinuousCapability.PAD_GAIN,
-                { onAction(ContinuousEditorAction.SetPadGain(state.selectedPadId, it)) }, modifier = Modifier.weight(1f))
+                { onAction(ContinuousEditorAction.SetPadGain(state.selectedPadId, it)) }, modifier = Modifier.weight(1f), maximum = 8f)
         }
         }
         if (maxWidth >= 510.dp && LocalDensity.current.fontScale <= 1.3f) Adjustments()
@@ -286,23 +292,84 @@ private data class CEPlacementTarget(val visible: Rect, val origin: Offset, val 
         CETimelineTools(state, onAction) { if (viewportWidth > 0) { onAction(ContinuousEditorAction.FitTimelineWidth(viewportWidth)); fitRequest++ } }
         CETimelineGrid(state, onAction, readout, refreshKey, if (roomy) Modifier.weight(1f).fillMaxWidth() else Modifier.height(300.dp).fillMaxWidth(), onTarget, fitRequest) { viewportWidth = it }
         if (clip != null && !canSplit) Text(stringResource(Res.string.ce_split_position), color = CEColor.Tan, modifier = Modifier.testTag("ce-split-hint"))
-        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).border(1.dp, CEColor.Border, RoundedCornerShape(8.dp)).padding(8.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
-            Text(if (clip == null) stringResource(Res.string.ce_no_selected_clip) else stringResource(Res.string.ce_selected_clip, clip.title), color = CEColor.Green, fontSize = 14.sp, lineHeight = 20.sp)
-            if (clip != null) {
-                Text(stringResource(Res.string.ce_clip_position, ceTime(clip.timelineStartFrame, precise = true), ceTime(clip.timelineDurationFrames, precise = true)), color = CEColor.Cream, fontSize = 12.sp, lineHeight = 16.sp, fontFamily = FontFamily.Monospace)
-                // Keyed by clip, so a gain dragged on one clip is never shown on the next selection.
-                key(clip.id) { Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    CEValueSlider(stringResource(Res.string.ce_clip_gain), clip.gain, state, ContinuousCapability.CLIP_GAIN,
-                        { onAction(ContinuousEditorAction.SetClipGain(clip.id, it)) }, Modifier.weight(1f), dark = true, tag = "ce-clip-gain", range = 0f..2f,
-                        commitOnRelease = true)
-                CEExactRange(clip.sourceStartFrame, clip.sourceEndFrame, clip.sourceTotalFrames, clip.sourceRate,
-                    state.permits(ContinuousCapability.TRIM_CLIP), "ce-clip-exact", ContinuousClipEdits.trimEndRange(clip).first - clip.sourceStartFrame) { start, end ->
-                    onAction(ContinuousEditorAction.TrimClip(clip.id, start, end, clip.timelineStartFrame))
-                }
-                } }
-            }
+        Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).border(1.dp, CEColor.Border, RoundedCornerShape(8.dp)).padding(8.dp)) {
+            if (clip == null) Text(stringResource(Res.string.ce_no_selected_clip), color = CEColor.Green, fontSize = 14.sp, lineHeight = 20.sp)
+            else CEClipProperties(clip, state, onAction)
         }
     }
+    }
+}
+
+@Composable private fun CEClipProperties(clip: ContinuousClip, state: ContinuousEditorState,
+    onAction: (ContinuousEditorAction) -> Unit) {
+    @Composable fun Details() = Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Text(stringResource(Res.string.ce_selected_clip, clip.title), color = CEColor.Green, fontSize = 14.sp, lineHeight = 20.sp)
+        Text(stringResource(Res.string.ce_clip_position, ceTime(clip.timelineStartFrame, precise = true), ceTime(clip.timelineDurationFrames, precise = true)),
+            color = CEColor.Cream, fontSize = 12.sp, lineHeight = 16.sp, fontFamily = FontFamily.Monospace)
+    }
+    @Composable fun Position() = key(clip.id, state.documentRevision) {
+        CEExactPosition(clip.timelineStartFrame, ContinuousClipEdits.MAX_TIMELINE_FRAMES - clip.timelineDurationFrames,
+            state.permits(ContinuousCapability.MOVE_CLIP)) { frame ->
+            onAction(ContinuousEditorAction.SetClipPosition(clip.id, frame, state.documentRevision))
+        }
+    }
+    // Keyed by clip, so a gain dragged on one clip is never shown on the next selection.
+    @Composable fun Gain(modifier: Modifier, stacked: Boolean = false) = key(clip.id) {
+        CEValueSlider(stringResource(Res.string.ce_clip_gain), clip.gain, state, ContinuousCapability.CLIP_GAIN,
+            { onAction(ContinuousEditorAction.SetClipGain(clip.id, it)) }, modifier, dark = true, tag = "ce-clip-gain", range = 0f..8f,
+            commitOnRelease = true, stacked = stacked)
+    }
+    @Composable fun Range() = key(clip.id) {
+        CEExactRange(clip.sourceStartFrame, clip.sourceEndFrame, clip.sourceTotalFrames, clip.sourceRate,
+            state.permits(ContinuousCapability.TRIM_CLIP), "ce-clip-exact", ContinuousClipEdits.trimEndRange(clip).first - clip.sourceStartFrame) { start, end ->
+            onAction(ContinuousEditorAction.TrimClip(clip.id, start, end, clip.timelineStartFrame))
+        }
+    }
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        // Share the wide pane across settings, leaving the four tracks visible. Larger text
+        // and narrow panes keep the scrolling vertical layout and the same 48 dp controls.
+        if (maxWidth >= 720.dp * LocalDensity.current.fontScale.coerceAtLeast(1f)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Details()
+                    Gain(Modifier.fillMaxWidth())
+                }
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Position()
+                        Range()
+                    }
+                    CEClipTrackSelector(clip, state, onAction)
+                }
+            }
+        } else Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Details()
+            // The thumb's hit rectangle extends past the track at either end.
+            Gain(Modifier.fillMaxWidth().padding(horizontal = 4.dp), stacked = true)
+            Position()
+            Range()
+            CEClipTrackSelector(clip, state, onAction)
+        }
+    }
+}
+
+@Composable private fun CEClipTrackSelector(clip: ContinuousClip, state: ContinuousEditorState,
+    onAction: (ContinuousEditorAction) -> Unit) {
+    var expanded by remember(clip.id) { mutableStateOf(false) }
+    val current = state.tracks.firstOrNull { it.id == clip.trackId }
+    Box {
+        CEButton(stringResource(Res.string.ce_clip_track, current?.name.orEmpty()), { expanded = true },
+            Modifier.fillMaxWidth(), enabled = state.permits(ContinuousCapability.MOVE_CLIP), dark = true,
+            tag = "ce-clip-track")
+        DropdownMenu(expanded, { expanded = false }, Modifier.heightIn(max = 320.dp)) {
+            state.tracks.forEach { track ->
+                DropdownMenuItem(text = { Text(track.name) }, onClick = {
+                    expanded = false
+                    if (track.id != clip.trackId) onAction(ContinuousEditorAction.MoveClip(clip.id, track.id, clip.timelineStartFrame))
+                }, enabled = state.permits(ContinuousCapability.MOVE_CLIP),
+                    modifier = Modifier.heightIn(min = 48.dp).testTag("ce-clip-track-${track.id}").semantics { selected = track.id == clip.trackId })
+            }
+        }
     }
 }
 
@@ -448,6 +515,7 @@ internal fun ceGridLines(tempo: Tempo, grid: ContinuousGrid, pxPerSecond: Float,
     onAction: (ContinuousEditorAction) -> Unit, pixelsPerSecond: Float, rowHeight: androidx.compose.ui.unit.Dp) {
     val density = LocalDensity.current
     val selected = state.selectedClipId == clip.id
+    var focused by remember(clip.id) { mutableStateOf(false) }
     val visualWidth = (clip.timelineDurationFrames.toDouble() / CONTINUOUS_TIMELINE_RATE * pixelsPerSecond).toFloat().dp
     val hitWidth = visualWidth.coerceAtLeast(48.dp)
     val left = (clip.timelineStartFrame.toDouble() / CONTINUOUS_TIMELINE_RATE * pixelsPerSecond).toFloat().dp
@@ -477,6 +545,15 @@ internal fun ceGridLines(tempo: Tempo, grid: ContinuousGrid, pxPerSecond: Float,
     val label = stringResource(Res.string.ce_clip_select, clip.title)
     val earlier = stringResource(Res.string.ce_clip_move_left)
     val later = stringResource(Res.string.ce_clip_move_right)
+    val previousTrack = state.tracks.getOrNull(trackIndex - 1)
+    val nextTrack = state.tracks.getOrNull(trackIndex + 1)
+    val previousTrackLabel = stringResource(Res.string.ce_clip_move_track, previousTrack?.name.orEmpty())
+    val nextTrackLabel = stringResource(Res.string.ce_clip_move_track, nextTrack?.name.orEmpty())
+    fun moveToTrack(target: ContinuousTrack?): Boolean {
+        if (target == null || !state.permits(ContinuousCapability.MOVE_CLIP)) return false
+        latestAction(ContinuousEditorAction.MoveClip(clip.id, target.id, clip.timelineStartFrame))
+        return true
+    }
     val trimStart = stringResource(Res.string.ce_trim_start)
     val trimEnd = stringResource(Res.string.ce_trim_end)
     val positionLabel = stringResource(Res.string.ce_clip_position, ceTime(clip.timelineStartFrame, precise = true), ceTime(clip.timelineDurationFrames, precise = true))
@@ -491,6 +568,8 @@ internal fun ceGridLines(tempo: Tempo, grid: ContinuousGrid, pxPerSecond: Float,
     Box(Modifier.offset { IntOffset(with(density) { left.roundToPx() } + (if (trimEdge == 0) landing(drag.x) else 0),
             with(density) { (rowHeight * trackIndex + 8.dp).roundToPx() } + (if (trimEdge == 0) drag.y.roundToInt() else 0)) }
         .width(hitWidth).height(rowHeight - 16.dp).testTag("ce-clip-${clip.id}")
+        .border(if (focused) 2.dp else 0.dp, if (focused) CEColor.Cream else Color.Transparent, RoundedCornerShape(6.dp))
+        .onFocusChanged { focused = it.isFocused }
         .onKeyEvent { event ->
             if (event.type != KeyEventType.KeyDown) false else when (event.key) {
                 Key.Enter, Key.Spacebar -> { latestAction(ContinuousEditorAction.SelectClip(clip.id)); true }
@@ -498,6 +577,8 @@ internal fun ceGridLines(tempo: Tempo, grid: ContinuousGrid, pxPerSecond: Float,
                     latestAction(ContinuousEditorAction.NudgeClip(clip.id, forward = event.key == Key.DirectionRight)); true
                 } else false
                 Key.Delete, Key.Backspace -> if (state.permits(ContinuousCapability.DELETE_CLIP)) { latestAction(ContinuousEditorAction.DeleteClip(clip.id)); true } else false
+                Key.DirectionUp -> moveToTrack(previousTrack)
+                Key.DirectionDown -> moveToTrack(nextTrack)
                 else -> false
             }
         }.focusable().semantics(mergeDescendants = true) {
@@ -507,6 +588,8 @@ internal fun ceGridLines(tempo: Tempo, grid: ContinuousGrid, pxPerSecond: Float,
                 if (state.permits(ContinuousCapability.MOVE_CLIP)) {
                     add(CustomAccessibilityAction(earlier) { latestAction(ContinuousEditorAction.NudgeClip(clip.id, forward = false)); true })
                     add(CustomAccessibilityAction(later) { latestAction(ContinuousEditorAction.NudgeClip(clip.id, forward = true)); true })
+                    if (previousTrack != null) add(CustomAccessibilityAction(previousTrackLabel) { moveToTrack(previousTrack) })
+                    if (nextTrack != null) add(CustomAccessibilityAction(nextTrackLabel) { moveToTrack(nextTrack) })
                 }
                 if (state.permits(ContinuousCapability.TRIM_CLIP)) {
                     // At the one-frame minimum these become no-ops instead of creating a silent clip.

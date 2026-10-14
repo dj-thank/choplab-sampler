@@ -1,0 +1,6 @@
+<resources>
+    <string name="creation_lyrics_export_title">書き出す歌詞を選んでください</string>
+    <string name="creation_lyrics_export_hint">表示中の変更が未適用です。変更を適用して書き出すか、下書きを残して保存済みの歌詞を書き出すか、編集を続けるか選んでください。</string>
+    <string name="creation_lyrics_apply_export">変更を適用して書き出す</string>
+    <string name="creation_lyrics_saved_export">保存済みの歌詞を書き出す</string>
+</resources>

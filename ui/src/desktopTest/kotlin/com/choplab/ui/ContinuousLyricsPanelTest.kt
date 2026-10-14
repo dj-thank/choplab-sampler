@@ -8,12 +8,40 @@ import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.Density
 import com.choplab.core.model.*
+import com.choplab.core.lyrics.LrcFormat
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import java.io.File
 import kotlin.test.*
 
 class ContinuousLyricsPanelTest {
+    @Test fun bothExportsResolveTextLineAndWordDraftsWithoutDiscardingOnKeepOrSavedExport() = runBlocking {
+        for ((tag, value) in listOf("ce-lyric-text" to "draft", "ce-lyric-time-start" to "10", "ce-lyric-word-0-start" to "10"))
+            for (format in LrcFormat.entries) {
+                val line = LyricLine("one", "a b", 0, 1920, frozenListOf(LyricWord("a", 0, 960), LyricWord(" b", 960, 1920)))
+                val state = ContinuousEditorState(documentRevision = 4, lyrics = ContinuousLyricsState(open = true, lines = listOf(line), selectedId = "one"),
+                    capabilities = setOf(ContinuousCapability.LYRICS_EDIT, ContinuousCapability.LYRICS_FILES))
+                val actions = mutableListOf<ContinuousEditorAction>()
+                val scene = ImageComposeScene(width = 1200, height = 1000, coroutineContext = coroutineContext) {
+                    CETheme { CELyricsPanel(state, actions::add, { ContinuousEditorReadout() }, 0) }
+                }
+                fun click(id: String) { scene.tag(id)!!.config[SemanticsActions.OnClick].action!!.invoke() }
+                val export = if (format == LrcFormat.STANDARD) "ce-lyrics-export-standard" else "ce-lyrics-export"
+                try {
+                    scene.settle(); scene.tag(tag)!!.config[SemanticsActions.SetText].action!!.invoke(AnnotatedString(value)); scene.settle()
+                    click(export); scene.settle(); assertTrue(actions.isEmpty())
+                    click("ce-lyrics-export-keep"); scene.settle()
+                    assertEquals(value, scene.tag(tag)!!.config[SemanticsProperties.EditableText].text)
+                    click(export); scene.settle(); click("ce-lyrics-export-saved"); scene.settle()
+                    assertEquals(ContinuousEditorAction.Lyrics(LyricAction.Export(format)), actions.single())
+                    assertEquals(value, scene.tag(tag)!!.config[SemanticsProperties.EditableText].text)
+                    actions.clear(); click(export); scene.settle(); click("ce-lyrics-apply-export"); scene.settle()
+                    val edit = assertIs<LyricAction.ApplyDraftAndExport>(assertIs<ContinuousEditorAction.Lyrics>(actions.single()).action)
+                    assertEquals(4L, edit.expectedRevision); assertEquals(format, edit.format); assertEquals(1, edit.edits.size)
+                } finally { scene.close() }
+            }
+    }
+
     @Test fun unappliedTextAndWordTimesRequireExplicitDiscardBeforeLeaving() = runBlocking<Unit> {
         val line = LyricLine("one", "a b", 0, 1920, frozenListOf(LyricWord("a", 0, 960), LyricWord(" b", 960, 1920)))
         val state = mutableStateOf(ContinuousEditorState(lyrics = ContinuousLyricsState(open = true,

@@ -90,8 +90,8 @@ class VocalPitchController(private val document: StateFlow<DocumentState>, priva
     private val mutable = MutableStateFlow(snapshot(initialClipId))
     val state: StateFlow<PitchEditorState> = mutable.asStateFlow()
     init {
-        jobs.launch { document.collect { value -> mutex.withLock {
-            if (!closed.value && value.revision != state.value.revision && state.value.phase != PitchEditorPhase.APPLYING) {
+        jobs.launch { document.collect { mutex.withLock {
+            if (!closed.value && document.value.revision != state.value.revision && state.value.phase != PitchEditorPhase.APPLYING) {
                 invalidate(); publish(state.value.copy(phase = PitchEditorPhase.EDITING, problem = PitchEditorProblem.STALE, prepared = false, audition = PitchAudition.NONE))
             }
         } } }

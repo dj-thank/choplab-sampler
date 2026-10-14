@@ -7,11 +7,12 @@ from scripts.mac_tool_policy import media_file_sets, matching_policy
 class MacToolPolicyTest(unittest.TestCase):
     def setUp(self):
         self.policies = media_file_sets(Path(__file__).resolve().parents[2])
-        self.old, self.new = self.policies.values()
+        self.old, self.new, self.openssl4 = self.policies.values()
 
-    def test_both_observed_native_dependency_graphs_are_accepted_exactly(self):
+    def test_all_observed_native_dependency_graphs_are_accepted_exactly(self):
         self.assertEqual(40, len(self.old))
         self.assertEqual(40, len(self.new))
+        self.assertEqual(40, len(self.openssl4))
         for name, files in self.policies.items():
             self.assertEqual(name, matching_policy(files, self.policies))
 
@@ -22,8 +23,18 @@ class MacToolPolicyTest(unittest.TestCase):
     def test_mixed_versions_are_rejected(self):
         mixed = self.old - {'libhdr_histogram.6.3.3.dylib'} | {'libhdr_histogram.6.4.4.dylib'}
         self.assertIsNone(matching_policy(mixed, self.policies))
+        for old, new in [('libcrypto.3.dylib', 'libcrypto.4.dylib'), ('libssl.3.dylib', 'libssl.4.dylib')]:
+            self.assertIsNone(matching_policy(self.new - {old} | {new}, self.policies))
+
+    def test_openssl_update_only_replaces_the_reviewed_library_pair(self):
+        self.assertEqual({'libcrypto.3.dylib', 'libssl.3.dylib'}, self.new - self.openssl4)
+        self.assertEqual({'libcrypto.4.dylib', 'libssl.4.dylib'}, self.openssl4 - self.new)
+        self.assertIsNone(matching_policy(self.openssl4 - {'libssl.4.dylib'} | {'libssl.5.dylib'}, self.policies))
 
     def test_missing_added_and_unreviewed_future_versions_are_rejected(self):
+        for approved in self.policies.values():
+            self.assertIsNone(matching_policy(approved - {'node'}, self.policies))
+            self.assertIsNone(matching_policy(approved | {'unreviewed.dylib'}, self.policies))
         for files in [self.new - {'node'}, self.new | {'unreviewed.dylib'},
                       self.new - {'libsimdjson.34.0.0.dylib'} | {'libsimdjson.35.0.0.dylib'}]:
             with self.subTest(files=files):
