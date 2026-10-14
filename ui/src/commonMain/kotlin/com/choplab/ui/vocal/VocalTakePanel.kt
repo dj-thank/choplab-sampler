@@ -128,6 +128,7 @@ private fun problemText(problem: VocalProblem) = when (problem) {
     VocalProblem.STALE -> Res.string.vocal_take_stale
     VocalProblem.CLOSED -> Res.string.vocal_closed
     VocalProblem.INVALID_INPUT -> Res.string.vocal_invalid
+    VocalProblem.PREVIEW_FAILED -> Res.string.vocal_take_preview_failed
     VocalProblem.RENDER_FAILED -> Res.string.vocal_render_failed
     VocalProblem.APPLY_FAILED -> Res.string.vocal_take_apply_failed
 }

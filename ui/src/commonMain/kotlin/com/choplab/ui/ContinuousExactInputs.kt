@@ -58,3 +58,55 @@ internal fun ceCanSplit(start: Long, duration: Long, sourceStart: Long, sourceEn
     val cut = sourceStart + delta * sourceRate / CONTINUOUS_TIMELINE_RATE
     return cut > sourceStart && cut < sourceEnd
 }
+
+/** Seconds are rounded once to a 48 kHz frame with integer arithmetic; frame input is exact. */
+internal fun ceParsePosition(text: String, seconds: Boolean, maximum: Long): Long? {
+    val frame = if (!seconds) {
+        if (!Regex("[0-9]{1,12}").matches(text)) return null
+        text.toLongOrNull() ?: return null
+    } else {
+        if (!Regex("[0-9]{1,4}(\\.[0-9]{1,6})?").matches(text)) return null
+        val parts = text.split('.')
+        val micros = parts[0].toLong() * 1_000_000 + parts.getOrNull(1).orEmpty().padEnd(6, '0').toLong()
+        (micros * CONTINUOUS_TIMELINE_RATE + 500_000) / 1_000_000
+    }
+    return frame.takeIf { it in 0..maximum }
+}
+internal fun cePositionSeconds(frame: Long): String {
+    val micros = frame * 1_000_000 / CONTINUOUS_TIMELINE_RATE
+    return "${micros / 1_000_000}.${(micros % 1_000_000).toString().padStart(6, '0')}"
+}
+
+@Composable internal fun CEExactPosition(start: Long, maximum: Long, enabled: Boolean, apply: (Long) -> Unit) {
+    val tag = "ce-clip-position-exact"
+    var open by remember { mutableStateOf(false) }
+    var seconds by remember { mutableStateOf(false) }
+    var input by remember { mutableStateOf(start.toString()) }
+    CEButton(stringResource(Res.string.ce_exact_position), {
+        seconds = false; input = start.toString(); open = true
+    }, enabled = enabled, tag = tag)
+    if (open) {
+        val frame = ceParsePosition(input, seconds, maximum)
+        AlertDialog(onDismissRequest = { open = false }, title = { Text(stringResource(Res.string.ce_exact_position)) },
+            text = { Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(Res.string.ce_exact_position_hint, maximum.toString()))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CEButton(stringResource(Res.string.ce_position_frames), {
+                        input = (frame ?: start).toString(); seconds = false
+                    }, Modifier.weight(1f), primary = !seconds, tag = "$tag-frames")
+                    CEButton(stringResource(Res.string.ce_position_seconds), {
+                        input = cePositionSeconds(frame ?: start); seconds = true
+                    }, Modifier.weight(1f), primary = seconds, tag = "$tag-seconds")
+                }
+                OutlinedTextField(input, { if (it.length <= 16) input = it }, singleLine = true,
+                    label = { Text(stringResource(if (seconds) Res.string.ce_position_seconds else Res.string.ce_position_frames)) },
+                    modifier = Modifier.testTag("$tag-input"))
+                Text(if (frame == null) stringResource(Res.string.ce_position_invalid)
+                    else stringResource(Res.string.ce_position_resolved, frame.toString()), Modifier.testTag("$tag-preview"))
+            } },
+            confirmButton = { CEButton(stringResource(Res.string.ce_apply), {
+                if (frame != null) { apply(frame); open = false }
+            }, enabled = enabled && frame != null, tag = "$tag-apply") },
+            dismissButton = { CEButton(stringResource(Res.string.ce_cancel), { open = false }, tag = "$tag-cancel") })
+    }
+}

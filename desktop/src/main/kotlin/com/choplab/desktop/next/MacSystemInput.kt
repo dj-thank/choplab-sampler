@@ -10,8 +10,8 @@ import java.util.concurrent.atomic.AtomicReference
 /** Owns only the helper being opened. Once returned, the recording thread owns its input. */
 internal class MacSystemInput(
     private val helper: () -> File? = { locateMacSystemAudioHelper() },
-    private val launch: (File) -> Process = { ProcessBuilder(it.absolutePath, "--float32").redirectError(ProcessBuilder.Redirect.DISCARD).start() },
-    private val headerTimeoutMillis: Long = 60_000,
+    private val launch: (File) -> Process = { ProcessBuilder(it.absolutePath, "--float32").start() },
+    private val headerTimeoutMillis: Long = 20_000,
     private val idleTimeoutMillis: Long = 5_000,
 ) : AutoCloseable {
     enum class Failure { NONE, UNAVAILABLE, DENIED, NO_DISPLAY, TIMEOUT, CANCELLED, INVALID }
@@ -25,8 +25,8 @@ internal class MacSystemInput(
     override fun close() { closed = true; cancelOpening() }
 
     /** Called off the UI thread. Permission waiting is bounded and cancellable from another thread. */
-    fun open(): MicInput? {
-        if (closed) { failure = Failure.CANCELLED; return null }
+    fun open(stillRequested: () -> Boolean = { true }): MicInput? {
+        if (closed || !stillRequested()) { failure = Failure.CANCELLED; return null }
         val token = generation.get()
         val executable = helper() ?: run { failure = Failure.UNAVAILABLE; return null }
         failure = Failure.NONE
@@ -38,7 +38,7 @@ internal class MacSystemInput(
             val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(headerTimeoutMillis)
             val line = StringBuilder()
             while (true) {
-                if (closed || generation.get() != token) { failure = Failure.CANCELLED; return null }
+                if (closed || generation.get() != token || !stillRequested()) { failure = Failure.CANCELLED; return null }
                 if (System.nanoTime() >= deadline) { failure = Failure.TIMEOUT; return null }
                 if (process.inputStream.available() == 0) {
                     if (!process.isAlive) { failure = Failure.INVALID; return null }
@@ -58,11 +58,11 @@ internal class MacSystemInput(
                 return null
             }
             if (line.toString() != "CHOPLAB-FLOAT32 48000 2") { failure = Failure.INVALID; return null }
-            if (closed || generation.get() != token) { failure = Failure.CANCELLED; return null }
+            if (closed || generation.get() != token || !stillRequested()) { failure = Failure.CANCELLED; return null }
             transferred = true
             return Input(process, idleTimeoutMillis)
         } catch (_: Exception) {
-            failure = if (closed || generation.get() != token) Failure.CANCELLED else Failure.UNAVAILABLE
+            failure = if (closed || generation.get() != token || !stillRequested()) Failure.CANCELLED else Failure.UNAVAILABLE
             return null
         } finally {
             process?.let { opening.compareAndSet(it, null); if (!transferred) terminate(it) }
@@ -74,6 +74,23 @@ internal class MacSystemInput(
         override val sampleRate = 48_000
         override val channels = 2
         @Volatile private var stopped = false
+        @Volatile override var terminationReason: com.choplab.jvm.InputInterruption? = null
+            private set
+        private fun readTermination() {
+            // Separate bounded control pipe: never parse diagnostics as PCM or infer a hardware disconnect.
+            val line = StringBuilder()
+            val error = process.errorStream
+            while (error.available() > 0 && line.length < 128) {
+                val byte = error.read()
+                if (byte < 0 || byte == 10) break
+                line.append(byte.toChar())
+            }
+            terminationReason = when (line.toString()) {
+                "CHOPLAB-END PERMISSION" -> com.choplab.jvm.InputInterruption.PERMISSION
+                "CHOPLAB-END READ_FAILED" -> com.choplab.jvm.InputInterruption.READ_FAILED
+                else -> com.choplab.jvm.InputInterruption.UNKNOWN
+            }
+        }
         private val bytes = ByteArray(8192)
         private var remaining = 0
         override fun read(buffer: FloatArray): Int {
@@ -103,6 +120,7 @@ internal class MacSystemInput(
                 if (System.nanoTime() >= deadline) error("System capture stopped delivering audio")
                 Thread.sleep(5)
             }
+            if (!stopped) readTermination()
             return -1
         }
         override fun stop() { stopped = true; terminate(process) }

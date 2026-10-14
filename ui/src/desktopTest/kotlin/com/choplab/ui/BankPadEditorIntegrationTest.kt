@@ -132,7 +132,12 @@ class BankPadEditorIntegrationTest {
                         assertEquals(0, fresh.store.storedBytes())
                         reopenedScene.settle()
                         reopenedScene.click("ce-open")
+                        fresh.until { it.openProjectRevision != null }
+                        // Even this empty unsaved editor follows the real replacement confirmation.
+                        reopenedScene.settle()
+                        reopenedScene.click("ce-open-discard")
                         fresh.until { it.banks[0].name == "低音" && it.bankPadBlocked == null }
+                        reopenedScene.awaitBankPadDialogClosed()
                         assertEquals(changed, fresh.studio.document.value.project)
                         assertContentEquals(h.bytes, fresh.store.read(changed.assets.single()))
                         assertFalse(fresh.studio.document.value.canUndo)
@@ -190,6 +195,34 @@ class BankPadEditorIntegrationTest {
             assertEquals(before, h.studio.document.value.project)
             assertFalse(h.studio.document.value.canUndo)
         } finally { h.saveGate?.complete(Unit); h.close(); directory.toFile().deleteRecursively() }
+    }
+
+    @Test fun acceptanceOwnershipIsPublishedBeforeTheDocumentPreparationAndReleasedAfterwards() = runBlocking {
+        val directory = Files.createTempDirectory("recording-acceptance-availability-")
+        val h = Harness(directory.resolve("assets"), directory.resolve("music.choplab"))
+        var stopping: Job? = null
+        try {
+            h.voiceTake = VoiceTake(h.asset, 0)
+            // Hold acceptance before Studio starts a preparation: the finishing guard must
+            // publish its own transition without borrowing a later document/work notification.
+            h.acceptanceEntered = CompletableDeferred()
+            h.acceptanceRelease = CompletableDeferred()
+            assertTrue(h.presenter.dispatch(ContinuousEditorAction.RecordVoice))
+            val task = async { h.presenter.dispatch(ContinuousEditorAction.StopVoice) }.also { stopping = it }
+            withTimeout(2_000) { h.acceptanceEntered!!.await() }
+            withTimeout(2_000) {
+                while (h.presenter.state.value.bankPadBlocked != BankPadEditProblem.RECORDING) delay(5)
+            }
+            assertEquals(0, h.studio.document.value.revision)
+            h.acceptanceRelease!!.complete(Unit)
+            assertTrue(withTimeout(2_000) { task.await() })
+            h.until { !it.recordingVoice && it.bankPadBlocked == null }
+            assertEquals(1, h.studio.document.value.revision)
+        } finally {
+            h.acceptanceRelease?.complete(Unit)
+            stopping?.cancelAndJoin()
+            h.close(); directory.toFile().deleteRecursively()
+        }
     }
 
     @Test fun completedVoiceTakeMakesBankPadEditingAvailableAgain() = runBlocking {
@@ -272,6 +305,8 @@ class BankPadEditorIntegrationTest {
         val engine = Engine(ProgramCompiler(pcm))
         var saveGate: CompletableDeferred<Unit>? = null
         var voiceTake: VoiceTake? = null
+        var acceptanceEntered: CompletableDeferred<Unit>? = null
+        var acceptanceRelease: CompletableDeferred<Unit>? = null
         private val fileProjects = FileProjectPort(store, { archive })
         private val project = if (restoring) Project() else Project(assets = frozenListOf(asset), source = Source(asset.hash, FrameRange(0, asset.frames)),
             pads = (0..127).map { if (it < 16) Pad(it, asset.hash, FrameRange(0, asset.frames), "Sound $it", gain = .7f, tone = .6f) else Pad(it) }.frozen(),
@@ -295,6 +330,10 @@ class BankPadEditorIntegrationTest {
             override val originalAvailable = true
             override suspend fun startVoice(maxSeconds: Int) = VoiceStart.STARTED
             override suspend fun stopVoice(name: String): VoiceTake? = voiceTake
+            override suspend fun prepareVoiceTakeAcceptance(project: Project, revision: Long) {
+                acceptanceEntered?.complete(Unit)
+                acceptanceRelease?.await()
+            }
             override suspend fun stopOriginal() = true
         })
         suspend fun until(predicate: (ContinuousEditorState) -> Boolean) = withTimeout(10_000) {

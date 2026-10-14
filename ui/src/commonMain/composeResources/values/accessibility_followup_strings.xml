@@ -1,0 +1,4 @@
+<resources>
+    <string name="ce_clip_track">Track: %1$s</string>
+    <string name="ce_clip_move_track">Move to track %1$s</string>
+</resources>

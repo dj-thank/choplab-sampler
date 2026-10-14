@@ -31,4 +31,5 @@
     <string name="vocal_take_apply_failed">反映できませんでした。元テイクと配置は変わりません。</string>
     <string name="vocal_take_saved_only">録音を声のテイクに保存しました。曲には配置できなかったため、既存の並びは変わりません。</string>
     <string name="vocal_preview_source_owned">声の試聴中 · 原曲操作は停止後に戻ります</string>
+    <string name="vocal_take_preview_failed">音声を再生できなかったため試聴が停止しました。テイクの選択は保持しています。もう一度試聴してください。</string>
 </resources>

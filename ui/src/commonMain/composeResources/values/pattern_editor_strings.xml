@@ -65,4 +65,8 @@
     <string name="pattern_editor_recording">Finish recording before editing or placing patterns.</string>
     <string name="pattern_editor_apply_failed">The editor refused this change. The project is unchanged.</string>
     <string name="pattern_editor_closed">This pattern editor is closed.</string>
+    <string name="pattern_close_draft_title">Keep your STEP changes?</string>
+    <string name="pattern_close_draft_hint">This pattern has unapplied edits or queued patterns that have not been placed. Keep editing, or discard them and close.</string>
+    <string name="pattern_close_discard">Discard and close</string>
+    <string name="pattern_close_keep">Keep editing</string>
 </resources>

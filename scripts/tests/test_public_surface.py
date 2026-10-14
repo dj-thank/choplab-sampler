@@ -2305,6 +2305,40 @@ class PublicSurfacePolicyTest(unittest.TestCase):
         self.assertTrue(any("deleted/payload.dat" in item for item in findings), findings)
         self.assertTrue(any("secret-shaped content" in item for item in findings), findings)
 
+    def test_history_structural_probe_scans_every_blob_at_the_aggregate_budget(self) -> None:
+        first, second = "7" * 40, "8" * 40
+        objects = [(first, PurePosixPath("old.dat")), (second, PurePosixPath("new.dat"))]
+        with (
+            patch("scripts.check_public_surface.HISTORICAL_STRUCTURAL_BLOB_CONTENT_LIMIT", 8),
+            patch("scripts.check_public_surface.git_object_metadata",
+                  return_value={first: ("blob", 4), second: ("blob", 4)}),
+            patch("scripts.check_public_surface.read_git_blob_prefixes",
+                  return_value={first: b"text", second: b"MZxx"}) as prefixes,
+            patch("scripts.check_public_surface.read_git_blob_structural_candidates",
+                  return_value={second}) as bodies,
+        ):
+            candidates, findings = historical_structural_zip_objects(objects, set())
+        self.assertEqual([objects[1]], candidates)
+        self.assertEqual([], findings)
+        prefixes.assert_called_once_with([first, second])
+        self.assertEqual([first, second], bodies.call_args.args[0])
+
+    def test_history_structural_probe_rejects_aggregate_overflow_before_reading_bodies(self) -> None:
+        first, second = "7" * 40, "8" * 40
+        with (
+            patch("scripts.check_public_surface.HISTORICAL_STRUCTURAL_BLOB_CONTENT_LIMIT", 8),
+            patch("scripts.check_public_surface.git_object_metadata",
+                  return_value={first: ("blob", 4), second: ("blob", 5)}),
+            patch("scripts.check_public_surface.read_git_blob_prefixes") as prefixes,
+            patch("scripts.check_public_surface.read_git_blob_structural_candidates") as bodies,
+        ):
+            candidates, findings = historical_structural_zip_objects(
+                [(first, PurePosixPath("old.dat")), (second, PurePosixPath("new.dat"))], set())
+        self.assertEqual([], candidates)
+        self.assertTrue(any("9 bytes exceeds the 8-byte scan limit" in item for item in findings))
+        prefixes.assert_not_called()
+        bodies.assert_not_called()
+
     def test_history_structural_probe_detects_prefixed_zip_under_neutral_suffix(self) -> None:
         object_id = "8" * 40
         payload = BytesIO()

@@ -16,7 +16,7 @@ class ArrangementContractTest {
 
     @Test fun validatesImmutableClipsBoundsAndExplicitSilenceWithoutPadCoercion() {
         val pcm = source()
-        val clips = mutableListOf(ArrangementClip("later", pcm, 13, 20, 40, trackIndex = 15),
+        val clips = mutableListOf(ArrangementClip("later", pcm, 13, 20, 40, trackIndex = 63),
             ArrangementClip("first", pcm, 3, 0, 5))
         val arrangement = Arrangement(clips, 100)
         clips.clear()
@@ -31,7 +31,7 @@ class ArrangementContractTest {
         assertFailsWith<IllegalArgumentException> { ArrangementClip("x", pcm, -1) }
         assertFailsWith<IllegalArgumentException> { ArrangementClip("x", pcm, 0, gain = Float.NaN) }
         assertFailsWith<IllegalArgumentException> { ArrangementClip("x", pcm, 0, pan = Float.POSITIVE_INFINITY) }
-        assertFailsWith<IllegalArgumentException> { ArrangementClip("x", pcm, 0, trackIndex = 16) }
+        assertFailsWith<IllegalArgumentException> { ArrangementClip("x", pcm, 0, trackIndex = 64) }
         assertFailsWith<IllegalArgumentException> { ArrangementClip("x", pcm, Arrangement.MAX_DURATION_FRAMES) }
         assertFailsWith<IllegalArgumentException> { Arrangement(emptyList(), Arrangement.MAX_DURATION_FRAMES + 1) }
         assertEquals(0, Arrangement(emptyList(), 10).clipCount)
@@ -39,7 +39,7 @@ class ArrangementContractTest {
 
     @Test fun supports1024IndependentPlacementsAndRejectsOnlyExcessCountOrOverlap() {
         val pcm = source(1, .1f)
-        val clips = (0 until 1024).map { ArrangementClip("clip-$it", pcm, it.toLong(), trackIndex = it % 16) }
+        val clips = (0 until 1024).map { ArrangementClip("clip-$it", pcm, it.toLong(), trackIndex = it % 64) }
         val arrangement = Arrangement(clips)
         assertEquals(1024, arrangement.clipCount)
         assertEquals(1, arrangement.maximumOverlap)
@@ -48,7 +48,7 @@ class ArrangementContractTest {
         for (i in 0 until 1024) assertEquals(.1f, result[i * 2])
         assertTrue(result.drop(1024 * 2).all { it == 0f })
         assertFailsWith<IllegalArgumentException> { Arrangement(clips + ArrangementClip("too-many", pcm, 1024)) }
-        val overlap = (0 until 32).map { ArrangementClip("overlap-$it", pcm, 0, trackIndex = it % 16) }
+        val overlap = (0 until 32).map { ArrangementClip("overlap-$it", pcm, 0, trackIndex = it) }
         assertEquals(32, Arrangement(overlap).maximumOverlap)
         assertFailsWith<IllegalArgumentException> { Arrangement(overlap + ArrangementClip("33rd", pcm, 0)) }
         // Touching [start,end) edges are not an overlap.

@@ -20,6 +20,8 @@ interface MicInput : AutoCloseable {
     val routeRevision: Long get() = 0
     /** Runs first on the recording thread, for a platform that gives audio threads their own priority. */
     fun onCaptureThread() {}
+    /** Evidence supplied by an endpoint; an unexplained EOF is not proof of a detached device. */
+    val terminationReason: InputInterruption? get() = null
     /** Blocks until samples arrive; returns how many were read, or a negative number once the input is gone. */
     fun read(buffer: FloatArray): Int
     /** Ends capture: a read blocked on the recording thread returns. */
@@ -28,7 +30,7 @@ interface MicInput : AutoCloseable {
     override fun close()
 }
 
-enum class InputInterruption { DEVICE_LOST, READ_FAILED, STORAGE_FAILED }
+enum class InputInterruption { DEVICE_LOST, READ_FAILED, STORAGE_FAILED, PERMISSION, UNKNOWN }
 
 /**
  * Records one take from [input] on its own thread into a private scratch file, up to [maxSeconds]; that thread owns
@@ -42,12 +44,13 @@ class VoiceRecorder(private val input: MicInput, scratch: Path, maxSeconds: Int,
                     private val nanoTime: () -> Long = System::nanoTime,
                     private val window: VoiceCaptureWindow? = null,
                     reserved: PcmMemoryBudget.Reservation? = null,
-                    private val passes: Int = 1) {
+                    private val passes: Int = 1,
+                    deleteRecovery: (Path) -> Unit = { java.nio.file.Files.deleteIfExists(it) }) {
     init { require(passes in 1..8 && (passes == 1 || window != null)); require(window == null || (waitForCue && window.frames48k * passes <= maxSeconds * 48_000L)) }
     private val rate = input.sampleRate
     private val channels = input.channels
     private val take = TakeFile(scratch, rate, channels, maxSeconds.toLong() * rate,
-        reserved ?: kotlinx.coroutines.runBlocking { PcmMemoryBudget.shared.reserve(MEMORY_BYTES) })
+        reserved ?: kotlinx.coroutines.runBlocking { PcmMemoryBudget.shared.reserve(MEMORY_BYTES) }, deleteRecovery)
     @Volatile private var firstFrameNanos = UNSET
     @Volatile private var cueNanos = UNSET
     private data class Gate(val number: Int, val nanos: Long)
@@ -58,6 +61,8 @@ class VoiceRecorder(private val input: MicInput, scratch: Path, maxSeconds: Int,
         private set
     @Volatile private var armedAt = nanoTime()
     val inputRate: Int get() = rate
+    val inputChannels: Int get() = channels
+    val recoveryFile: Path? get() = take.recoveryFile
     val inputBufferFrames: Int? get() = input.bufferFrames
     val inputRouteRevision: Long get() = input.routeRevision
     private val armingSeconds = window?.armingSeconds ?: MAX_ARMING_SECONDS
@@ -71,6 +76,8 @@ class VoiceRecorder(private val input: MicInput, scratch: Path, maxSeconds: Int,
     @Volatile private var running = true
     @Volatile private var ended = false
     @Volatile private var abandoned = false
+    /** A discard is already owned by the capture thread until that thread really ends. */
+    internal val discardRequested: Boolean get() = abandoned
     private val stopRequested = java.util.concurrent.atomic.AtomicBoolean()
 
     /** The take reached its length limit and records nothing more. */
@@ -78,6 +85,10 @@ class VoiceRecorder(private val input: MicInput, scratch: Path, maxSeconds: Int,
     val recordedMillis: Long get() = take.frames * 1_000 / rate
     val limitMillis: Long = maxSeconds * 1_000L
     @Volatile var peakLevel: Float = 0f
+        private set
+    @Volatile var leftPeak: Float = 0f
+        private set
+    @Volatile var rightPeak: Float = 0f
         private set
     @Volatile var interruption: InputInterruption? = null
         private set
@@ -108,18 +119,23 @@ class VoiceRecorder(private val input: MicInput, scratch: Path, maxSeconds: Int,
             input.onCaptureThread()
             while (running && !take.full) {
                 val count = try { input.read(buffer) } catch (failure: Exception) {
-                    if (running) interruption = InputInterruption.READ_FAILED
+                    if (running) interruption = input.terminationReason ?: InputInterruption.READ_FAILED
                     throw failure
                 }
-                if (count < 0) { ended = running; if (running) interruption = InputInterruption.DEVICE_LOST; break }
+                if (count < 0) { ended = running; if (running) interruption = input.terminationReason ?: InputInterruption.UNKNOWN; break }
                 if (count == 0) continue
                 require(count <= buffer.size && count % channels == 0)
-                var peak = 0f
+                var left = 0f
+                var right = 0f
                 for (i in 0 until count) {
                     val sample = buffer[i]
-                    if (sample.isFinite()) peak = maxOf(peak, kotlin.math.abs(sample))
+                    if (sample.isFinite()) {
+                        if (channels == 1 || i % channels == 0) left = maxOf(left, kotlin.math.abs(sample))
+                        else right = maxOf(right, kotlin.math.abs(sample))
+                    }
                 }
-                peakLevel = peak
+                leftPeak = left; rightPeak = right
+                peakLevel = maxOf(left, right)
                 val now = nanoTime()
                 val frames = count / channels
                 if (captureFirstNanos == UNSET) captureFirstNanos = now - frames * 1_000_000_000L / rate

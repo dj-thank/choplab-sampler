@@ -1,0 +1,4 @@
+<resources>
+    <string name="ce_clip_track">トラック: %1$s</string>
+    <string name="ce_clip_move_track">トラック「%1$s」へ移動</string>
+</resources>

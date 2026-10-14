@@ -51,6 +51,8 @@ internal fun MenuBarScope.NextMacAudioMenus(backend: NextBackend, state: Continu
             }
         }
         Separator()
+        Item(stringResource(Res.string.next_mac_audio_reset_defaults), enabled = allowed,
+            onClick = { choose(0, 0) })
         Item(stringResource(Res.string.next_mac_audio_refresh), enabled = !changing && !blocked,
             onClick = { scope.launch { changing = true; try { refresh() } finally { changing = false } } })
         Item(stringResource(Res.string.next_audio_retry), enabled = allowed,

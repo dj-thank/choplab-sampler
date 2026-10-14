@@ -6,6 +6,7 @@ import com.choplab.core.model.*
 import com.choplab.core.pattern.PatternVoiceRender
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import java.util.concurrent.atomic.AtomicInteger
 
 internal class PatternTestFixture(
@@ -13,6 +14,7 @@ internal class PatternTestFixture(
     selectedPad: Int = 0,
     val render: suspend (Int, Pad, Asset, PatternVoiceRender) -> Asset? = { _, pad, source, request -> rendered(pad, source, request) },
     val beforeApply: suspend () -> Unit = {},
+    val observeDocument: (StateFlow<DocumentState>) -> StateFlow<DocumentState> = { it },
 ) {
     val document = MutableStateFlow(DocumentState(initial, 0))
     val selection = MutableStateFlow(SelectionState(padId = selectedPad))
@@ -20,7 +22,7 @@ internal class PatternTestFixture(
     val edits = mutableListOf<Intent>()
     val renderCalls = AtomicInteger()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    val controller = StepPatternController(document, selection, availability, object : StepPatternPorts {
+    val controller = StepPatternController(observeDocument(document), selection, availability, object : StepPatternPorts {
         override suspend fun apply(intent: Intent, expectedRevision: Long): Boolean {
             beforeApply()
             if (document.value.revision != expectedRevision || availability.value != PatternAvailability.EDITABLE) return false

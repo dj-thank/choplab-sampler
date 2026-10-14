@@ -1,0 +1,6 @@
+<resources>
+    <string name="creation_lyrics_export_title">Choose which lyrics to export</string>
+    <string name="creation_lyrics_export_hint">The displayed edits have not been applied. Apply them and export, export only the saved lyrics while keeping your draft, or continue editing.</string>
+    <string name="creation_lyrics_apply_export">Apply changes and export</string>
+    <string name="creation_lyrics_saved_export">Export saved lyrics</string>
+</resources>

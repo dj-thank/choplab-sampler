@@ -27,8 +27,8 @@ sealed interface Action {
     data class Import(val location: Location, val expectedRevision: Long? = null) : Action {
         init { require(expectedRevision == null || expectedRevision >= 0) }
     }
-    data class Open(val location: Location) : Action
-    data class New(val project: Project = Project()) : Action
+    data class Open(val location: Location, val expectedRevision: Long? = null) : Action { init { require(expectedRevision == null || expectedRevision >= 0) } }
+    data class New(val project: Project = Project(), val expectedRevision: Long? = null) : Action { init { require(expectedRevision == null || expectedRevision >= 0) } }
     data class Save(val location: Location) : Action
     data class Export(val request: ExportRequest, val target: PlaybackTarget? = null) : Action
     data class ExportStems(val request: StemExportRequest, val target: PlaybackTarget? = null) : Action
@@ -176,11 +176,15 @@ class Studio(scope: CoroutineScope, private val services: Services, initial: Pro
         is Action.Import -> if (action.expectedRevision != null && action.expectedRevision != session.revision)
             ActionResult(false, Notice.StaleCompletion).also { notice(Notice.StaleCompletion) }
             else start(Operation.IMPORT) { services.importer.import(action.location).also { require(services.assets.containsVerified(it)) } }
-        is Action.Open -> {
+        is Action.Open -> if (action.expectedRevision != null && action.expectedRevision != session.revision)
+            ActionResult(false, Notice.StaleCompletion).also { notice(Notice.StaleCompletion) }
+            else {
             cancelAllWork()
             start(Operation.OPEN) { services.projects.openDocument(action.location) }
         }
-        is Action.New -> {
+        is Action.New -> if (action.expectedRevision != null && action.expectedRevision != session.revision)
+            ActionResult(false, Notice.StaleCompletion).also { notice(Notice.StaleCompletion) }
+            else {
             cancelAllWork()
             begin(session.planReplace(action.project), answer, Purpose.NEW)
         }

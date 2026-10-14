@@ -124,7 +124,11 @@ HISTORICAL_TAG_PEEL_LIMIT = 8
 HISTORICAL_TAG_PEEL_OPERATION_LIMIT = 512
 HISTORICAL_TAG_BODY_TOTAL_LIMIT = 16 * 1024 * 1024
 HISTORICAL_STRUCTURAL_BLOB_PROBE_LIMIT = 16_384
-HISTORICAL_STRUCTURAL_BLOB_CONTENT_LIMIT = 256 * 1024 * 1024
+# Reachable source history exceeded 256 MiB in October 2026. This is an aggregate
+# I/O budget, not a retained-memory budget: bodies are streamed one at a time,
+# spooling above HISTORICAL_ZIP_CONTAINER_LIMIT. Keep a finite 512 MiB ceiling
+# without excluding old revisions or relaxing per-archive/secret checks.
+HISTORICAL_STRUCTURAL_BLOB_CONTENT_LIMIT = 512 * 1024 * 1024
 HISTORICAL_BINARY_PREFIX_LIMIT = 4 * 1024
 GIT_OUTPUT_LIMIT = 64 * 1024 * 1024
 SECRET_PATTERNS = [

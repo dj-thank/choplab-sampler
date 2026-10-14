@@ -14,6 +14,7 @@ interface SystemAudioCapture {
     val recordedMillis: Long
     val inputReadout: RecordingInputReadout get() = RecordingInputReadout(recordedMillis = recordedMillis)
     suspend fun acknowledgeTake() {}
+    suspend fun prepareAcceptance(project: com.choplab.core.model.Project, revision: Long) {}
     suspend fun stop(name: String): Asset?
     suspend fun discard()
     suspend fun close()

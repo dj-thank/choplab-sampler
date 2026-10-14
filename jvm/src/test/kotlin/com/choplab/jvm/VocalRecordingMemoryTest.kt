@@ -40,13 +40,21 @@ class VocalRecordingMemoryTest {
     }
 
     @Test fun nonCooperativeInputKeepsItsSlotFileAndBudgetUntilTheCaptureThreadReallyEnds() = runBlocking<Unit> {
+        nonCooperativeDiscard(durable = false)
+    }
+
+    @Test fun durableDiscardWaitsForCaptureCleanupBeforeReleasingItsPendingOriginalAndSlot() = runBlocking<Unit> {
+        nonCooperativeDiscard(durable = true)
+    }
+
+    private suspend fun nonCooperativeDiscard(durable: Boolean) {
         val directory = Files.createTempDirectory("record-stuck-")
         val entered = CountDownLatch(1); val release = CountDownLatch(1)
         val memory = PcmMemoryBudget(VoiceRecorder.MEMORY_BYTES * 2)
         val store = FileAssetStore(directory.resolve("assets"))
         val scratch = directory.resolve("scratch")
         var opened = 0
-        val takes = VoiceTakes(store, scratch, memory = memory) {
+        val takes = VoiceTakes(store, scratch, memory = memory, durableTakes = durable) {
             opened++
             object : MicInput {
                 override val sampleRate = 48_000
@@ -61,6 +69,8 @@ class VocalRecordingMemoryTest {
             assertFailsWith<IllegalStateException> { takes.discard() }
             assertEquals(VoiceRecorder.MEMORY_BYTES, memory.statistics().usedBytes)
             assertEquals(1, Files.list(scratch).use { it.count() })
+            assertFalse(takes.pendingSave, "A discarding live capture is not a stopped original available for saving")
+            assertTrue(takes.inputBusy)
             assertNull(takes.stop("Already stopping"))
             assertEquals(VoiceTakes.Start.NO_INPUT, takes.start(1))
             assertEquals(1, opened, "An uncooperative old microphone still owns the only recording slot")
@@ -68,6 +78,13 @@ class VocalRecordingMemoryTest {
             withTimeout(5000) { while (memory.statistics().usedBytes != 0L) delay(1) }
             assertEquals(0, Files.list(scratch).use { it.count() })
             assertEquals(0, store.storedBytes())
+            withTimeout(5000) { while (takes.inputBusy) delay(1) }
+            assertFalse(takes.pendingSave)
+            assertNull(takes.stop("Already discarded"))
+            assertEquals(VoiceTakes.Start.STARTED, takes.start(1))
+            assertEquals(2, opened, "Only the completed old capture releases its slot for a new input")
+            takes.discard()
+            assertEquals(0, memory.statistics().usedBytes)
         } finally { release.countDown(); takes.close(); directory.toFile().deleteRecursively() }
     }
 

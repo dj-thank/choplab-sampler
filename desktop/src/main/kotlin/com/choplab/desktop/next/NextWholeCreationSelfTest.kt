@@ -305,7 +305,14 @@ object NextWholeCreationSelfTest {
         suspend fun stretch() {
             println("WHOLE_CREATION step=stretch")
             editable(); act(ContinuousEditorAction.OpenBeatStretch(StretchTarget(StretchKind.PAD, "0")))
-            val editor = requireNotNull(presenter.beatStretch.value); until { editor.state.value.editable }
+            val editor = requireNotNull(presenter.beatStretch.value)
+            try { until { editor.state.value.editable } }
+            catch (failure: TimeoutCancellationException) {
+                val state = editor.state.value
+                error("Stretch unavailable: phase=${state.phase}; availability=${state.availability}; problem=${state.problem}; " +
+                    "draftRevision=${state.revision}; documentRevision=${backend.studio.document.value.revision}; " +
+                    "bankPadBlocked=${presenter.state.value.bankPadBlocked}; status=${presenter.state.value.status}")
+            }
             val before = backend.studio.document.value
             check(editor.dispatch(StretchAction.Bpm("120"))); check(editor.dispatch(StretchAction.Prepare))
             check(editor.state.value.prepared); check(editor.dispatch(StretchAction.Original))

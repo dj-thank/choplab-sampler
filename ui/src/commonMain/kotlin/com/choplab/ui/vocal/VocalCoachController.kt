@@ -24,6 +24,9 @@ interface VocalCoachActions {
     suspend fun respond(line: VocalCoachLine, revision: Long): Boolean
 }
 enum class CoachPhase { EDITING, ANALYZING, PREPARING_GUIDE, LISTENING, READY_RESPONSE, CLOSED }
+enum class CoachRangeProblem { NUMBER, BOUNDS, ORDER, TOO_LONG }
+data class CoachRangeValidation(val startFrame: Long?, val endFrame: Long?,
+    val startProblem: CoachRangeProblem?, val endProblem: CoachRangeProblem?)
 data class VocalCoachState(val project: Project, val revision: Long, val takeId: String?, val referenceId: String? = null,
     val startSeconds: String = "0", val endSeconds: String = "1", val mode: CoachMode = CoachMode.SINGING,
     val input: CoachVoiceInput = CoachVoiceInput.UNCONFIRMED, val phase: CoachPhase = CoachPhase.EDITING,
@@ -31,11 +34,29 @@ data class VocalCoachState(val project: Project, val revision: Long, val takeId:
     val takes: List<Take> get() = project.takes.filter { take -> project.tracks.any { it.id == take.trackId && it.kind == TrackKind.VOCAL } }
     val line: VocalCoachLine? get() = report?.lines?.getOrNull(selectedLine)
     val editable: Boolean get() = phase == CoachPhase.EDITING || phase == CoachPhase.READY_RESPONSE
-    fun request(): VocalCoachRequest? = runCatching {
-        fun frame(text: String): Long = requireNotNull(text.toDoubleOrNull()).also { require(it.isFinite() && it in 0.0..86400.0) }
-            .let { (it * 48_000).roundToLong() }
-        VocalCoachRequest(requireNotNull(takeId), referenceId, frame(startSeconds), frame(endSeconds), mode, input)
-    }.getOrNull()
+    fun validateRange(): CoachRangeValidation {
+        fun parse(text: String): Pair<Long?, CoachRangeProblem?> {
+            val seconds = text.trim().toDoubleOrNull()?.takeIf { it.isFinite() }
+                ?: return null to CoachRangeProblem.NUMBER
+            if (seconds !in 0.0..(ProjectLimits.MAX_TIMELINE_FRAMES / 48_000.0)) return null to CoachRangeProblem.BOUNDS
+            return (seconds * 48_000).roundToLong() to null
+        }
+        val (start, startProblem) = parse(startSeconds)
+        val (end, parsedEndProblem) = parse(endSeconds)
+        val endProblem = parsedEndProblem ?: when {
+            start == null || end == null -> null
+            end <= start -> CoachRangeProblem.ORDER
+            end - start > VocalPracticeRequest.MAX_FRAMES -> CoachRangeProblem.TOO_LONG
+            else -> null
+        }
+        return CoachRangeValidation(start, end, startProblem, endProblem)
+    }
+    fun request(): VocalCoachRequest? {
+        val range = validateRange()
+        if (range.startProblem != null || range.endProblem != null) return null
+        return runCatching { VocalCoachRequest(requireNotNull(takeId), referenceId,
+            requireNotNull(range.startFrame), requireNotNull(range.endFrame), mode, input) }.getOrNull()
+    }
 }
 sealed interface CoachAction {
     data class Take(val id: String) : CoachAction
