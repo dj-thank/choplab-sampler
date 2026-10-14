@@ -1,6 +1,6 @@
 # 再構築 ROADMAP — 唯一の進捗・受入索引
 
-更新: 2026-10-08。対象はおとひろい / Earth SongのAndroid 10+・Windows、全制作機能を使うMac（[ADR8](adr/ADR-0008-mac-function-parity.md)）、および対応を再開するiPadOS（[ADR10](adr/ADR-0010-ipad-native-support.md)）。**段階0〜11の実装、必要な検証、PR統合、仕上げまで承認済み**です。レビュー案にあった「レビューのみ」「各PRで再承認」は [ADR7](adr/ADR-0007-concise-development-governance.md) で置き換えます。device/providerの実観測と人間の音質・操作感の受入は、実施結果が得られるまで未確認のままです。
+更新: 2026-10-13。対象はおとひろい / Earth SongのAndroid 10+・Windows、全制作機能を使うMac（[ADR8](adr/ADR-0008-mac-function-parity.md)）、および対応を再開するiPadOS（[ADR10](adr/ADR-0010-ipad-native-support.md)）。**段階0〜11の実装、必要な検証、PR統合、仕上げまで承認済み**です。レビュー案にあった「レビューのみ」「各PRで再承認」は [ADR7](adr/ADR-0007-concise-development-governance.md) で置き換えます。device/providerの実観測と人間の音質・操作感の受入は、実施結果が得られるまで未確認のままです。
 
 ## 最初に読む現状とSSOT（2026-10-01照合）
 
@@ -23,6 +23,8 @@
 開始時・大きな判断時・完了時にこの順で関係する契約を確認する。mainの文書が共有の正本、未統合branch/PRは候補、インストール済みartifactは別revisionとして扱う。新しいユーザー訂正は該当契約と本書へ反映し、古いセッション要約やZIPを新しい正本にしない。会話全文・認証情報・個人パス・端末識別子は公開しない。参照画像はDESIGNからGitHubだけで読める。
 
 ### 現在の修正対象と再開点
+
+2026-10-13の限定候補は、main `60afbdfc` 起点のAndroid instrumentation判定。rootが統合を所有し、対象は `scripts/run_android_instrumentation_gate.py` とそのhost回帰・検証文書。前回の成功XMLだけで新しい実行を成功とする問題と、前回の失敗XMLが新しい成功へ混入する問題を修正前に再現した。Gradle起動前に既知の2か所の生成XMLだけを除去し、新しい結果がなければ拒否する。host試験39件はLOCAL_PASSで、古い結果の混入、除去失敗、app/build祖先のsymlink保全、既存のfailure/error/skip拒否を確認。次は同じ候補の必須CIと実emulator gateを確認して統合する。Gradle/Android SDKによる実行・実音・配布は未確認で、PR239の制作・録音修正とは別候補。rollbackはこの限定PRのrevert。
 
 現在の導入済みMacは[PR237](https://github.com/dj-thank/choplab-sampler/pull/237)統合main `a6a8c455` のbuild34（NEXT/Preview）。2026-10-08の追加監査は同sourceを基準に5人から57件を受領し、重複整理後に実装を開始した。利用者の追記により50件未満でも確認された残件を全て扱う。rootが統合・Mac導入を所有し、各項目を実装・検証・統合・配布へ対応させる。現在は独立worktreeで修正中であり、57件の配布完了とはしない。
 

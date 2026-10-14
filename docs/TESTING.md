@@ -34,6 +34,8 @@ checkoutのJDK/SDKを設定してrepository rootから実行します。Windows�
 
 関連するUI suiteと公開surface/配布検査も選びます。新module/Preview variantを追加したPRで実在するtask名をROADMAP/CIへ反映し、全体 `check`だけで全module実行とみなしません。文書だけならリンク、契約の整合、機密/個人path、必須CIを確認し、fresh buildと報告しません。
 
+Linux emulator gateの `python3 scripts/run_android_instrumentation_gate.py` は、Gradle起動前に `app/build/outputs/androidTest-results` と `app/build/test-results/connected` の通常XMLだけを除去します。前回の結果が必要なら実行前にbuild外へ保管します。repository/app/build自体がsymlinkなら起動前に拒否します。結果のsymlinkとhost unit report・診断logは除去せず、除去失敗は起動前に停止します。新しいXMLの欠落・0件・failure/error/skip、Gradle失敗はそれぞれ拒否し、古い成功結果を今回の受入に使いません。host回帰は `python3 -m unittest scripts.tests.test_android_instrumentation_gate scripts.tests.test_instrumentation_summary` で実行でき、emulatorや実端末の受入とは別です。
+
 ### ローカルGradleの反復
 
 JVM coreの反復は `./gradlew --daemon --build-cache --configuration-cache :jvm-core:test` を使えます。configuration cacheはtask graphの設定を再利用します。`verifyNewPipeDependencies`は設定再利用後も毎回実行し、NewPipeの推移依存集合・各JARのbytes数・SHA-256を読み直します。`UP-TO-DATE`や`FROM-CACHE`のテストを新しい実行結果とは扱いません。コンパイル済みの同じテストを毎回実行して計測する場合は `:jvm-core:test --rerun` とします。
