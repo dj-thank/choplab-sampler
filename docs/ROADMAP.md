@@ -75,7 +75,7 @@ Issueを閉じることと、機能の実装完了は区別します。下記は
 - PR240元head `3b66138a` の必須3チェックは成功。本整理の合成後にもAndroid gate/集計39件が成功。PR241最終CIと統合後main CIも成功しました。
 - 旧 [#162](https://github.com/dj-thank/choplab-sampler/issues/162) のFill後PAD操作は `4b5a23fe` で窓の終了レイヤー解放を待つ修正が統合済み。現行試験はviewport名と操作差分を診断し、7組合せの実pointer判定を保持。PR239のWindows UI全体成功を確認しました。
 - PR239のMac artifact `11802760823` は392,736,557 bytes、archive SHA-256 `b5de65dc984ea8115d18445695758f57db132f1514f2d6d522fd46f1789f6946`。保存期間7日、ad-hoc Previewです。恒久的な正式配布の入口にはしません。
-- 整理後main `cce5207d`（tree `ba6367ae`）の [Windows/Android/履歴](https://github.com/dj-thank/choplab-sampler/actions/runs/38595531602) と [Mac](https://github.com/dj-thank/choplab-sampler/actions/runs/38595531628) が成功。Mac配布の追加改善は、app/manifest/installerを一緒に配布し、最終ZIPからの導入・更新・通常終了再開をCIへ追加する候補です。
+- 整理後main `cce5207d`（tree `ba6367ae`）の [Windows/Android/履歴](https://github.com/dj-thank/choplab-sampler/actions/runs/38595531602) と [Mac](https://github.com/dj-thank/choplab-sampler/actions/runs/38595531628) が成功。[Mac配布の改善 PR242](https://github.com/dj-thank/choplab-sampler/pull/242) はapp/manifest/installerを一緒に配布し、最終ZIPからの導入・更新・通常終了再開をCIへ追加。 初回CIではHomebrew SQLite 3.54.0への更新で既存の完全一致検査が停止。公式source/hash/blessingを確認し、1ライブラリだけ異なる新しい完全集合を追加しました。修正後のCI結果はPR242を参照。
 - `LOCAL_PASS → DEVICE_PASS → PROVIDER_PASS → PUBLIC_PASS → HUMAN_GO` を区別します。新しいソースや合成試験の成功を過去の実機結果へ接ぎ合わせません。
 
 - main `a3454724` のWindows再実行では、H13録音中PAD試験がSTARTING→RECORDINGの正常遷移と競合して失敗しました（[run38584688682](https://github.com/dj-thank/choplab-sampler/actions/runs/38584688682)）。recorderのflagはcontrollerの状態通知より先にtrueになるため、試験は開始をgateで保持してSTARTINGを検査し、解除後に正確なRECORDING通知を待って同じPAD/Undo/試聴禁止を検査します。本番録音・状態比較・既存5秒上限は保持し、PR241最終headとmain `cce5207d` のWindows CIで成功を確認しました。

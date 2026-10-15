@@ -7,12 +7,13 @@ from scripts.mac_tool_policy import media_file_sets, matching_policy
 class MacToolPolicyTest(unittest.TestCase):
     def setUp(self):
         self.policies = media_file_sets(Path(__file__).resolve().parents[2])
-        self.old, self.new, self.openssl4 = self.policies.values()
+        self.old, self.new, self.openssl4, self.sqlite354 = self.policies.values()
 
     def test_all_observed_native_dependency_graphs_are_accepted_exactly(self):
         self.assertEqual(40, len(self.old))
         self.assertEqual(40, len(self.new))
         self.assertEqual(40, len(self.openssl4))
+        self.assertEqual(40, len(self.sqlite354))
         for name, files in self.policies.items():
             self.assertEqual(name, matching_policy(files, self.policies))
 
@@ -30,6 +31,15 @@ class MacToolPolicyTest(unittest.TestCase):
         self.assertEqual({'libcrypto.3.dylib', 'libssl.3.dylib'}, self.new - self.openssl4)
         self.assertEqual({'libcrypto.4.dylib', 'libssl.4.dylib'}, self.openssl4 - self.new)
         self.assertIsNone(matching_policy(self.openssl4 - {'libssl.4.dylib'} | {'libssl.5.dylib'}, self.policies))
+
+    def test_sqlite_update_only_replaces_the_reviewed_library(self):
+        self.assertEqual({'libsqlite3.3.53.4.dylib'}, self.openssl4 - self.sqlite354)
+        self.assertEqual({'libsqlite3.3.54.0.dylib'}, self.sqlite354 - self.openssl4)
+        self.assertIsNone(matching_policy(self.sqlite354 | {'libsqlite3.3.53.4.dylib'}, self.policies))
+        self.assertIsNone(matching_policy(self.sqlite354 - {'libsqlite3.3.54.0.dylib'} |
+                                         {'libsqlite3.3.55.0.dylib'}, self.policies))
+        self.assertIsNone(matching_policy(self.new - {'libsqlite3.3.53.4.dylib'} |
+                                         {'libsqlite3.3.54.0.dylib'}, self.policies))
 
     def test_missing_added_and_unreviewed_future_versions_are_rejected(self):
         for approved in self.policies.values():
