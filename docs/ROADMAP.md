@@ -4,6 +4,7 @@
 
 ## 現在地
 
+- 追加改善: [MacのZIP導入/更新](https://github.com/dj-thank/choplab-sampler/pull/242)、[ミキサーの不変判定](https://github.com/dj-thank/choplab-sampler/pull/243)、[所有付き資産staging復旧](https://github.com/dj-thank/choplab-sampler/pull/244)、[trim済みpitch再編集と分割来歴](https://github.com/dj-thank/choplab-sampler/pull/245)。未対応・実機未確認の範囲は下表に残します。
 - 制作・録音・編集の保全と操作UX改善 [PR239](https://github.com/dj-thank/choplab-sampler/pull/239) をmain `a3454724`へ統合済み。保存/取消、STEP下書き、録音終了通知、大文字でのミキサー、Mac梱包を改善しました。
 - Android試験の古いXMLによる誤判定を防ぐ [PR240](https://github.com/dj-thank/choplab-sampler/pull/240) は [PR241](https://github.com/dj-thank/choplab-sampler/pull/241) でmain `cce5207d`へ統合済み。元コミット `3b66138a` を履歴に保持。統合後mainのWindows/Android/履歴とMac CIも成功しました。
 - `main-onmp9o` の変更履歴とVOCAL試験の保存再開timeout診断を採用。Applyの診断はmainの新しい実装を保持しました。`claude/mac-status-20261007` の内容は既にmainへ含まれています。
@@ -79,6 +80,7 @@ Issueを閉じることと、機能の実装完了は区別します。下記は
 - ミキサーのbypass事前計算は旧main `cce5207d` とmaster/pre-master・全134 stem sample・meter・停止/交換/tailのbit一致を比較。Linux amd64/JDK21、192frame、warm-up/計測各1万block、32同時clipの2対比較で16track render CPU 3.2640/3.1400s→2.8020/2.8254s、64track 4.4458/4.1180s→4.2333/4.1906s。全回割当/PCM欠落0。並行build負荷があるためwall p99や実機改善には読み替えません。
 - 資産stagingの新形式はLinux/JDK21のJVM全276件成功（失敗/skip 0）。新規10件で実子JVMの強制終了・生きたpublish/adopt/retaining・複数Storeの再入lock・容量不足/取消/再試行と未知ファイル保全を確認。Mac CIにも同じprocess所有試験を追加。Windowsのsymlink権限に依存する1件は明示skipとし、lock/強制終了試験は実行する。旧形式の自動削除・電源断・分離全体のprocess間transactionは保証しない。
 - trim済みpitch再編集はcore9/UI45/JVM17/Desktop2の関連73件成功（失敗/skip 0）。8/44.1/48/96kHz境界、1frame crop、A/Bの実SOURCE再生と復帰、複製/反復/分割、Undo、元音全範囲とのrender一致・archive再開を確認。旧コードへ戻した3負例はそれぞれSTALE、recipe欠落、PITCH範囲試聴拒否で失敗。再編集の計算量は原音の全処理範囲に依存する。
+- 上記4差分の合成後もcore124/JVM278/UI15/Desktop2の419件がLinux/JDK21で成功（失敗/skip 0）。再接続の待機間隔試験は非同期openerの実行時刻から要求時刻の計測へ修正し、実open4回・要求3回と同じ待機下限を保持。関連6件成功、待機を毎回40msに戻す負例は失敗し、元の本番実装へ復元しました。
 - `LOCAL_PASS → DEVICE_PASS → PROVIDER_PASS → PUBLIC_PASS → HUMAN_GO` を区別します。新しいソースや合成試験の成功を過去の実機結果へ接ぎ合わせません。
 
 - main `a3454724` のWindows再実行では、H13録音中PAD試験がSTARTING→RECORDINGの正常遷移と競合して失敗しました（[run38584688682](https://github.com/dj-thank/choplab-sampler/actions/runs/38584688682)）。recorderのflagはcontrollerの状態通知より先にtrueになるため、試験は開始をgateで保持してSTARTINGを検査し、解除後に正確なRECORDING通知を待って同じPAD/Undo/試聴禁止を検査します。本番録音・状態比較・既存5秒上限は保持し、PR241最終headとmain `cce5207d` のWindows CIで成功を確認しました。
