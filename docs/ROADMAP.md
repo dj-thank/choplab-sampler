@@ -48,7 +48,7 @@ Issueを閉じることと、機能の実装完了は区別します。下記は
 |---|---|---|
 | P1 | 異常終了後の資産staging回収（旧 [#207](https://github.com/dj-thank/choplab-sampler/issues/207)） | `.pending-UUID` がquotaを占有し続ける問題は未修正。単純なprefix削除をせず、プロセスをまたぐ所有/leaseを設計。生きたpublish/adopt、公開済み資産、未知ファイル、symlink、directoryを保護し、小quotaで異常終了→回収→再試行と拒否を試験 |
 | P1 | trim済みpitch/stretch音の再編集 | 現状はSTALEで拒否。原音native frame/48kHz端点とWSOLA文脈を保持する設計が必要。複製/反復/trim/Undo/保存再開を含める。比例計算だけで再加工範囲を推測しない |
-| P1 | 64trackの実時間性能 | Linux合成p99=0.821ms・追加割当0・PCM欠落0は確認済み。Mac既存p99=2.059msは未解決。対象Mac/PixelでCPU目標と10分underrun、音質・tail・stemsを確認 |
+| P1 | 64trackの実時間性能 | Linux合成p99=0.821ms・追加割当0・PCM欠落0は確認済み。不変のbypass判定を事前計算し、16trackのLinux render CPUは2対の比較で10〜14%減。64trackの差は計測幅内で改善未確定。Mac既存p99=2.059msと対象Mac/Pixelの10分underrunは未解決 |
 | P1 | Macの日常制作受入 | main由来artifactで導入/通常終了/保存再開、実音/物理マイク/システム音、VoiceOverを確認。今回Desktop Commanderはオフラインで新しい端末観測なし |
 | P2 | iPadOSアプリ | 保存タグの試作を精査し、生成物を除外して限定実装へ。共通の保存/音声契約を満たすアプリと署名を用意し、所有iPadで検証 |
 | P2 | 正式配布 | [RELEASE](RELEASE.md)の署名・公証・サイズ・完全source/NOTICEと実artifactのhashを確認。main更新から公開を推定しない |
@@ -76,6 +76,7 @@ Issueを閉じることと、機能の実装完了は区別します。下記は
 - 旧 [#162](https://github.com/dj-thank/choplab-sampler/issues/162) のFill後PAD操作は `4b5a23fe` で窓の終了レイヤー解放を待つ修正が統合済み。現行試験はviewport名と操作差分を診断し、7組合せの実pointer判定を保持。PR239のWindows UI全体成功を確認しました。
 - PR239のMac artifact `11802760823` は392,736,557 bytes、archive SHA-256 `b5de65dc984ea8115d18445695758f57db132f1514f2d6d522fd46f1789f6946`。保存期間7日、ad-hoc Previewです。恒久的な正式配布の入口にはしません。
 - 整理後main `cce5207d`（tree `ba6367ae`）の [Windows/Android/履歴](https://github.com/dj-thank/choplab-sampler/actions/runs/38595531602) と [Mac](https://github.com/dj-thank/choplab-sampler/actions/runs/38595531628) が成功。Mac配布の追加改善は、app/manifest/installerを一緒に配布し、最終ZIPからの導入・更新・通常終了再開をCIへ追加する候補です。
+- ミキサーのbypass事前計算は旧main `cce5207d` とmaster/pre-master・全134 stem sample・meter・停止/交換/tailのbit一致を比較。Linux amd64/JDK21、192frame、warm-up/計測各1万block、32同時clipの2対比較で16track render CPU 3.2640/3.1400s→2.8020/2.8254s、64track 4.4458/4.1180s→4.2333/4.1906s。全回割当/PCM欠落0。並行build負荷があるためwall p99や実機改善には読み替えません。
 - `LOCAL_PASS → DEVICE_PASS → PROVIDER_PASS → PUBLIC_PASS → HUMAN_GO` を区別します。新しいソースや合成試験の成功を過去の実機結果へ接ぎ合わせません。
 
 - main `a3454724` のWindows再実行では、H13録音中PAD試験がSTARTING→RECORDINGの正常遷移と競合して失敗しました（[run38584688682](https://github.com/dj-thank/choplab-sampler/actions/runs/38584688682)）。recorderのflagはcontrollerの状態通知より先にtrueになるため、試験は開始をgateで保持してSTARTINGを検査し、解除後に正確なRECORDING通知を待って同じPAD/Undo/試聴禁止を検査します。本番録音・状態比較・既存5秒上限は保持し、PR241最終headとmain `cce5207d` のWindows CIで成功を確認しました。
