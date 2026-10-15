@@ -158,7 +158,8 @@ class PersistenceTest {
         val store = FileAssetStore(directory())
         assertFailsWith<IllegalArgumentException> { read(bomb, store) }
         assertFalse(store.verified(asset))
-        assertEquals(0L, Files.list(store.directory).use { it.count() })
+        assertEquals(listOf(AssetStaging.LOCK_NAME), Files.list(store.directory).use { it.map { path -> path.fileName.toString() }.toList() })
+        assertEquals(0L, store.storedBytes())
         val valid = Fixtures.zip(listOf("project.json" to ProjectJson.encode(project), asset.entryName to bytes))
         assertFailsWith<IllegalArgumentException> { ArchiveCodec().read(ByteArrayInputStream(valid), store) { true } }
         assertEquals(project, read(valid, store))
@@ -171,7 +172,8 @@ class PersistenceTest {
         assertFailsWith<IllegalArgumentException> { store.publish(asset.copy(channels = 1), ByteArrayInputStream(bytes)) }
         assertFailsWith<IllegalArgumentException> { store.publish(asset.copy(hash = "f".repeat(64)), ByteArrayInputStream(bytes)) }
         assertFailsWith<IllegalArgumentException> { store.publish(asset.copy(extension = "mp3"), ByteArrayInputStream(bytes)) }
-        assertEquals(0L, Files.list(store.directory).use { it.count() })
+        assertEquals(listOf(AssetStaging.LOCK_NAME), Files.list(store.directory).use { it.map { path -> path.fileName.toString() }.toList() })
+        assertEquals(0L, store.storedBytes())
         store.publish(asset, ByteArrayInputStream(bytes))
         Files.write(store.directory.resolve("${asset.hash}.wav"), byteArrayOf(1))
         assertFalse(store.verified(asset))

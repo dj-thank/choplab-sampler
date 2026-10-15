@@ -31,7 +31,8 @@ class FourStemTransactionTest {
             val retry = stage(directory)
             assets.adoptFourStems(retry) {}
             assertTrue(retry.all { assets.verified(it.asset) })
-            assertEquals(4L, Files.list(assets.directory).use { it.count() })
+            assertEquals(retry.map { "${it.asset.hash}.wav" }.toSet() + AssetStaging.LOCK_NAME,
+                Files.list(assets.directory).use { it.map { path -> path.fileName.toString() }.toList().toSet() })
         } finally { directory.toFile().deleteRecursively() }
     }
 

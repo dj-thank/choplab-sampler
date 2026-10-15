@@ -26,7 +26,8 @@ class VocalCoachWorkerTest {
             assertEquals(0, report.lines.last().meanAbsolutePitchCents)
             assertEquals(before, f.project)
             for (asset in f.project.assets) assertContentEquals(bytes[asset.hash], f.store.read(asset))
-            assertEquals(2, f.store.directory.toFile().listFiles()!!.size)
+            assertEquals(f.project.assets.map { "${it.hash}.${it.extension}" }.toSet() + AssetStaging.LOCK_NAME,
+                f.store.directory.toFile().listFiles()!!.map { it.name }.toSet())
         } finally { f.close() }
     }
 

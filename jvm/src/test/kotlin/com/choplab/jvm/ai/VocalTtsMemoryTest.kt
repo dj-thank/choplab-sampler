@@ -51,7 +51,9 @@ class VocalTtsMemoryTest {
             val rejected = assertIs<TtsResult.Failure>(service.prepare(row(), Tempo(), installed, TtsSettings(), false))
             assertEquals(TtsProblem.MEMORY_LIMIT, rejected.failure.problem)
             assertEquals(retained, memory.statistics().usedBytes, "Every refused TTS stage returns its own charge")
-            assertEquals(1L, Files.list(assets.directory).use { it.count() }, "Only the original remains; refusal cannot publish a guide")
+            assertEquals(setOf("${original.hash}.${original.extension}", AssetStaging.LOCK_NAME),
+                Files.list(assets.directory).use { it.map { path -> path.fileName.toString() }.toList().toSet() },
+                "Only the original and publication lock remain; refusal cannot publish a guide")
             lease.close()
             val first = assertIs<TtsResult.Success<PreparedVocalLine>>(service.prepare(row(), Tempo(), installed, TtsSettings(), false)).value
             val again = assertIs<TtsResult.Success<PreparedVocalLine>>(service.prepare(row(), Tempo(), installed, TtsSettings(), false)).value
@@ -92,7 +94,7 @@ class VocalTtsMemoryTest {
             assertEquals(192_000L, memory.statistics().usedBytes)
             job.cancel(); release.complete(Unit); withTimeout(5_000) { job.join() }
             assertEquals(1, disposed); assertEquals(0L, memory.statistics().usedBytes)
-            assertEquals(0L, Files.list(assets.directory).use { it.count() })
+            assertEquals(listOf(AssetStaging.LOCK_NAME), Files.list(assets.directory).use { it.map { path -> path.fileName.toString() }.toList() })
             assertEquals(0L, Files.list(directory.resolve("cache")).use { it.count() })
         } finally { release.complete(Unit); service.close(); service.close(); directory.toFile().deleteRecursively() }
         assertEquals(1, closes)
