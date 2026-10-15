@@ -34,7 +34,7 @@
 | 5 ボーカル・歌詞 | LRC、take/comp/punch、区間練習、録音受理・復帰 | 物理マイク、route別補正後±5ms、聴感 |
 | 6 作詞・TTS | Google提案の同意/費用/取消境界、構造歌詞、端末TTS | 実Google往復・価格/modelの確認、物理音。実送信の成功は未宣言 |
 | 7 ミックス・FX | ミキサー、FX、24bit/STEM/LRC書出し、同一graph | 実音・64track性能・長時間underrun |
-| 8 ピッチ補正 | 非破壊加工、原音/加工来歴、保存再開 | trim済み再編集、実音・人の品質受入 |
+| 8 ピッチ補正 | 非破壊加工、原音/加工来歴、trim済み再編集、保存再開 | trim済み保存版の切替、実音・人の品質受入 |
 | 9 4パート分離 | 本番ORT経路、メモリ境界、取消、固定モデル推論 | 長尺/実曲品質、実HTTPS初回取得・修復、実機受入 |
 | 10 練習coach | 練習・履歴・掛合いの制作接続 | 実音・人の体験受入 |
 | 11 仕上げ・1.0 | WASAPI、初回guide、配布/NOTICE基盤 | 正式署名/公証、完全source、実route/性能/VoiceOver/TalkBack、HUMAN_GO |
@@ -47,15 +47,15 @@ Issueを閉じることと、機能の実装完了は区別します。下記は
 | 優先 | 課題 | 完了条件・次の作業 |
 |---|---|---|
 | P1 | 旧形式stagingの移行（旧 [#207](https://github.com/dj-thank/choplab-sampler/issues/207)） | 新形式はOS排他と完全な所有記録を導入し、異常終了後にquota回収→再試行できる。旧 `.pending-UUID`・不完全な小さな所有記録は所有を証明できないため保全し、quotaに数える。これらの移行は個別確認が必要。prefixだけの削除はしない |
-| P1 | trim済みpitch/stretch音の再編集 | 現状はSTALEで拒否。原音native frame/48kHz端点とWSOLA文脈を保持する設計が必要。複製/反復/trim/Undo/保存再開を含める。比例計算だけで再加工範囲を推測しない |
+| P1 | trim済み加工音の残る制約 | pitch再編集は原音の全処理文脈と既存48kHz crop・配置を保持して対応。分割右側のrecipe欠落も修正。保存済み原音/補正音の切替とWSOLA再伸縮は未対応を明示。原音native端点を比例逆算せず、出力範囲との対応方針を設計する |
 | P1 | 64trackの実時間性能 | Linux合成p99=0.821ms・追加割当0・PCM欠落0は確認済み。不変のbypass判定を事前計算し、16trackのLinux render CPUは2対の比較で10〜14%減。64trackの差は計測幅内で改善未確定。Mac既存p99=2.059msと対象Mac/Pixelの10分underrunは未解決 |
 | P1 | Macの日常制作受入 | main由来artifactで導入/通常終了/保存再開、実音/物理マイク/システム音、VoiceOverを確認。今回Desktop Commanderはオフラインで新しい端末観測なし |
-| P2 | iPadOSアプリ | 保存タグの試作を精査し、生成物を除外して限定実装へ。共通の保存/音声契約を満たすアプリと署名を用意し、所有iPadで検証 |
+| P2 | iPadOSアプリ | 試作の精査でdotfileのquota除外、同size破損の見逃し、PCM予算確認前の確保を確認。生成物を除き、まず保存/資産adapterと失敗系試験を導入。アプリ入口・署名・所有iPad受入はその後 |
 | P2 | 正式配布 | [RELEASE](RELEASE.md)の署名・公証・サイズ・完全source/NOTICEと実artifactのhashを確認。main更新から公開を推定しない |
 
 ### 構想形成ワークスペース（旧 #221–#227）
 
-テーマが未定の素材・独り言から「何を表現したいか」を育てる構想です。歌詞の自動量産とは区別し、原文・AI仮説・本人の採用を分離します。**mainにはまだ実装されていません。** 元の添付候補は下のIssueに記録されており、閉鎖は追跡先の集約です。添付の存在や独立source試験をrepository/実AIの成功に読み替えません。
+テーマが未定の素材・独り言から「何を表現したいか」を育てる構想です。歌詞の自動量産とは区別し、原文・AI仮説・本人の採用を分離します。**mainにはまだ実装されていません。** 元の候補は下のIssueに名前/hashが記録されていますが、取得URLはなく今回はsource未取得です。採用には元ZIPの取得・精査、または要件からの新規実装としての検証が必要です。閉鎖は追跡先の集約です。添付の存在や独立source試験をrepository/実AIの成功に読み替えません。
 
 | 順序・旧Issue | 実装と受入条件 |
 |---|---|
@@ -78,6 +78,7 @@ Issueを閉じることと、機能の実装完了は区別します。下記は
 - 整理後main `cce5207d`（tree `ba6367ae`）の [Windows/Android/履歴](https://github.com/dj-thank/choplab-sampler/actions/runs/38595531602) と [Mac](https://github.com/dj-thank/choplab-sampler/actions/runs/38595531628) が成功。[Mac配布の改善 PR242](https://github.com/dj-thank/choplab-sampler/pull/242) はapp/manifest/installerを一緒に配布し、最終ZIPからの導入・更新・通常終了再開をCIへ追加。 初回CIではHomebrew SQLite 3.54.0への更新で既存の完全一致検査が停止。公式source/hash/blessingを確認し、1ライブラリだけ異なる新しい完全集合を追加しました。修正後のCI結果はPR242を参照。
 - ミキサーのbypass事前計算は旧main `cce5207d` とmaster/pre-master・全134 stem sample・meter・停止/交換/tailのbit一致を比較。Linux amd64/JDK21、192frame、warm-up/計測各1万block、32同時clipの2対比較で16track render CPU 3.2640/3.1400s→2.8020/2.8254s、64track 4.4458/4.1180s→4.2333/4.1906s。全回割当/PCM欠落0。並行build負荷があるためwall p99や実機改善には読み替えません。
 - 資産stagingの新形式はLinux/JDK21のJVM全276件成功（失敗/skip 0）。新規10件で実子JVMの強制終了・生きたpublish/adopt/retaining・複数Storeの再入lock・容量不足/取消/再試行と未知ファイル保全を確認。Mac CIにも同じprocess所有試験を追加。Windowsのsymlink権限に依存する1件は明示skipとし、lock/強制終了試験は実行する。旧形式の自動削除・電源断・分離全体のprocess間transactionは保証しない。
+- trim済みpitch再編集はcore9/UI45/JVM17/Desktop2の関連73件成功（失敗/skip 0）。8/44.1/48/96kHz境界、1frame crop、A/Bの実SOURCE再生と復帰、複製/反復/分割、Undo、元音全範囲とのrender一致・archive再開を確認。旧コードへ戻した3負例はそれぞれSTALE、recipe欠落、PITCH範囲試聴拒否で失敗。再編集の計算量は原音の全処理範囲に依存する。
 - `LOCAL_PASS → DEVICE_PASS → PROVIDER_PASS → PUBLIC_PASS → HUMAN_GO` を区別します。新しいソースや合成試験の成功を過去の実機結果へ接ぎ合わせません。
 
 - main `a3454724` のWindows再実行では、H13録音中PAD試験がSTARTING→RECORDINGの正常遷移と競合して失敗しました（[run38584688682](https://github.com/dj-thank/choplab-sampler/actions/runs/38584688682)）。recorderのflagはcontrollerの状態通知より先にtrueになるため、試験は開始をgateで保持してSTARTINGを検査し、解除後に正確なRECORDING通知を待って同じPAD/Undo/試聴禁止を検査します。本番録音・状態比較・既存5秒上限は保持し、PR241最終headとmain `cce5207d` のWindows CIで成功を確認しました。
