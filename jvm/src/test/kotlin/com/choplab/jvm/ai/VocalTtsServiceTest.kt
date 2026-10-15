@@ -154,7 +154,7 @@ class VocalTtsServiceTest {
             withTimeout(3000) { while (native.synthesis < 4) delay(5) }
             pending.cancelAndJoin()
             assertEquals(0L, Files.list(directory.resolve("native")).use { it.count() })
-            assertEquals(0L, Files.list(directory.resolve("assets")).use { it.count() })
+            assertEquals(listOf(AssetStaging.LOCK_NAME), Files.list(directory.resolve("assets")).use { it.map { path -> path.fileName.toString() }.toList() })
         } finally { native.gate?.complete(Unit); service.close(); directory.toFile().deleteRecursively() }
     }
 

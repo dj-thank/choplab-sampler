@@ -46,7 +46,7 @@ Issueを閉じることと、機能の実装完了は区別します。下記は
 
 | 優先 | 課題 | 完了条件・次の作業 |
 |---|---|---|
-| P1 | 異常終了後の資産staging回収（旧 [#207](https://github.com/dj-thank/choplab-sampler/issues/207)） | `.pending-UUID` がquotaを占有し続ける問題は未修正。単純なprefix削除をせず、プロセスをまたぐ所有/leaseを設計。生きたpublish/adopt、公開済み資産、未知ファイル、symlink、directoryを保護し、小quotaで異常終了→回収→再試行と拒否を試験 |
+| P1 | 旧形式stagingの移行（旧 [#207](https://github.com/dj-thank/choplab-sampler/issues/207)） | 新形式はOS排他と完全な所有記録を導入し、異常終了後にquota回収→再試行できる。旧 `.pending-UUID`・不完全な小さな所有記録は所有を証明できないため保全し、quotaに数える。これらの移行は個別確認が必要。prefixだけの削除はしない |
 | P1 | trim済みpitch/stretch音の再編集 | 現状はSTALEで拒否。原音native frame/48kHz端点とWSOLA文脈を保持する設計が必要。複製/反復/trim/Undo/保存再開を含める。比例計算だけで再加工範囲を推測しない |
 | P1 | 64trackの実時間性能 | Linux合成p99=0.821ms・追加割当0・PCM欠落0は確認済み。不変のbypass判定を事前計算し、16trackのLinux render CPUは2対の比較で10〜14%減。64trackの差は計測幅内で改善未確定。Mac既存p99=2.059msと対象Mac/Pixelの10分underrunは未解決 |
 | P1 | Macの日常制作受入 | main由来artifactで導入/通常終了/保存再開、実音/物理マイク/システム音、VoiceOverを確認。今回Desktop Commanderはオフラインで新しい端末観測なし |
@@ -77,6 +77,7 @@ Issueを閉じることと、機能の実装完了は区別します。下記は
 - PR239のMac artifact `11802760823` は392,736,557 bytes、archive SHA-256 `b5de65dc984ea8115d18445695758f57db132f1514f2d6d522fd46f1789f6946`。保存期間7日、ad-hoc Previewです。恒久的な正式配布の入口にはしません。
 - 整理後main `cce5207d`（tree `ba6367ae`）の [Windows/Android/履歴](https://github.com/dj-thank/choplab-sampler/actions/runs/38595531602) と [Mac](https://github.com/dj-thank/choplab-sampler/actions/runs/38595531628) が成功。[Mac配布の改善 PR242](https://github.com/dj-thank/choplab-sampler/pull/242) はapp/manifest/installerを一緒に配布し、最終ZIPからの導入・更新・通常終了再開をCIへ追加。 初回CIではHomebrew SQLite 3.54.0への更新で既存の完全一致検査が停止。公式source/hash/blessingを確認し、1ライブラリだけ異なる新しい完全集合を追加しました。修正後のCI結果はPR242を参照。
 - ミキサーのbypass事前計算は旧main `cce5207d` とmaster/pre-master・全134 stem sample・meter・停止/交換/tailのbit一致を比較。Linux amd64/JDK21、192frame、warm-up/計測各1万block、32同時clipの2対比較で16track render CPU 3.2640/3.1400s→2.8020/2.8254s、64track 4.4458/4.1180s→4.2333/4.1906s。全回割当/PCM欠落0。並行build負荷があるためwall p99や実機改善には読み替えません。
+- 資産stagingの新形式はLinux/JDK21のJVM全276件成功（失敗/skip 0）。新規10件で実子JVMの強制終了・生きたpublish/adopt/retaining・複数Storeの再入lock・容量不足/取消/再試行と未知ファイル保全を確認。Mac CIにも同じprocess所有試験を追加。Windowsのsymlink権限に依存する1件は明示skipとし、lock/強制終了試験は実行する。旧形式の自動削除・電源断・分離全体のprocess間transactionは保証しない。
 - `LOCAL_PASS → DEVICE_PASS → PROVIDER_PASS → PUBLIC_PASS → HUMAN_GO` を区別します。新しいソースや合成試験の成功を過去の実機結果へ接ぎ合わせません。
 
 - main `a3454724` のWindows再実行では、H13録音中PAD試験がSTARTING→RECORDINGの正常遷移と競合して失敗しました（[run38584688682](https://github.com/dj-thank/choplab-sampler/actions/runs/38584688682)）。recorderのflagはcontrollerの状態通知より先にtrueになるため、試験は開始をgateで保持してSTARTINGを検査し、解除後に正確なRECORDING通知を待って同じPAD/Undo/試聴禁止を検査します。本番録音・状態比較・既存5秒上限は保持し、PR241最終headとmain `cce5207d` のWindows CIで成功を確認しました。

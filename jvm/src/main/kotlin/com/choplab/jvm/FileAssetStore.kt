@@ -9,20 +9,22 @@ import java.io.*
 import java.nio.channels.FileChannel
 import java.nio.file.*
 import java.security.MessageDigest
-import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
-/** Content-addressed asset publication. Existing corrupt bytes are preserved for diagnosis. No GC. */
+/** Content-addressed publication with crash recovery of owned staging only. Committed assets have no GC. */
 class FileAssetStore(directory: Path, val maxStoredBytes: Long = ProjectLimits.MAX_TOTAL_BYTES,
                      private val decoder: OriginalAudioDecoder? = null) : AssetStore {
     val directory: Path
-    private val lock: Any
+    private val lock: StoreLock
+    private val staging: AssetStaging
     init {
         require(maxStoredBytes in 1..ProjectLimits.MAX_TOTAL_BYTES)
         Files.createDirectories(directory)
         require(!Files.isSymbolicLink(directory))
         this.directory = directory.toRealPath()
         lock = StoreLocks.forPath(this.directory)
+        staging = AssetStaging(this.directory, lock)
+        staging.recoverIfIdle()
     }
     override suspend fun containsVerified(asset: Asset): Boolean = withContext(Dispatchers.IO) {
         val context = coroutineContext
@@ -34,19 +36,20 @@ class FileAssetStore(directory: Path, val maxStoredBytes: Long = ProjectLimits.M
         Files.newInputStream(path(asset)).use { readBounded(it, asset.byteCount).also { bytes -> require(bytes.size.toLong() == asset.byteCount && sha256(bytes) == asset.hash) } }
     } }
 
-    fun publish(asset: Asset, input: InputStream, cancelled: () -> Boolean = { false }) = synchronized(lock) {
+    fun publish(asset: Asset, input: InputStream, cancelled: () -> Boolean = { false }) = staging.publish {
         val target = path(asset)
         if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
             require(verified(asset)) { "Existing asset is corrupt" }
             require(digest(input, asset.byteCount) == asset.hash) { "Incoming asset hash mismatch" }
-            return@synchronized
+            return@publish
         }
         require(storedBytes() + asset.byteCount <= maxStoredBytes) { "Asset store quota exceeded" }
-        val pending = directory.resolve(".pending-${UUID.randomUUID()}")
+        val pending = staging.create()
         try {
             val digest = MessageDigest.getInstance("SHA-256")
             var count = 0L
-            FileOutputStream(pending.toFile()).use { output ->
+            FileChannel.open(pending, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS).use { channel ->
+                val output = java.nio.channels.Channels.newOutputStream(channel)
                 val buffer = ByteArray(8192)
                 while (true) {
                     require(!cancelled()) { "Asset publication cancelled" }
@@ -55,34 +58,35 @@ class FileAssetStore(directory: Path, val maxStoredBytes: Long = ProjectLimits.M
                     digest.update(buffer, 0, n); output.write(buffer, 0, n)
                 }
                 require(count == asset.byteCount && digest.digest().hex() == asset.hash) { "Asset hash or size mismatch" }
-                output.fd.sync()
+                channel.force(true)
             }
             validateAudio(asset, pending, cancelled)
             require(!cancelled()) { "Asset publication cancelled" }
             Files.move(pending, target, StandardCopyOption.ATOMIC_MOVE)
-        } finally { Files.deleteIfExists(pending) }
+        } finally { staging.discard(pending) }
     }
     /** What the store holds now, as [publish] and [adopt] count it against [maxStoredBytes]. */
     fun storedBytes(): Long = synchronized(lock) {
-        Files.list(directory).use { paths -> paths.filter { Files.isRegularFile(it, LinkOption.NOFOLLOW_LINKS) }.mapToLong { Files.size(it) }.sum() }
+        staging.recoverIfIdle()
+        Files.list(directory).use { paths -> paths.filter { Files.isRegularFile(it, LinkOption.NOFOLLOW_LINKS) }.mapToLong(staging::countedBytes).sum() }
     }
     /**
      * Stores [file], a finished audio file nobody else writes, as [asset]: checked as [publish] checks its input, then
      * moved into place, or copied where it lives on another file system. [file] is gone afterwards in every case.
      */
     fun adopt(asset: Asset, file: Path, cancelled: () -> Boolean = { false }) = synchronized(lock) {
-        try {
+        try { staging.publish {
             val target = path(asset)
             if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
                 require(verified(asset)) { "Existing asset is corrupt" }
-                return@synchronized
+                return@publish
             }
             require(storedBytes() + asset.byteCount <= maxStoredBytes) { "Asset store quota exceeded" }
             require(Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) && Files.size(file) == asset.byteCount) { "Asset size mismatch" }
             require(Files.newInputStream(file).use { digest(it, asset.byteCount) } == asset.hash) { "Asset hash mismatch" }
             validateAudio(asset, file, cancelled)
             require(!cancelled()) { "Asset publication cancelled" }
-            val pending = directory.resolve(".pending-${UUID.randomUUID()}")
+            val pending = staging.create()
             try {
                 try { Files.move(file, pending, StandardCopyOption.ATOMIC_MOVE) }
                 catch (_: IOException) {
@@ -90,21 +94,21 @@ class FileAssetStore(directory: Path, val maxStoredBytes: Long = ProjectLimits.M
                     FileChannel.open(pending, StandardOpenOption.WRITE).use { it.force(true) }
                 }
                 Files.move(pending, target, StandardCopyOption.ATOMIC_MOVE)
-            } finally { Files.deleteIfExists(pending) }
-        } finally { Files.deleteIfExists(file) }
+            } finally { staging.discard(pending) }
+        } } finally { Files.deleteIfExists(file) }
     }
     /** A recorded original stays owned by its recovery session until the document acknowledges it. */
-    fun adoptRetaining(asset: Asset, file: Path) = synchronized(lock) {
+    fun adoptRetaining(asset: Asset, file: Path) = staging.publish {
         val target = path(asset)
         require(Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) && Files.size(file) == asset.byteCount)
         require(Files.newInputStream(file).use { digest(it, asset.byteCount) } == asset.hash)
         validateAudio(asset, file) { false }
         if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
             require(verified(asset)) { "Existing asset is corrupt" }
-            return@synchronized
+            return@publish
         }
         require(storedBytes() + asset.byteCount <= maxStoredBytes) { "Asset store quota exceeded" }
-        val pending = directory.resolve(".pending-${UUID.randomUUID()}")
+        val pending = staging.create()
         try {
             // Both names refer to immutable bytes. A different filesystem needs a bounded streaming copy.
             try { Files.createLink(pending, file) }
@@ -112,7 +116,7 @@ class FileAssetStore(directory: Path, val maxStoredBytes: Long = ProjectLimits.M
             catch (_: IOException) { Files.copy(file, pending) }
             FileChannel.open(pending, StandardOpenOption.WRITE).use { it.force(true) }
             Files.move(pending, target, StandardCopyOption.ATOMIC_MOVE)
-        } finally { Files.deleteIfExists(pending) }
+        } finally { staging.discard(pending) }
     }
     fun verified(asset: Asset, cancelled: () -> Boolean = { false }): Boolean = synchronized(lock) {
         val target = path(asset)
@@ -148,9 +152,11 @@ class FileAssetStore(directory: Path, val maxStoredBytes: Long = ProjectLimits.M
     }
 }
 
+internal class StoreLock { var publishing = false }
+
 internal object StoreLocks {
-    private val locks = ConcurrentHashMap<String, Any>()
-    fun forPath(path: Path): Any = locks.computeIfAbsent(path.toAbsolutePath().normalize().toString().lowercase()) { Any() }
+    private val locks = ConcurrentHashMap<String, StoreLock>()
+    fun forPath(path: Path): StoreLock = locks.computeIfAbsent(path.toAbsolutePath().normalize().toString().lowercase()) { StoreLock() }
 }
 fun sha256(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256").digest(bytes).hex()
 internal fun ByteArray.hex(): String = joinToString("") { "%02x".format(it.toInt() and 255) }
