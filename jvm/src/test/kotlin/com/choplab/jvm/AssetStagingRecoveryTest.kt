@@ -3,12 +3,16 @@ package com.choplab.jvm
 import java.io.ByteArrayInputStream
 import java.io.IOException
 import java.io.InputStream
+import java.nio.channels.FileChannel
 import java.nio.file.Files
 import java.nio.file.LinkOption.NOFOLLOW_LINKS
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.nio.file.StandardOpenOption.READ
+import java.nio.file.StandardOpenOption.WRITE
 import java.util.UUID
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.locks.LockSupport
 import kotlin.test.*
 
 class AssetStagingRecoveryTest {
@@ -31,8 +35,9 @@ class AssetStagingRecoveryTest {
             assertContentEquals(partial, Files.readAllBytes(staged))
             assertFailsWith<IOException> { other.publish(asset, bytes.inputStream()) }
             assertContentEquals(partial, Files.readAllBytes(staged))
-            child.kill()
+            val terminationDeadline = child.kill()
             assertTrue(Files.exists(staged), "An abrupt process death bypasses finally cleanup")
+            child.awaitPublicationLockRelease(terminationDeadline)
             // The already-open store also recovers at admission; it need not be reconstructed.
             store.publish(asset, bytes.inputStream())
             assertTrue(store.verified(asset))
@@ -235,7 +240,27 @@ class AssetStagingRecoveryTest {
             assertTrue(Files.exists(root.resolve("ready")), Files.readString(root.resolve("child.log")))
             assertTrue(process.isAlive)
         }
-        fun kill() { process.destroyForcibly(); assertTrue(process.waitFor(10, TimeUnit.SECONDS)) }
+        fun kill(): Long {
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+            process.destroyForcibly()
+            assertTrue(process.waitFor(maxOf(0L, deadline - System.nanoTime()), TimeUnit.NANOSECONDS), "Child did not terminate")
+            return deadline
+        }
+        fun awaitPublicationLockRelease(deadline: Long) {
+            assertFalse(process.isAlive)
+            // Windows may signal process death before releasing its file locks:
+            // https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-lockfile
+            // Observe ownership on the same stable inode, within the original termination budget.
+            FileChannel.open(root.resolve("assets").resolve(AssetStaging.LOCK_NAME), READ, WRITE, NOFOLLOW_LINKS).use { channel ->
+                while (true) {
+                    val remaining = deadline - System.nanoTime()
+                    assertTrue(remaining > 0, "Child exited but its publication lock is still held")
+                    val lock = channel.tryLock()
+                    if (lock != null) { lock.release(); return }
+                    LockSupport.parkNanos(minOf(remaining, TimeUnit.MILLISECONDS.toNanos(1)))
+                }
+            }
+        }
         fun finish() {
             Files.writeString(root.resolve("release"), "release")
             assertTrue(process.waitFor(15, TimeUnit.SECONDS), "Child did not finish")
