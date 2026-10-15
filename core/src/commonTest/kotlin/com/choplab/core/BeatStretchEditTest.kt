@@ -42,6 +42,22 @@ class BeatStretchEditTest {
         assertEquals(before.assets, after.assets); assertEquals(before.pads, after.pads)
         assertEquals(before.pads[0].range, after.beatStretches.single().renderedRange)
     }
+    @Test fun trimmedStretchedPadAndClipExplainUnsupportedReeditInsteadOfRequestingAReload() {
+        for (target in listOf(StretchTarget(StretchKind.PAD, "0"), StretchTarget(StretchKind.CLIP, "clip"))) {
+            val before = project()
+            val draft = BeatStretchEdits.draft(DocumentState(before, 0), target, 120_000)
+            val asset = rendered(draft, before)
+            val stretched = Reducer.reduce(before, BeatStretchEdits.apply(DocumentState(before, 0), draft, asset)).project
+            val range = FrameRange(1, asset.frames - 1)
+            val trimmed = if (target.kind == StretchKind.PAD) stretched.copy(pads = stretched.pads.map {
+                if (it.id == 0) it.copy(range = range) else it
+            }.frozen()) else stretched.copy(clips = frozenListOf(stretched.clips.single().copy(range = range)))
+            assertEquals(StretchProblem.TRIMMED, assertFailsWith<StretchException> {
+                BeatStretchEdits.draft(DocumentState(trimmed, 1), target, 120_000)
+            }.problem)
+            assertEquals(stretched.beatStretches, trimmed.beatStretches)
+        }
+    }
     @Test fun staleChangedTempoChangedTargetBadProvenanceAndOversizeCannotBecomeAnEdit() {
         val before = project(); val doc = DocumentState(before, 4)
         val draft = BeatStretchEdits.draft(doc, StretchTarget(StretchKind.CLIP, "clip"), 120_000)

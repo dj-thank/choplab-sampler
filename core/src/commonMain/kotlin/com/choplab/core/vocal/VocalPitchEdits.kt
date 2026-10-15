@@ -7,7 +7,7 @@ import com.choplab.core.edit.Reducer
 import com.choplab.core.model.*
 import com.choplab.engine.PitchCorrectionSettings
 
-enum class VocalPitchProblem { NO_VOICE_CLIP, STALE, LIMIT, INVALID_INPUT, RENDER_FAILED }
+enum class VocalPitchProblem { NO_VOICE_CLIP, STALE, TRIMMED_SELECTION, LIMIT, INVALID_INPUT, RENDER_FAILED }
 class VocalPitchException(val problem: VocalPitchProblem) : IllegalArgumentException(problem.name)
 
 data class VocalPitchDraft(
@@ -21,6 +21,9 @@ data class VocalPitchDraft(
     init { requireId(id); require(revision >= 0); requireHash(sourceAssetHash) }
     fun firstFrame48(source: Asset): Long = takeSourceFrame48(sourceRange.start, source.sampleRate)
     fun frames48(source: Asset): Long = takeSourceFrame48(sourceRange.end, source.sampleRate) - firstFrame48(source)
+    /** Pitch preserves duration. Keep a rendered crop in its exact output domain; never infer native endpoints. */
+    fun auditionRange(project: Project): FrameRange = if (expectedClip.assetHash != sourceAssetHash) expectedClip.range
+        else FrameRange(0, frames48(project.asset(sourceAssetHash)))
 }
 
 object VocalPitchEdits {
@@ -29,9 +32,8 @@ object VocalPitchEdits {
         val clip = project.clips.firstOrNull { it.id == clipId } ?: throw VocalPitchException(VocalPitchProblem.NO_VOICE_CLIP)
         requireVoice(project, clip)
         val old = project.pitchCorrections.firstOrNull { it.clipId == clipId }
-        // Re-edit an intact correction from its original, never compound another pitch process by accident.
+        // Always rerender the full original context, even for a cropped correction. Apply preserves the output crop.
         if (old != null && clip.assetHash == old.renderedAssetHash) {
-            if (clip.range != FrameRange(0, project.asset(old.renderedAssetHash).frames)) throw VocalPitchException(VocalPitchProblem.STALE)
             return VocalPitchDraft(old.id, document.revision, clip, old.sourceAssetHash, old.sourceRange, settings).also { validate(project, it) }
         }
         return VocalPitchDraft(old?.id ?: id, document.revision, clip, clip.assetHash, clip.range, settings).also { validate(project, it) }
@@ -50,7 +52,7 @@ object VocalPitchEdits {
         require(current == null || current.id == draft.id)
         require((draft.expectedClip.assetHash == draft.sourceAssetHash && draft.expectedClip.range == draft.sourceRange) ||
             (current != null && current.sourceAssetHash == draft.sourceAssetHash && current.sourceRange == draft.sourceRange &&
-                draft.expectedClip.assetHash == current.renderedAssetHash && draft.expectedClip.range == FrameRange(0, project.asset(current.renderedAssetHash).frames)))
+                draft.expectedClip.assetHash == current.renderedAssetHash && draft.expectedClip.range.end <= project.asset(current.renderedAssetHash).frames))
     }
 
     /** Call through Action.Edit(intent, draft.revision); the actor rechecks revision at commit. */
@@ -67,6 +69,9 @@ object VocalPitchEdits {
     fun select(document: DocumentState, correctionId: String, original: Boolean): Intent.SelectVocalPitch {
         val correction = requireNotNull(document.project.pitchCorrections.firstOrNull { it.id == correctionId })
         val clip = document.project.clips.firstOrNull { it.id == correction.clipId } ?: throw VocalPitchException(VocalPitchProblem.NO_VOICE_CLIP)
+        if ((clip.assetHash == correction.renderedAssetHash && clip.range != FrameRange(0, document.project.asset(correction.renderedAssetHash).frames)) ||
+            (clip.assetHash == correction.sourceAssetHash && clip.range != correction.sourceRange))
+            throw VocalPitchException(VocalPitchProblem.TRIMMED_SELECTION)
         return Intent.SelectVocalPitch(correctionId, clip, original).also { Reducer.reduce(document.project, it) }
     }
 

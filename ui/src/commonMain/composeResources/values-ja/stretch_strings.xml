@@ -14,6 +14,7 @@
     <string name="stretch_cancel">取消・試聴を止める</string>
     <string name="stretch_reload">現在の編集を読み直す</string>
     <string name="stretch_stale">対象や曲が変わりました。読み直してから準備してください。</string>
+    <string name="stretch_trimmed">伸縮後にトリムした音の再伸縮にはまだ対応していません。トリムを元に戻してから伸縮し、結果をトリムしてください。</string>
     <string name="stretch_no_target">音のあるPADか、曲の配置を選んでください。</string>
     <string name="stretch_invalid">BPMは40〜240で入力してください。極端に短い範囲は伸縮できません。</string>
     <string name="stretch_limit">音声・保存容量・曲長の上限を超えます。範囲を短くしてください。</string>

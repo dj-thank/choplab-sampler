@@ -15,6 +15,26 @@ import kotlinx.coroutines.flow.*
 import kotlin.test.*
 
 class VocalPitchPresenterTest {
+    @Test fun croppedPitchAuditionsUseTheSharedSourceRangeOwnerAndNeverTheWholeAsset() = runBlocking {
+        val f = BoundaryFixture()
+        try {
+            assertTrue(f.presenter.dispatch(ContinuousEditorAction.OpenVocalPitch))
+            assertTrue(assertNotNull(f.presenter.vocalPitch.value).dispatch(PitchAction.Apply))
+            assertTrue(f.presenter.dispatch(ContinuousEditorAction.CloseVocalPitch))
+            assertTrue(f.presenter.dispatch(ContinuousEditorAction.TrimClip("clip", 13, 5987, 1237)))
+            assertTrue(f.presenter.dispatch(ContinuousEditorAction.OpenVocalPitch))
+            val controller = assertNotNull(f.presenter.vocalPitch.value)
+            val before = f.studio.document.value
+            assertTrue(controller.dispatch(PitchAction.PreviewOriginal))
+            assertEquals(FrameRange(13, 5987), f.previewRange)
+            assertEquals(VocalPreviewOwner.PITCH, f.preview.state.value.owner)
+            assertEquals(f.source.hash, f.preview.state.value.assetHash)
+            assertTrue(controller.dispatch(PitchAction.PreviewCorrected))
+            assertEquals(FrameRange(13, 5987), f.previewRange)
+            assertEquals("b".repeat(64), f.preview.state.value.assetHash)
+            assertEquals(before, f.studio.document.value)
+        } finally { f.close() }
+    }
     @Test fun pitchTransfersTheOneModalWithTakesPracticeAndOnlineWithoutEditing() = runBlocking {
         val f = BoundaryFixture()
         try {
@@ -197,6 +217,7 @@ class VocalPitchPresenterTest {
         val releaseApply = CompletableDeferred<Unit>()
         val analysisEntered = CompletableDeferred<Unit>(); val releaseAnalysis = CompletableDeferred<Unit>()
         val monitorEntered = CompletableDeferred<Unit>(); val releaseMonitor = CompletableDeferred<Unit>()
+        var previewRange: FrameRange? = null
         val studio = Studio(scope, Services(object : AssetStore {
             override suspend fun containsVerified(asset: Asset) = true
             override suspend fun write(asset: Asset, bytes: ByteArray) = Unit
@@ -217,8 +238,13 @@ class VocalPitchPresenterTest {
         val preview = object : VocalPreviewPort {
             override val state = MutableStateFlow(VocalPreviewState())
             override suspend fun start(asset: Asset, expectedRevision: Long): TtsResult<Unit> = error("No audition")
-            override suspend fun stop() = TtsResult.Success(Unit)
-            override fun requestStop() = Unit
+            override suspend fun startRange(asset: Asset, range: FrameRange, expectedRevision: Long, owner: VocalPreviewOwner): TtsResult<Unit> {
+                previewRange = range
+                state.value = VocalPreviewState(VocalPreviewPhase.PLAYING, ownsSource = true, assetHash = asset.hash, owner = owner)
+                return TtsResult.Success(Unit)
+            }
+            override suspend fun stop(): TtsResult<Unit> { state.value = VocalPreviewState(); return TtsResult.Success(Unit) }
+            override fun requestStop() { state.value = VocalPreviewState() }
             override fun frame() = 0L
         }
         val presenter = ContinuousEditorPresenter(studio, scope, object : ContinuousEditorPorts {

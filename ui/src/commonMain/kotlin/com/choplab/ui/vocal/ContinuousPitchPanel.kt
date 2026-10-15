@@ -112,6 +112,7 @@ import org.jetbrains.compose.resources.stringResource
                             PitchEditorProblem.NO_VOICE -> Res.string.pitch_no_voice
                             PitchEditorProblem.INVALID_INPUT -> Res.string.pitch_invalid
                             PitchEditorProblem.STALE -> Res.string.pitch_stale
+                            PitchEditorProblem.TRIMMED_SELECTION -> Res.string.pitch_trimmed_selection
                             PitchEditorProblem.BUSY -> Res.string.pitch_busy
                             PitchEditorProblem.RECORDING -> Res.string.pitch_recording
                             PitchEditorProblem.LIMIT -> Res.string.pitch_limit

@@ -24,6 +24,8 @@ on:
       - 'jvm/src/main/kotlin/com/choplab/jvm/AssetStaging.kt'
       - 'jvm/src/test/kotlin/com/choplab/jvm/AssetStagingRecoveryTest.kt'
       - 'jvm/src/test/kotlin/com/choplab/jvm/PersistenceTest.kt'
+      - 'jvm/src/main/kotlin/com/choplab/jvm/ai/SourceVocalPreview.kt'
+      - 'jvm/src/test/kotlin/com/choplab/jvm/ai/SourceVocalPreviewTest.kt'
   workflow_dispatch:
 
 permissions:
@@ -60,12 +62,13 @@ jobs:
           brew update
           brew install ffmpeg node@24
 
-      - name: Verify Mac process ownership and crash recovery
+      - name: Verify Mac process ownership, crash recovery and SOURCE preview
         timeout-minutes: 5
         run: |
           ./gradlew --no-daemon :jvm:test \
             --tests com.choplab.jvm.AssetStagingRecoveryTest \
-            --tests com.choplab.jvm.PersistenceTest
+            --tests com.choplab.jvm.PersistenceTest \
+            --tests com.choplab.jvm.ai.SourceVocalPreviewTest
 
       - name: Package the linked editor as a local ad-hoc Mac app
         run: ./gradlew --no-daemon --stacktrace :desktop:packageMacLinkedPreview

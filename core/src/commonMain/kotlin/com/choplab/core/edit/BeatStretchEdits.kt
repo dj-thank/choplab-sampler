@@ -4,7 +4,7 @@ import com.choplab.core.DocumentState
 import com.choplab.core.ProgramCompiler
 import com.choplab.core.model.*
 
-enum class StretchProblem { NO_TARGET, INVALID_INPUT, STALE, LIMIT, BUSY, RECORDING, FAILED, PREVIEW_FAILED }
+enum class StretchProblem { NO_TARGET, INVALID_INPUT, STALE, TRIMMED, LIMIT, BUSY, RECORDING, FAILED, PREVIEW_FAILED }
 class StretchException(val problem: StretchProblem) : IllegalArgumentException(problem.name)
 data class StretchDraft(val revision: Long, val target: StretchTarget, val expectedPad: Pad?, val expectedClip: Clip?,
                         val sourceAssetHash: String, val sourceRange: FrameRange, val sourceMilliBpm: Int, val targetMilliBpm: Int)
@@ -19,7 +19,7 @@ object BeatStretchEdits {
         var range = pad?.range ?: clip!!.range
         val old = project.beatStretches.firstOrNull { it.target == target }
         if (old != null && hash == old.renderedAssetHash) {
-            if (range != old.renderedRange) throw StretchException(StretchProblem.STALE)
+            if (range != old.renderedRange) throw StretchException(StretchProblem.TRIMMED)
             hash = old.sourceAssetHash; range = old.sourceRange
         }
         return StretchDraft(document.revision, target, pad, clip, hash, range, sourceMilliBpm, project.tempo.milliBpm).also { validate(project, it) }
