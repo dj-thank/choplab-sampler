@@ -106,7 +106,9 @@ class SourceNoticesTest(unittest.TestCase):
         self.assertIn("原source bytesは無改変", (self.output / notices.README).read_text())
         self.assertIn("再build用の元 `.py`", (self.output / notices.README).read_text())
         with zipfile.ZipFile(self.archive) as archive:
-            self.assertEqual(33, len(archive.namelist()))
+            self.assertEqual(34, len(archive.namelist()))
+            self.assertEqual((notices.ROOT / "config/mac-media-tool-files-20261015.txt").read_bytes(),
+                             archive.read("source-notices/config/mac-media-tool-files-20261015.txt"))
             self.assertIn("source-notices/config/mac-media-tool-files-20261013.txt", archive.namelist())
             self.assertIn("source-notices/config/mac-media-tool-files-20261006.txt", archive.namelist())
             self.assertIn("source-notices/scripts/mac_tool_policy.py.txt", archive.namelist())
