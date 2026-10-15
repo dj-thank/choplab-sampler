@@ -5,10 +5,10 @@
 ## 現在地
 
 - 制作・録音・編集の保全と操作UX改善 [PR239](https://github.com/dj-thank/choplab-sampler/pull/239) をmain `a3454724`へ統合済み。保存/取消、STEP下書き、録音終了通知、大文字でのミキサー、Mac梱包を改善しました。
-- Android試験の古いXMLによる誤判定を防ぐ [PR240](https://github.com/dj-thank/choplab-sampler/pull/240) は本整理へ合成。元コミット `3b66138a` を履歴に保持し、統合済みの制作変更と合わせて検証します。整理の差分と最終CIは [PR241](https://github.com/dj-thank/choplab-sampler/pull/241) に記録します。
+- Android試験の古いXMLによる誤判定を防ぐ [PR240](https://github.com/dj-thank/choplab-sampler/pull/240) は [PR241](https://github.com/dj-thank/choplab-sampler/pull/241) でmain `cce5207d`へ統合済み。元コミット `3b66138a` を履歴に保持。統合後mainのWindows/Android/履歴とMac CIも成功しました。
 - `main-onmp9o` の変更履歴とVOCAL試験の保存再開timeout診断を採用。Applyの診断はmainの新しい実装を保持しました。`claude/mac-status-20261007` の内容は既にmainへ含まれています。
 - iPadホスト試作 `15563646` は未統合の保存候補です。アプリの入口・署名・受入がなく、`apple/build/`の生成物も含むため、製品へそのまま取り込みません。元コミットを保存タグで保全しています。
-- 本整理ではPR/Issueの追跡を本書へ集約し、作業ブランチをmainへ一本化します。未実装の機能や実機で未確認の項目は、下の残課題として引き継ぎます。
+- PR/Issueの追跡を本書へ集約し、前回整理でopen PR/Issueは0、remote作業ブランチはmainのみにしました。追加改善は限定PRで検証してからmainへ戻します。未実装の機能や実機で未確認の項目は、下の残課題として引き継ぎます。
 
 ## 使う・開発する
 
@@ -72,12 +72,13 @@ Issueを閉じることと、機能の実装完了は区別します。下記は
 ## 検証の根拠
 
 - PR239 head `da1270cd` とCI checkout `66fdaf9f` はtree `56a3865a`が一致。[Windows/Android/履歴](https://github.com/dj-thank/choplab-sampler/actions/runs/38377899819)、[Mac](https://github.com/dj-thank/choplab-sampler/actions/runs/38377899768)、[Apple共通](https://github.com/dj-thank/choplab-sampler/actions/runs/38377899828)の5チェックが成功。UI355件、関連Desktop13件は失敗/skip 0。実機導入ではありません。
-- PR240元head `3b66138a` の必須3チェックは成功。本整理の合成後にもAndroid gate/集計39件が成功。最終合成headのCIを別に確認します。
+- PR240元head `3b66138a` の必須3チェックは成功。本整理の合成後にもAndroid gate/集計39件が成功。PR241最終CIと統合後main CIも成功しました。
 - 旧 [#162](https://github.com/dj-thank/choplab-sampler/issues/162) のFill後PAD操作は `4b5a23fe` で窓の終了レイヤー解放を待つ修正が統合済み。現行試験はviewport名と操作差分を診断し、7組合せの実pointer判定を保持。PR239のWindows UI全体成功を確認しました。
 - PR239のMac artifact `11802760823` は392,736,557 bytes、archive SHA-256 `b5de65dc984ea8115d18445695758f57db132f1514f2d6d522fd46f1789f6946`。保存期間7日、ad-hoc Previewです。恒久的な正式配布の入口にはしません。
+- 整理後main `cce5207d`（tree `ba6367ae`）の [Windows/Android/履歴](https://github.com/dj-thank/choplab-sampler/actions/runs/38595531602) と [Mac](https://github.com/dj-thank/choplab-sampler/actions/runs/38595531628) が成功。Mac配布の追加改善は、app/manifest/installerを一緒に配布し、最終ZIPからの導入・更新・通常終了再開をCIへ追加する候補です。
 - `LOCAL_PASS → DEVICE_PASS → PROVIDER_PASS → PUBLIC_PASS → HUMAN_GO` を区別します。新しいソースや合成試験の成功を過去の実機結果へ接ぎ合わせません。
 
-- main `a3454724` のWindows再実行では、H13録音中PAD試験がSTARTING→RECORDINGの正常遷移と競合して失敗しました（[run38584688682](https://github.com/dj-thank/choplab-sampler/actions/runs/38584688682)）。recorderのflagはcontrollerの状態通知より先にtrueになるため、試験は開始をgateで保持してSTARTINGを検査し、解除後に正確なRECORDING通知を待って同じPAD/Undo/試聴禁止を検査します。本番録音・状態比較・既存5秒上限は保持し、最終headのWindows CIで確認します。
+- main `a3454724` のWindows再実行では、H13録音中PAD試験がSTARTING→RECORDINGの正常遷移と競合して失敗しました（[run38584688682](https://github.com/dj-thank/choplab-sampler/actions/runs/38584688682)）。recorderのflagはcontrollerの状態通知より先にtrueになるため、試験は開始をgateで保持してSTARTINGを検査し、解除後に正確なRECORDING通知を待って同じPAD/Undo/試聴禁止を検査します。本番録音・状態比較・既存5秒上限は保持し、PR241最終headとmain `cce5207d` のWindows CIで成功を確認しました。
 
 ## 正本と固定条件
 
