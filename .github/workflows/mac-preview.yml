@@ -86,6 +86,7 @@ jobs:
 
       - name: Install and update from the actual ZIP in an isolated directory
         run: |
+          python3 -m unittest scripts.tests.test_mac_preview_install scripts.tests.test_mac_preview_distribution
           ditto -x -k dist/ChopLab-mac-next-preview.zip "$RUNNER_TEMP/mac-next-download"
           "$RUNNER_TEMP/mac-next-download/インストール.command" --destination "$RUNNER_TEMP/mac-next-install/Applications"
           "$RUNNER_TEMP/mac-next-download/インストール.command" --destination "$RUNNER_TEMP/mac-next-install/Applications"

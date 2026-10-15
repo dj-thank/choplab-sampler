@@ -3,6 +3,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -117,12 +118,50 @@ class MacPreviewInstallTest(unittest.TestCase):
     def test_lsof_failure_or_live_process_never_means_idle(self):
         self.old()
         for code, output, error in ((0, '123\n', ''), (2, '', 'failed'), (1, '', 'cannot inspect')):
-            with patch('scripts.install_mac_preview.subprocess.run') as run:
+            with patch('scripts.install_mac_preview.subprocess.run') as run, \
+                    patch('scripts.install_mac_preview.time.monotonic', side_effect=[0, 0, 30, 30]), \
+                    patch('scripts.install_mac_preview.time.sleep'):
                 run.return_value.returncode = code
                 run.return_value.stdout = output
                 run.return_value.stderr = error
                 with self.assertRaises(RuntimeError):
                     require_idle(self.target)
+
+    def test_transient_reader_must_release_all_handles_before_update(self):
+        self.old()
+        probes = [subprocess.CompletedProcess([], 0, '123\n456\n', ''),
+                  subprocess.CompletedProcess([], 0, '456\n', ''),
+                  subprocess.CompletedProcess([], 1, '', '')]
+        with patch('scripts.install_mac_preview.subprocess.run', side_effect=probes) as run, \
+                patch('scripts.install_mac_preview.time.monotonic', side_effect=[0, 0, 1, 1.25, 2, 2.25]), \
+                patch('scripts.install_mac_preview.time.sleep') as sleep:
+            require_idle(self.target)
+        self.assertEqual(3, run.call_count)
+        self.assertEqual(2, sleep.call_count)
+        self.assertEqual([30, 28.75, 27.75], [call.kwargs['timeout'] for call in run.call_args_list])
+
+    def test_reader_that_outlives_original_budget_is_refused(self):
+        self.old()
+        with patch('scripts.install_mac_preview.subprocess.run',
+                   return_value=subprocess.CompletedProcess([], 0, '123\n', '')) as run, \
+                patch('scripts.install_mac_preview.time.monotonic', side_effect=[0, 0, 29.9, 30]), \
+                patch('scripts.install_mac_preview.time.sleep') as sleep:
+            with self.assertRaisesRegex(RuntimeError, 'still in use'):
+                require_idle(self.target)
+        self.assertEqual(1, run.call_count)
+        self.assertAlmostEqual(0.1, sleep.call_args.args[0])
+
+    def test_failed_probe_after_busy_result_is_not_retried_or_accepted(self):
+        self.old()
+        probes = [subprocess.CompletedProcess([], 0, '123\n', ''),
+                  subprocess.CompletedProcess([], 1, '', 'cannot inspect')]
+        with patch('scripts.install_mac_preview.subprocess.run', side_effect=probes) as run, \
+                patch('scripts.install_mac_preview.time.monotonic', side_effect=[0, 0, 1, 1.25]), \
+                patch('scripts.install_mac_preview.time.sleep') as sleep:
+            with self.assertRaisesRegex(RuntimeError, 'Could not confirm'):
+                require_idle(self.target)
+        self.assertEqual(2, run.call_count)
+        self.assertEqual(1, sleep.call_count)
 
 
 if __name__ == '__main__':
