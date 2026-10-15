@@ -9,10 +9,12 @@ on:
     paths:
       - '.github/workflows/mac-preview.yml'
       - 'scripts/package_mac_app.py'
+      - 'scripts/stage_mac_preview_distribution.py'
+      - 'scripts/install_mac_preview.py'
+      - 'scripts/tests/test_mac_*.py'
       - 'scripts/prepare_mac_media_tools.py'
       - 'config/mac-audio-tool-files.txt'
-      - 'config/mac-media-tool-files.txt'
-      - 'config/mac-media-tool-files-20261006.txt'
+      - 'config/mac-media-tool-files*.txt'
       - 'scripts/mac_tool_policy.py'
       - 'scripts/run_mac_next_acceptance.py'
       - 'scripts/acceptance/MacPreviewLifecycle.java'
@@ -57,19 +59,30 @@ jobs:
       - name: Package the linked editor as a local ad-hoc Mac app
         run: ./gradlew --no-daemon --stacktrace :desktop:packageMacLinkedPreview
 
-      - name: Verify packaged production and normal close/reopen with an isolated profile
+      - name: Archive and check the app, manifest and installer
+        run: |
+          mkdir -p dist
+          python3 scripts/stage_mac_preview_distribution.py \
+            --app 'desktop/build/mac-linked-preview-app-image/ChopLab NEXT.app' \
+            --manifest desktop/build/mac-linked-preview-app-image/manifest.json \
+            --output work/mac-next-distribution
+          ditto -c -k --norsrc --noextattr --noacl work/mac-next-distribution dist/ChopLab-mac-next-preview.zip
+          python3 scripts/check_public_surface.py --archive dist/ChopLab-mac-next-preview.zip
+          (cd dist && shasum -a 256 ChopLab-mac-next-preview.zip > ChopLab-mac-next-preview.zip.sha256)
+
+      - name: Install and update from the actual ZIP in an isolated directory
+        run: |
+          ditto -x -k dist/ChopLab-mac-next-preview.zip "$RUNNER_TEMP/mac-next-download"
+          "$RUNNER_TEMP/mac-next-download/インストール.command" --destination "$RUNNER_TEMP/mac-next-install/Applications"
+          "$RUNNER_TEMP/mac-next-download/インストール.command" --destination "$RUNNER_TEMP/mac-next-install/Applications"
+
+      - name: Verify installed production and normal close/reopen with an isolated profile
         timeout-minutes: 5
         run: |
           python3 scripts/run_mac_next_acceptance.py \
-            --app 'desktop/build/mac-linked-preview-app-image/ChopLab NEXT.app' \
+            --app "$RUNNER_TEMP/mac-next-install/Applications/ChopLab NEXT.app" \
+            --manifest "$RUNNER_TEMP/mac-next-install/Applications/.choplab-manifests/ChopLab NEXT.app.json" \
             --java-home "$JAVA_HOME"
-
-      - name: Archive and check the app
-        run: |
-          mkdir -p dist
-          ditto -c -k --norsrc --noextattr --noacl --keepParent "desktop/build/mac-linked-preview-app-image/ChopLab NEXT.app" dist/ChopLab-mac-next-preview.zip
-          python3 scripts/check_public_surface.py --archive dist/ChopLab-mac-next-preview.zip
-          (cd dist && shasum -a 256 ChopLab-mac-next-preview.zip > ChopLab-mac-next-preview.zip.sha256)
 
       - name: Show the app's signatures after a failure
         if: failure()

@@ -26,7 +26,7 @@ def digest(path):
 
 def verify_package(app, manifest_path):
     if app.is_symlink() or not app.is_dir() or manifest_path.is_symlink():
-        raise RuntimeError('Select the original app and manifest from the mounted DMG')
+        raise RuntimeError('Select the original app and manifest from the extracted ZIP or mounted DMG')
     if not manifest_path.is_file() or manifest_path.stat().st_size > 10 * 1024 * 1024:
         raise RuntimeError('Missing or oversized package manifest')
     manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
@@ -78,7 +78,7 @@ def install_package(source, manifest_path, destination, *, verify=verify_package
     if target.is_symlink() or (target.exists() and not target.is_dir()):
         raise RuntimeError('The existing application is not a regular bundle')
     if target.resolve() == source.resolve():
-        raise RuntimeError('Select the app on the DMG, not the installed app')
+        raise RuntimeError('Select the app in the extracted ZIP or mounted DMG, not the installed app')
     idle(target)
     plain_directory(destination)
     manifests = destination / '.choplab-manifests'

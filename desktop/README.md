@@ -64,15 +64,17 @@ python3 scripts/run_mac_acceptance.py \
 
 ## Macの4工程NEXT
 
-`./gradlew :desktop:packageMacLinkedPreview` で `desktop/build/mac-linked-preview-app-image/ChopLab NEXT.app` を作成します。Java、録音helper、取得/decodeツール、ドラム分離モデルを含み、単体で起動できます。初回ビルドはHomebrewのffmpeg/node、Python3.11以降とXcode CLIが必要です。同梱ツールとnative依存は `config/mac-media-tool-files.txt` / `config/mac-media-tool-files-20261006.txt` の確認済み完全集合で固定し、実行時はHomebrewやPATHを使いません。元の4工程・大きなPAD・右側の曲配置を使う新しい編集入口です。既存Previewと別のapp identityを持ち、制作はPreview領域の `next-v10` に分離します。ローカルad-hoc署名で、公証済みの一般配布とは別です。
+`./gradlew :desktop:packageMacLinkedPreview` で `desktop/build/mac-linked-preview-app-image/ChopLab NEXT.app` を作成します。Java、録音helper、取得/decodeツール、ドラム分離モデルを含み、単体で起動できます。初回ビルドはHomebrewのffmpeg/node、Python3.11以降とXcode CLIが必要です。同梱ツールとnative依存は `config/mac-media-tool-files.txt` / `config/mac-media-tool-files-20261006.txt` / `config/mac-media-tool-files-20261013.txt` / `config/mac-media-tool-files-20261015.txt` の確認済み完全集合で固定し、実行時はHomebrewやPATHを使いません。元の4工程・大きなPAD・右側の曲配置を使う新しい編集入口です。既存Previewと別のapp identityを持ち、制作はPreview領域の `next-v10` に分離します。ローカルad-hoc署名で、公証済みの一般配布とは別です。
 
 WAV・FLAC・MP3・M4A（AAC/ALAC）・AAC・Ogg・Opus・AIFF/AIF・MP4・WebMの取込、チョップ、PAD、合成ドラム、曲への配置、原曲用のマイク録音、曲に合わせた声の録音、スクラッチ、保存/再開、WAV書出しを接続しています。オンライン候補からの明示取込、Mac端末音録音、音源ライブラリ、ドラム分離もNEXTへ接続済みです。NEXTのSpotify窓では曲情報を検索し、音源のダウンロードはPreviewで選択して行います。ライブラリはアーティスト→アルバム→曲の順に絞り込めます。起動と保存復元の再現手順は [TESTING](../docs/TESTING.md)、全制作機能と長尺音源の受入は [ROADMAP](../docs/ROADMAP.md) で管理します。
 
-helperはmacOS14.0を明示してbuildし、最終アプリの最低OSは同梱helper・ツール・Java runtime・JAR内native依存の実バイナリから判定して、Info.plistと配布manifestへ記録します。このMacで用意したcodecにはmacOS27.0を要求するものがあるため、そのbundleはmacOS27.0以降用です。Apple Silicon以外や古いOSは別のbytesでの検証が必要です。
+helperはmacOS14.0を明示してbuildし、最終アプリの最低OSは同梱helper・ツール・Java runtime・JAR内native依存の実バイナリから判定して、Info.plistと配布manifestへ記録します。ZIPの「はじめに.txt」にも同じ最低OSを記載します。例えばmacOS27.0を要求するcodecを含むbundleはmacOS27.0以降用です。使う配布物の記録を確認してください。Apple Silicon以外や古いOSは別のbytesでの検証が必要です。
 
 窓の可視領域はOSの作業領域と文字サイズで確認します。文字を大きくした場合はPAD/詳細面をスクロールでき、曲と全停止は固定です。原曲の音量は大文字時にラベルを上へ配置して操作幅を保ちます。実ウィンドウの受入ではouter/content/work areaを測り、その内容sizeで16PADと主要操作の可視領域・実入力を別途確認します。PNGだけを実端末入力や音質の受入にはしません。
 
-ローカルDMGからの導入・更新は、同梱の **「インストール.command」** を開きます。先に対象アプリの制作を保存して終了してください。この入口はアプリと対応manifestのbytes・署名を照合し、両方を同時に更新します。起動中は更新を拒否し、失敗時は元の組へ戻します。旧アプリとmanifestはApplications内の `.choplab-backups` に保全し、制作やLibraryのprofileには触れません。単に.appだけをドラッグした場合はmanifestが更新されないため、この入口を使ってください。ソースから同じ導入を行う場合は `python3 scripts/install_mac_preview.py --app <配布元.app> --manifest <対応manifest.json>` です。
+CIのZIPやローカルDMGからの導入・更新は、Python 3を用意して同梱の **「インストール.command」** を開きます。先に対象アプリの制作を保存して終了してください。この入口はアプリと対応manifestのbytes・署名を照合し、両方を同時に更新します。起動中は更新を拒否し、失敗時は元の組へ戻します。標準の導入先はホームフォルダーの `Applications` で、旧アプリとmanifestはその中の `.choplab-backups` に保全し、制作やLibraryのprofileには触れません。単に.appだけをドラッグした場合はmanifestが更新されないため、この入口を使ってください。ソースから同じ導入を行う場合は `python3 scripts/install_mac_preview.py --app <配布元.app> --manifest <対応manifest.json>` です。
+
+配布用の内容は `python3 scripts/stage_mac_preview_distribution.py --app <NEXT.app> --manifest <対応manifest.json> --output <新しい出力先>` でまとめます。clean sourceのapp/manifest、installer、最低OSと導入手順を一緒に格納します。Mac CIは最終ZIPを展開し、隔離先への新規導入と更新、その導入先からの制作・通常終了再開まで検査します。
 
 梱包後の受入は `scripts/run_mac_next_acceptance.py` を使います。インストール済みアプリでは、インストール時に保存したmanifestを `--manifest` で指定します。標準のbuild出力では省略できます。全ファイル・hash・署名を照合してから隔離profileで制作通しと通常終了・再開を確認します。
 
