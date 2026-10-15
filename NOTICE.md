@@ -110,11 +110,24 @@ ChopLabは独立した製品で、これらの権利者との提携・後援を�
 
 ## Local macOS Preview tools
 
-Mac PreviewはHomebrewのFFmpeg/FFprobe、Nodeとそれらのdylibを私有build領域へ複製し、loader参照を同梱配置へ変更します。元のインストールは変更しません。実version、元bytes/配置変更後のhashはtool manifest、許可するnative集合は `config/mac-media-tool-files.txt` と `config/mac-media-tool-files-20261006.txt` が正本です。yt-dlp standaloneは2026.08.19、upstream assetのSHA-256を固定します。
+Mac PreviewはHomebrewのFFmpeg/FFprobe、Nodeとそれらのdylibを私有build領域へ複製し、loader参照を同梱配置へ変更します。元のインストールは変更しません。実version、元bytes/配置変更後のhashはtool manifest、許可するnative集合は `scripts/mac_tool_policy.py` に列挙した日付付きの完全集合が正本です。yt-dlp standaloneは2026.08.19、upstream assetのSHA-256を固定します。
 
 2026-10-06のMac CIでNode共有依存の2ファイルが更新されたため、従来の40ファイル集合に加え、`config/mac-media-tool-files-20261006.txt` の40ファイル集合を明示して扱います。差分は `libhdr_histogram.6.3.3 → 6.4.4` と `libsimdjson.33.0.0 → 34.0.0` のみ。両集合は準備時に完全一致で検査し、混在・追加・欠落を許可しません。選択した集合をtool manifestへ記録します。Homebrewの現行recipeは [HdrHistogram_c 0.12.0](https://github.com/HdrHistogram/HdrHistogram_c/tree/0.12.0)（CC0-1.0 OR BSD-2-Clause）、[simdjson 5.0.2](https://github.com/simdjson/simdjson/tree/v5.0.2)（Apache-2.0）を参照します。これらのsource取得先・宣言licenseと、実bundleの対応source/build/本文配達の完了を区別し、Mac toolsの `NOASSERTION` と公開前の提供条件を維持します。
 
 2026-10-13のMac CIでOpenSSLのABIが更新されたため、`config/mac-media-tool-files-20261013.txt` の40ファイル集合を追加します。20261006集合からの差分は `libcrypto.3.dylib`/`libssl.3.dylib` を `.4.dylib` へ置き換えた2ファイルだけで、旧集合・新集合とも完全一致を要求し、片方だけの更新を拒否します。CIが使用したHomebrew OpenSSL 4.0.3のsourceは [openssl-4.0.3.tar.gz](https://github.com/openssl/openssl/releases/download/openssl-4.0.3/openssl-4.0.3.tar.gz)、recipeのSHA-256は `325b5c806167c13b40b1ffeadfe0248197c00eccc4cf123ec1e28d2d2fd216d9`、[upstream license](https://github.com/openssl/openssl/blob/openssl-4.0.3/LICENSE.txt) はApache-2.0です。既存のApache-2.0本文と新policyをsource noticeへ含めます。実bundleの対応source/build・全notice提供を確認するまで、Mac toolsの `NOASSERTION` とlocal-acceptance-only境界は維持します。
+
+2026-10-15のMac CIではSQLiteだけが `libsqlite3.3.53.4.dylib` から `libsqlite3.3.54.0.dylib` へ更新されました。`config/mac-media-tool-files-20261015.txt` にその1ファイルだけを置換した40ファイル集合を追加し、他の集合との混在・追加・欠落と未確認の将来版は引き続き拒否します。Homebrew recipe（commit `05a2163181f54c724469013573922fab4d054e47`）が示すSQLite 3.54.0の [公式source](https://www.sqlite.org/2026/sqlite-autoconf-3540000.tar.gz) を取得し、SHA-256 `134ec0802dda5795816e25d25872d20b312cb3973438c49b30bc40b7705ea9ed` とsource先頭のblessingを照合しました。SQLiteは [public domain](https://www.sqlite.org/copyright.html) です。sourceの本文を以下に保持します。完全なMac bundleの対応source/build提供が完了したとの宣言にはしません。
+
+```text
+2001 September 15
+
+The author disclaims copyright to this source code.  In place of
+a legal notice, here is a blessing:
+
+   May you do good and not evil.
+   May you find forgiveness for yourself and forgive others.
+   May you share freely, never taking more than you give.
+```
 
 Mac NEXTもオンライン音源取得のため同じFFmpeg/FFprobe・Node・yt-dlpとdylibを同梱し、上記の完全一致policyと同じlicense/source条件を適用します。NEXTにも既存Previewと同じcommit/SHA-256固定のドラム分離モデルを同梱し、上記モデルのライセンス条件を適用します。ローカルcodecだけの準備用部分集合は `config/mac-audio-tool-files.txt` に残します。
 
