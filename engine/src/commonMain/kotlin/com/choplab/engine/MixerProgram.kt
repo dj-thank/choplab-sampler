@@ -2,10 +2,10 @@ package com.choplab.engine
 
 import kotlin.math.*
 
-/** Durable values only; coefficients are prepared separately, outside render. */
+/** Immutable values cache bypass decisions; coefficients are prepared separately, outside render. */
 data class MixEq(val lowDb: Float = 0f, val midDb: Float = 0f, val highDb: Float = 0f) {
     init { require(listOf(lowDb, midDb, highDb).all { it.isFinite() && it in -18f..18f }) }
-    val bypass: Boolean get() = lowDb == 0f && midDb == 0f && highDb == 0f
+    val bypass: Boolean = lowDb == 0f && midDb == 0f && highDb == 0f
 }
 
 enum class MixFilterMode { OFF, LOW_PASS, HIGH_PASS }
@@ -27,7 +27,7 @@ data class MixCompressor(val enabled: Boolean = false, val thresholdDb: Float = 
 
 data class MixInsert(val eq: MixEq = MixEq(), val filter: MixFilter = MixFilter(),
     val compressor: MixCompressor = MixCompressor()) {
-    val bypass: Boolean get() = eq.bypass && filter.mode == MixFilterMode.OFF && !compressor.enabled
+    val bypass: Boolean = eq.bypass && filter.mode == MixFilterMode.OFF && !compressor.enabled
 }
 
 data class TrackFx(val insert: MixInsert = MixInsert(), val delaySend: Float = 0f, val reverbSend: Float = 0f) {
@@ -92,7 +92,7 @@ class MixerProgram(channels: List<TrackFx> = emptyList(), val settings: MixSetti
 
 internal data class MixBiquad(val b0: Double = 1.0, val b1: Double = 0.0, val b2: Double = 0.0,
     val a1: Double = 0.0, val a2: Double = 0.0) {
-    val bypass: Boolean get() = b0 == 1.0 && b1 == 0.0 && b2 == 0.0 && a1 == 0.0 && a2 == 0.0
+    val bypass: Boolean = b0 == 1.0 && b1 == 0.0 && b2 == 0.0 && a1 == 0.0 && a2 == 0.0
     companion object {
         // RBJ biquad equations, normalized a0: https://www.w3.org/TR/audio-eq-cookbook/
         fun peak(hz: Double, db: Float): MixBiquad {
