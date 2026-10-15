@@ -1,7 +1,7 @@
 name: ChopLab Mac NEXT preview
 
 # The linked four-stage editor as a local, ad-hoc signed Mac app for the owner to try. Every merge to main
-# builds one; a pull request builds one only when it changes this packaging.
+# builds one; pull requests also exercise packaging and cross-process asset ownership changes.
 on:
   push:
     branches: [main]
@@ -20,6 +20,10 @@ on:
       - 'scripts/acceptance/MacPreviewLifecycle.java'
       - 'scripts/check_public_surface.py'
       - 'desktop/build.gradle.kts'
+      - 'jvm/src/main/kotlin/com/choplab/jvm/FileAssetStore.kt'
+      - 'jvm/src/main/kotlin/com/choplab/jvm/AssetStaging.kt'
+      - 'jvm/src/test/kotlin/com/choplab/jvm/AssetStagingRecoveryTest.kt'
+      - 'jvm/src/test/kotlin/com/choplab/jvm/PersistenceTest.kt'
   workflow_dispatch:
 
 permissions:
@@ -55,6 +59,13 @@ jobs:
         run: |
           brew update
           brew install ffmpeg node@24
+
+      - name: Verify Mac process ownership and crash recovery
+        timeout-minutes: 5
+        run: |
+          ./gradlew --no-daemon :jvm:test \
+            --tests com.choplab.jvm.AssetStagingRecoveryTest \
+            --tests com.choplab.jvm.PersistenceTest
 
       - name: Package the linked editor as a local ad-hoc Mac app
         run: ./gradlew --no-daemon --stacktrace :desktop:packageMacLinkedPreview
