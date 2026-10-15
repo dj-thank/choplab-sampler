@@ -90,10 +90,11 @@ object Reducer {
                 val old = before.pitchCorrections.firstOrNull { it.clipId == current.id }
                 require(old == null || old.id == intent.correction.id)
                 require((current.assetHash == intent.correction.sourceAssetHash && current.range == intent.correction.sourceRange) ||
-                    (old != null && current.assetHash == old.renderedAssetHash && current.range == FrameRange(0, before.asset(old.renderedAssetHash).frames) &&
+                    (old != null && current.assetHash == old.renderedAssetHash && current.range.end <= before.asset(old.renderedAssetHash).frames &&
                         old.sourceAssetHash == intent.correction.sourceAssetHash && old.sourceRange == intent.correction.sourceRange))
+                val range = if (current.assetHash == intent.correction.sourceAssetHash) FrameRange(0, intent.rendered.frames) else current.range
                 before.copy(assets = mergeAssets(before.assets, frozenListOf(intent.rendered)),
-                    clips = before.clips.map { if (it.id == current.id) it.copy(assetHash = intent.rendered.hash, range = FrameRange(0, intent.rendered.frames)) else it }.frozen(),
+                    clips = before.clips.map { if (it.id == current.id) it.copy(assetHash = intent.rendered.hash, range = range) else it }.frozen(),
                     pitchCorrections = (before.pitchCorrections.filterNot { it.clipId == current.id } + intent.correction).frozen())
             }
             is Intent.SelectVocalPitch -> {

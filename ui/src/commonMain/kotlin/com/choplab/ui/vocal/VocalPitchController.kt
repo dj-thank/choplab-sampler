@@ -25,13 +25,13 @@ interface VocalPitchPorts {
     fun isPreviewing(): Boolean = previewing.value
     suspend fun render(project: Project, draft: VocalPitchDraft, progress: (PitchCorrectionPhase, Int, Int) -> Unit): PreparedVocalPitch
     suspend fun original(project: Project, draft: VocalPitchDraft): Asset
-    suspend fun preview(asset: Asset, expectedRevision: Long): Boolean
+    suspend fun preview(asset: Asset, range: FrameRange, expectedRevision: Long): Boolean
     fun cancelPreview()
     suspend fun stopPreview(): Boolean
     suspend fun apply(intent: Intent, expectedRevision: Long): Boolean
 }
 enum class PitchEditorPhase { EDITING, PREPARING, APPLYING, CLOSED }
-enum class PitchEditorProblem { NO_VOICE, INVALID_INPUT, STALE, BUSY, RECORDING, LIMIT, FAILED, PREVIEW_FAILED, APPLY_FAILED }
+enum class PitchEditorProblem { NO_VOICE, INVALID_INPUT, STALE, TRIMMED_SELECTION, BUSY, RECORDING, LIMIT, FAILED, PREVIEW_FAILED, APPLY_FAILED }
 enum class PitchField { AMOUNT, RETUNE, VIBRATO }
 enum class PitchAudition { NONE, ORIGINAL, CORRECTED }
 data class PitchEditorState(
@@ -158,7 +158,7 @@ class VocalPitchController(private val document: StateFlow<DocumentState>, priva
                 } else if (action == PitchAction.PreviewOriginal) {
                     val original = ports.original(value.project, draft)
                     checkCurrent(token, value.revision)
-                    if (!ports.preview(original, value.revision)) throw PreviewFailed()
+                    if (!ports.preview(original, draft.auditionRange(value.project), value.revision)) throw PreviewFailed()
                     PitchAudition.ORIGINAL
                 } else {
                     val result = prepared?.takeIf { it.first == draft }?.second ?: ports.render(value.project, draft) { phase, at, total ->
@@ -172,7 +172,7 @@ class VocalPitchController(private val document: StateFlow<DocumentState>, priva
                         val intent = VocalPitchEdits.apply(document.value, draft, result.asset)
                         apply(token, value.revision, intent)
                     } else if (action == PitchAction.PreviewCorrected && result.asset != null) {
-                        if (!ports.preview(result.asset, value.revision)) throw PreviewFailed()
+                        if (!ports.preview(result.asset, draft.auditionRange(value.project), value.revision)) throw PreviewFailed()
                         PitchAudition.CORRECTED
                     } else PitchAudition.NONE
                 }
@@ -251,6 +251,7 @@ class VocalPitchController(private val document: StateFlow<DocumentState>, priva
     private fun blocked(value: VocalAvailability) = if (value == VocalAvailability.RECORDING) PitchEditorProblem.RECORDING else PitchEditorProblem.BUSY
     private fun problem(value: VocalPitchProblem) = when (value) {
         VocalPitchProblem.STALE -> PitchEditorProblem.STALE
+        VocalPitchProblem.TRIMMED_SELECTION -> PitchEditorProblem.TRIMMED_SELECTION
         VocalPitchProblem.LIMIT -> PitchEditorProblem.LIMIT
         VocalPitchProblem.NO_VOICE_CLIP -> PitchEditorProblem.NO_VOICE
         VocalPitchProblem.INVALID_INPUT -> PitchEditorProblem.INVALID_INPUT

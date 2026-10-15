@@ -44,7 +44,7 @@ class VocalPitchEditTest {
         assertTrue(deleted.assets.contains(rendered))
     }
 
-    @Test fun staleRevisionPlacementTrimInvalidRenderAndNonVoiceAreRejectedWithoutAnEdit() {
+    @Test fun staleRevisionPlacementInvalidRenderAndNonVoiceAreRejectedWithoutAnEdit() {
         val before = project()
         val doc = DocumentState(before, 9)
         val draft = VocalPitchEdits.draft(doc, "voice-clip", "pitch", PitchCorrectionSettings())
@@ -58,13 +58,45 @@ class VocalPitchEditTest {
         assertFailsWith<IllegalArgumentException> { VocalPitchEdits.apply(doc, draft, rendered.copy(frames = rendered.frames - 1)) }
         val corrected = Reducer.reduce(before, VocalPitchEdits.apply(doc, draft, rendered)).project
         val trimmed = corrected.copy(clips = corrected.clips.map { if (it.id == draft.expectedClip.id) it.copy(range = FrameRange(1, rendered.frames)) else it }.frozen())
-        assertFailsWith<VocalPitchException> { VocalPitchEdits.draft(doc.copy(project = trimmed), "voice-clip", "pitch", draft.settings) }
-        assertFailsWith<IllegalArgumentException> { VocalPitchEdits.select(doc.copy(project = trimmed), "pitch", true) }
+        assertEquals(VocalPitchProblem.TRIMMED_SELECTION, assertFailsWith<VocalPitchException> {
+            VocalPitchEdits.select(doc.copy(project = trimmed), "pitch", true)
+        }.problem)
         val music = before.copy(tracks = frozenListOf(before.tracks.single().copy(kind = TrackKind.BANK)))
         assertEquals(VocalPitchProblem.NO_VOICE_CLIP, assertFailsWith<VocalPitchException> {
             VocalPitchEdits.draft(doc.copy(project = music), "voice-clip", "pitch", draft.settings)
         }.problem)
         assertEquals(before, doc.project)
+    }
+
+    @Test fun croppedCorrectionRerendersTheFullOriginalContextAndKeepsExactOutputCropAndPlacementWithOneUndo() {
+        for (rate in listOf(8_000, 44_100, 48_000, 96_000)) {
+            val before = project().let { it.copy(assets = frozenListOf(it.assets.single().copy(sampleRate = rate))) }
+            val draft = VocalPitchEdits.draft(DocumentState(before, 0), "voice-clip", "pitch", PitchCorrectionSettings())
+            val first = rendered(draft, before)
+            val corrected = Reducer.reduce(before, VocalPitchEdits.apply(DocumentState(before, 0), draft, first)).project
+            for (crop in listOf(FrameRange(1, first.frames - 3), FrameRange(first.frames - 1, first.frames))) {
+                val trimmed = corrected.copy(clips = corrected.clips.map { if (it.id == "voice-clip") it.copy(range = crop) else it }.frozen())
+                val doc = DocumentState(trimmed, 2)
+                val again = VocalPitchEdits.draft(doc, "voice-clip", "ignored", draft.settings.copy(amount = .5f))
+                assertEquals(draft.sourceAssetHash, again.sourceAssetHash)
+                assertEquals(draft.sourceRange, again.sourceRange, "Retain all original DSP context at $rate Hz")
+                assertEquals(crop, again.auditionRange(trimmed))
+                val next = first.copy(hash = "c".repeat(64))
+                val session = EditSession(trimmed, 2)
+                fun commit(plan: EditPlan) { plan.effects.indices.forEach { session.acknowledge(plan, it) }; session.commit(plan) }
+                commit(session.plan(VocalPitchEdits.apply(doc, again, next)))
+                assertEquals(1, session.undoCount)
+                assertEquals(trimmed.clips[0].copy(assetHash = next.hash), session.project.clips[0])
+                assertEquals(trimmed.clips[1], session.project.clips[1])
+                assertEquals(draft.sourceRange, session.project.pitchCorrections.single().sourceRange)
+                val edited = session.project
+                commit(session.planUndo()!!); assertEquals(trimmed, session.project)
+                commit(session.planRedo()!!); assertEquals(edited, session.project)
+                assertFailsWith<IllegalArgumentException> {
+                    VocalPitchEdits.apply(doc, again, next.copy(frames = first.frames - 1))
+                }
+            }
+        }
     }
 
     @Test fun normalizedRangeUsesTheSameCeilOnBothEdgesAsPlaybackAndNeverChangesDuration() {

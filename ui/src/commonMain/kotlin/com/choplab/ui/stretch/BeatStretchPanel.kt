@@ -61,6 +61,7 @@ import org.jetbrains.compose.resources.stringResource
                         if (state.applied) Text(stringResource(Res.string.stretch_applied), Modifier.testTag("ce-stretch-applied").semantics { liveRegion = LiveRegionMode.Polite })
                         state.problem?.let { problem -> Text(stringResource(when (problem) {
                             StretchProblem.STALE -> Res.string.stretch_stale
+                            StretchProblem.TRIMMED -> Res.string.stretch_trimmed
                             StretchProblem.NO_TARGET -> Res.string.stretch_no_target
                             StretchProblem.INVALID_INPUT -> Res.string.stretch_invalid
                             StretchProblem.LIMIT -> Res.string.stretch_limit

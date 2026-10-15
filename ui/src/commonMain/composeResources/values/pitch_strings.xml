@@ -24,6 +24,7 @@
     <string name="pitch_no_voice">Select a voice placed in the song.</string>
     <string name="pitch_invalid">Check the numeric values and ranges.</string>
     <string name="pitch_stale">The song changed. Reload the current song.</string>
+    <string name="pitch_trimmed_selection">A trimmed clip cannot switch saved original/corrected versions. Use original/corrected audition to compare; pitch re-editing keeps the trim.</string>
     <string name="pitch_busy">Another operation is running. Try again after it finishes.</string>
     <string name="pitch_recording">Pitch correction cannot change during recording.</string>
     <string name="pitch_limit">Memory or storage limit reached. The original is retained.</string>

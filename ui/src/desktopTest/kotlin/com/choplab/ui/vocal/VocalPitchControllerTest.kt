@@ -12,6 +12,35 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlin.test.*
 
 class VocalPitchControllerTest {
+    @Test fun trimmedCorrectionAuditionsOnlyItsCropAndReappliesFromOriginalWhileSavedToggleIsExplicitlyRefused() = runBlocking {
+        val f = Fixture()
+        try {
+            assertTrue(f.controller.dispatch(PitchAction.Apply))
+            val old = f.session.project
+            val crop = FrameRange(13, 5987)
+            val plan = f.session.plan(Intent.SetArrangement(old.tracks, frozenListOf(old.clips.single().copy(range = crop)), old.takes))
+            plan.effects.indices.forEach { f.session.acknowledge(plan, it) }; f.session.commit(plan)
+            f.document.value = DocumentState(f.session.project, f.session.revision)
+            assertTrue(f.controller.dispatch(PitchAction.Reload))
+            assertFalse(f.controller.dispatch(PitchAction.SelectSaved(true)))
+            assertEquals(PitchEditorProblem.TRIMMED_SELECTION, f.controller.state.value.problem)
+            val before = f.document.value
+            assertTrue(f.controller.dispatch(PitchAction.PreviewOriginal))
+            assertEquals(crop, f.previewRange)
+            assertEquals(Fixture.source.hash, f.previewAsset?.hash)
+            assertTrue(f.controller.dispatch(PitchAction.PreviewCorrected))
+            assertEquals(crop, f.previewRange)
+            assertEquals(old.pitchCorrections.single().renderedAssetHash, f.previewAsset?.hash)
+            assertEquals(before, f.document.value)
+            assertTrue(f.controller.dispatch(PitchAction.Field(PitchField.AMOUNT, "55")))
+            assertTrue(f.controller.dispatch(PitchAction.Apply))
+            assertEquals(crop, f.document.value.project.clips.single().range)
+            assertEquals(Fixture.source.hash, f.lastDraft?.sourceAssetHash)
+            assertEquals(FrameRange(0, Fixture.source.frames), f.lastDraft?.sourceRange)
+            assertEquals(before.revision + 1, f.document.value.revision)
+            assertEquals(3, f.session.undoCount)
+        } finally { f.close() }
+    }
     @Test fun oldDocumentNotificationAfterReloadCannotInvalidateNewPreparedWork() = runBlocking {
         val notifications = CreationRevisionNotifications()
         val f = Fixture(observeDocument = notifications::observe)
@@ -141,14 +170,16 @@ class VocalPitchControllerTest {
         val previewing = MutableStateFlow(false)
         var actuallyPreviewing = false
         var renders = 0; var previews = 0; var acceptPreview = true; var acceptApply = true
+        var previewRange: FrameRange? = null; var previewAsset: Asset? = null; var lastDraft: VocalPitchDraft? = null
         val controller = VocalPitchController(observeDocument(document), availability, object : VocalPitchPorts {
             override val previewing = this@Fixture.previewing
             override fun isPreviewing() = actuallyPreviewing
             override suspend fun render(project: Project, draft: VocalPitchDraft, progress: (PitchCorrectionPhase, Int, Int) -> Unit): PreparedVocalPitch {
-                renders++; return rendering(draft)
+                renders++; lastDraft = draft; return rendering(draft)
             }
             override suspend fun original(project: Project, draft: VocalPitchDraft) = source
-            override suspend fun preview(asset: Asset, expectedRevision: Long): Boolean {
+            override suspend fun preview(asset: Asset, range: FrameRange, expectedRevision: Long): Boolean {
+                previewRange = range; previewAsset = asset
                 previews++; actuallyPreviewing = acceptPreview; previewing.value = acceptPreview; return acceptPreview
             }
             override fun cancelPreview() { actuallyPreviewing = false; previewing.value = false }

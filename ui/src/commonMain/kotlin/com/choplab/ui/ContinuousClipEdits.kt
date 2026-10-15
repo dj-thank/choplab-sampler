@@ -238,7 +238,7 @@ object ContinuousClipEdits {
                 val left = old.copy(range = FrameRange(old.range.start, sourceCut), timelineStartFrame = start)
                 val right = old.copy(id = freshId("clip"), range = FrameRange(sourceCut, old.range.end),
                     timelineStartFrame = start + durationFrames(project, left))
-                clips = clips.flatMap { if (it.id == old.id) listOf(left, right) else listOf(it) }
+                clips = clips.flatMap { if (it.id == old.id) listOf(left, copyRecipes(old, right)) else listOf(it) }
                 reshaped += left.id
                 reshaped += right.id
             }

@@ -16,6 +16,71 @@ import kotlin.math.*
 import kotlin.test.*
 
 class VocalPitchRendererTest {
+    @Test fun croppedReeditAfterArchiveReopenUsesFullOriginalDspContextAtEverySourceRate(): Unit = runBlocking {
+        val root = Files.createTempDirectory("pitch-crop-")
+        val memory = PcmMemoryBudget()
+        try {
+            val store = FileAssetStore(root.resolve("assets"))
+            WavPcmPort(store, memory = memory).use { pcm ->
+                val renderer = VocalPitchRenderer(store, pcm, root.resolve("scratch"))
+                for (rate in listOf(44_100, 48_000, 96_000)) {
+                    val source = put(store, rate, rate)
+                    val before = project(source, FrameRange(13, rate - 19L))
+                    val originalBytes = store.read(source)
+                    val doc = DocumentState(before, 0)
+                    val draft = VocalPitchEdits.draft(doc, "voice-clip", "pitch", settings)
+                    val first = assertIs<VocalPitchRenderResult.Rendered>(renderer.render(before, draft, "Initial")).asset
+                    val corrected = Reducer.reduce(before, VocalPitchEdits.apply(doc, draft, first)).project
+                    val crop = FrameRange(137, first.frames - 211)
+                    val trimmed = corrected.copy(clips = frozenListOf(corrected.clips.single().copy(range = crop,
+                        timelineStartFrame = 1237, gain = .7f, pan = -.3f)))
+                    val nextSettings = settings.copy(amount = .55f)
+                    val oracleDraft = VocalPitchEdits.draft(doc, "voice-clip", "oracle", nextSettings)
+                    val oracle = assertIs<VocalPitchRenderResult.Rendered>(renderer.render(before, oracleDraft, "Reedited")).asset
+                    assertNotEquals(first.hash, oracle.hash)
+                    val archive = ByteArrayOutputStream().also { ArchiveCodec().write(trimmed, store, it) }.toByteArray()
+                    val reopenedStore = FileAssetStore(root.resolve("reopened-$rate"))
+                    val reopened = ArchiveCodec().read(ByteArrayInputStream(archive), reopenedStore)
+                    assertEquals(trimmed, reopened)
+                    WavPcmPort(reopenedStore, memory = memory).use { reopenedPcm ->
+                        val reopenedRenderer = VocalPitchRenderer(reopenedStore, reopenedPcm, root.resolve("scratch-$rate"))
+                        val resumed = DocumentState(reopened, 9)
+                        val reedit = VocalPitchEdits.draft(resumed, "voice-clip", "ignored", nextSettings)
+                        assertEquals(draft.sourceRange, reedit.sourceRange)
+                        assertEquals(source.hash, reedit.sourceAssetHash)
+                        assertEquals(crop, reedit.auditionRange(reopened))
+                        val output = assertIs<VocalPitchRenderResult.Rendered>(reopenedRenderer.render(reopened, reedit, "Reedited")).asset
+                        assertEquals(oracle.hash, output.hash, "Full original context makes crop re-edit bit-identical at $rate Hz")
+                        assertContentEquals(store.read(oracle), reopenedStore.read(output))
+                        val audition = reopenedRenderer.original(reopened, reedit, "Original audition")
+                        reopenedPcm.acquire(source).use { raw -> reopenedPcm.acquire(audition).use { normalized ->
+                            memory.reserve(2 * 4096 * 8L).use {
+                                val firstFrame = reedit.firstFrame48(source).toInt()
+                                for (at in listOf(crop.start.toInt(), crop.end.toInt() - 1)) {
+                                    assertContentEquals(reopenedPcm.readWindow(raw.pcm, firstFrame + at, firstFrame + at + 1),
+                                        reopenedPcm.readWindow(normalized.pcm, at, at + 1), "Exact start/end audition frame at $rate Hz")
+                                }
+                            }
+                        } }
+                        val after = Reducer.reduce(reopened, VocalPitchEdits.apply(resumed, reedit, output)).project
+                        assertEquals(reopened.clips.single().copy(assetHash = output.hash), after.clips.single())
+                        assertContentEquals(originalBytes, reopenedStore.read(source))
+                        assertEquals(source.hash, after.pitchCorrections.single().sourceAssetHash)
+                        val savedAgain = ByteArrayOutputStream().also { ArchiveCodec().write(after, reopenedStore, it) }.toByteArray()
+                        val finalStore = FileAssetStore(root.resolve("final-$rate"))
+                        val final = ArchiveCodec().read(ByteArrayInputStream(savedAgain), finalStore)
+                        assertEquals(after, final)
+                        val again = VocalPitchEdits.draft(DocumentState(final, 0), "voice-clip", "unused", settings)
+                        assertEquals(draft.sourceRange, again.sourceRange)
+                        assertEquals(crop, again.auditionRange(final))
+                    }
+                    assertContentEquals(originalBytes, store.read(source))
+                }
+            }
+            assertEquals(0L, memory.statistics().usedBytes)
+        } finally { root.toFile().deleteRecursively() }
+    }
+
     @Test fun originalAuditionPreservesFullAssetIdentityAndNativeSubrangeMatchesPlayback(): Unit = runBlocking {
         val root = Files.createTempDirectory("pitch-original-")
         val memory = PcmMemoryBudget()
