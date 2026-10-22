@@ -19,6 +19,24 @@ data class VocalPitchCorrection(
     }
     fun firstFrame48(source: Asset): Long = takeSourceFrame48(sourceRange.start, source.sampleRate)
     fun frames48(source: Asset): Long = takeSourceFrame48(sourceRange.end, source.sampleRate) - firstFrame48(source)
+
+    /** A saved selection in the correction's output coordinates. Native crops are exact only at 48 kHz. */
+    internal fun outputRange(source: Asset, clip: Clip): FrameRange? = when {
+        clip.assetHash == renderedAssetHash && clip.range.end <= frames48(source) -> clip.range
+        clip.assetHash != sourceAssetHash -> null
+        clip.range == sourceRange -> FrameRange(0, frames48(source))
+        source.sampleRate == 48_000 && clip.range.start >= sourceRange.start && clip.range.end <= sourceRange.end ->
+            FrameRange(clip.range.start - sourceRange.start, clip.range.end - sourceRange.start)
+        else -> null
+    }
+
+    /** Never approximate a native endpoint by inverting the resampling ratio. */
+    internal fun originalRange(source: Asset, output: FrameRange): FrameRange? = when {
+        output.end > frames48(source) -> null
+        output == FrameRange(0, frames48(source)) -> sourceRange
+        source.sampleRate == 48_000 -> FrameRange(sourceRange.start + output.start, sourceRange.start + output.end)
+        else -> null
+    }
 }
 
 internal fun validateVocalPitchCorrections(project: Project) {

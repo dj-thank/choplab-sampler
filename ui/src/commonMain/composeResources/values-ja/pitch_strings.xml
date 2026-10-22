@@ -24,7 +24,7 @@
     <string name="pitch_no_voice">曲に配置した声を選んでください。</string>
     <string name="pitch_invalid">数値と範囲を確認してください。</string>
     <string name="pitch_stale">曲が変更されました。現在の曲を読み直してください。</string>
-    <string name="pitch_trimmed_selection">トリムしたクリップは保存済みの原音・補正音へ切り替えられません。原音・補正音の試聴で比較できます。ピッチ補正の再編集ではトリムを保持します。</string>
+    <string name="pitch_trimmed_selection">この範囲は保存済みの原音・補正音へ正確に対応できないため切り替えられません。原音・補正音の試聴で比較できます。ピッチ補正の再編集ではトリムを保持します。</string>
     <string name="pitch_busy">処理中です。完了後にもう一度操作してください。</string>
     <string name="pitch_recording">録音中はピッチ補正を変更できません。</string>
     <string name="pitch_limit">メモリまたは保存容量の上限です。原音は保持しています。</string>

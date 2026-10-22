@@ -89,10 +89,13 @@ object Reducer {
                 require(intent.rendered.hash == intent.correction.renderedAssetHash)
                 val old = before.pitchCorrections.firstOrNull { it.clipId == current.id }
                 require(old == null || old.id == intent.correction.id)
-                require((current.assetHash == intent.correction.sourceAssetHash && current.range == intent.correction.sourceRange) ||
-                    (old != null && current.assetHash == old.renderedAssetHash && current.range.end <= before.asset(old.renderedAssetHash).frames &&
-                        old.sourceAssetHash == intent.correction.sourceAssetHash && old.sourceRange == intent.correction.sourceRange))
-                val range = if (current.assetHash == intent.correction.sourceAssetHash) FrameRange(0, intent.rendered.frames) else current.range
+                val source = before.asset(intent.correction.sourceAssetHash)
+                val range = if (current.assetHash == intent.correction.sourceAssetHash && current.range == intent.correction.sourceRange)
+                    FrameRange(0, intent.rendered.frames)
+                else {
+                    require(old != null && old.sourceAssetHash == intent.correction.sourceAssetHash && old.sourceRange == intent.correction.sourceRange)
+                    requireNotNull(old.outputRange(source, current)) { "Pitch source range changed" }
+                }
                 before.copy(assets = mergeAssets(before.assets, frozenListOf(intent.rendered)),
                     clips = before.clips.map { if (it.id == current.id) it.copy(assetHash = intent.rendered.hash, range = range) else it }.frozen(),
                     pitchCorrections = (before.pitchCorrections.filterNot { it.clipId == current.id } + intent.correction).frozen())
@@ -101,12 +104,11 @@ object Reducer {
                 val correction = requireNotNull(before.pitchCorrections.firstOrNull { it.id == intent.correctionId })
                 val current = requireNotNull(before.clips.firstOrNull { it.id == correction.clipId })
                 require(current == intent.expectedClip) { "Pitch target changed" }
-                require((current.assetHash == correction.sourceAssetHash && current.range == correction.sourceRange) ||
-                    (current.assetHash == correction.renderedAssetHash && current.range == FrameRange(0, before.asset(correction.renderedAssetHash).frames))) {
-                    "Trimmed/replaced voice needs a new correction"
-                }
+                val source = before.asset(correction.sourceAssetHash)
+                val output = requireNotNull(correction.outputRange(source, current)) { "Pitch source range changed" }
+                val original = requireNotNull(correction.originalRange(source, output)) { "Native crop correspondence is unavailable" }
                 val hash = if (intent.original) correction.sourceAssetHash else correction.renderedAssetHash
-                val range = if (intent.original) correction.sourceRange else FrameRange(0, before.asset(hash).frames)
+                val range = if (intent.original) original else output
                 before.copy(clips = before.clips.map { if (it.id == current.id) it.copy(assetHash = hash, range = range) else it }.frozen())
             }
             is Intent.Rename -> before.copy(title = intent.title)

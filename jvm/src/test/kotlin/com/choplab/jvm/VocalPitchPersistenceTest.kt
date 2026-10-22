@@ -11,6 +11,32 @@ import kotlinx.serialization.json.*
 import kotlin.test.*
 
 class VocalPitchPersistenceTest {
+    @Test fun cropped48kSavedSelectionsAndReeditKeepTheirRangesAfterReopening() {
+        val source = Asset("a".repeat(64), "wav", 96_044, 48_000, 2, 12_000, "Original")
+        val before = Project(assets = frozenListOf(source), tracks = frozenListOf(Track("voice", "Voice", TrackKind.VOCAL)),
+            clips = frozenListOf(Clip("clip", "voice", source.hash, FrameRange(13, 11_999), timelineStartFrame = 1234)))
+        val draft = VocalPitchEdits.draft(DocumentState(before, 0), "clip", "pitch", PitchCorrectionSettings())
+        val frames = draft.frames48(source)
+        val rendered = Asset("b".repeat(64), "wav", 44 + frames * 8, 48_000, 2, frames, "Corrected", AssetRole.RENDERED, derivedFrom = source.hash)
+        val corrected = Reducer.reduce(before, VocalPitchEdits.apply(DocumentState(before, 0), draft, rendered)).project
+        val crop = FrameRange(7, frames - 9)
+        fun reopen(project: Project) = ProjectJson.decode(ProjectJson.encode(project)).also { assertEquals(project, it) }
+        val trimmed = reopen(corrected.copy(clips = frozenListOf(corrected.clips.single().copy(range = crop))))
+        val original = reopen(Reducer.reduce(trimmed, VocalPitchEdits.select(DocumentState(trimmed, 2), "pitch", true)).project)
+        assertEquals(before.clips.single().copy(range = FrameRange(20, 11_990)), original.clips.single())
+        assertEquals(trimmed.pitchCorrections, original.pitchCorrections)
+        val document = DocumentState(original, 3)
+        val next = VocalPitchEdits.draft(document, "clip", "unused", draft.settings.copy(amount = .5f))
+        assertEquals(draft.sourceRange, next.sourceRange)
+        assertEquals(crop, next.auditionRange(original))
+        val replacement = rendered.copy(hash = "c".repeat(64))
+        val reapplied = reopen(Reducer.reduce(original, VocalPitchEdits.apply(document, next, replacement)).project)
+        assertEquals(trimmed.clips.single().copy(assetHash = replacement.hash), reapplied.clips.single())
+        assertEquals(source, reapplied.asset(source.hash))
+        val switched = reopen(Reducer.reduce(original, VocalPitchEdits.select(document, "pitch", false)).project)
+        assertEquals(trimmed, switched)
+    }
+
     @Test fun schemas10Through13MigrateToEmptyCorrectionsWithoutRelaxingTheirOriginalShape() {
         for (schema in 10..13) {
             val bytes = requireNotNull(javaClass.getResourceAsStream("/schema$schema-empty.json")).use { it.readBytes() }
