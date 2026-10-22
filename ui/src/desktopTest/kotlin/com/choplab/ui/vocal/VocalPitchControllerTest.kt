@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlin.test.*
 
 class VocalPitchControllerTest {
-    @Test fun trimmedCorrectionAuditionsOnlyItsCropAndReappliesFromOriginalWhileSavedToggleIsExplicitlyRefused() = runBlocking {
+    @Test fun trimmed48kCorrectionSwitchesSavedVersionsAndReappliesFromOriginalWithoutLosingTheCrop() = runBlocking {
         val f = Fixture()
         try {
             assertTrue(f.controller.dispatch(PitchAction.Apply))
@@ -22,8 +22,14 @@ class VocalPitchControllerTest {
             plan.effects.indices.forEach { f.session.acknowledge(plan, it) }; f.session.commit(plan)
             f.document.value = DocumentState(f.session.project, f.session.revision)
             assertTrue(f.controller.dispatch(PitchAction.Reload))
-            assertFalse(f.controller.dispatch(PitchAction.SelectSaved(true)))
-            assertEquals(PitchEditorProblem.TRIMMED_SELECTION, f.controller.state.value.problem)
+            assertTrue(f.controller.dispatch(PitchAction.SelectSaved(true)))
+            assertEquals(Fixture.source.hash, f.document.value.project.clips.single().assetHash)
+            assertEquals(crop, f.document.value.project.clips.single().range)
+            assertTrue(f.controller.dispatch(PitchAction.PreviewOriginal))
+            assertEquals(crop, f.previewRange)
+            assertTrue(f.controller.dispatch(PitchAction.SelectSaved(false)))
+            assertEquals(old.pitchCorrections.single().renderedAssetHash, f.document.value.project.clips.single().assetHash)
+            assertEquals(crop, f.document.value.project.clips.single().range)
             val before = f.document.value
             assertTrue(f.controller.dispatch(PitchAction.PreviewOriginal))
             assertEquals(crop, f.previewRange)
@@ -38,7 +44,7 @@ class VocalPitchControllerTest {
             assertEquals(Fixture.source.hash, f.lastDraft?.sourceAssetHash)
             assertEquals(FrameRange(0, Fixture.source.frames), f.lastDraft?.sourceRange)
             assertEquals(before.revision + 1, f.document.value.revision)
-            assertEquals(3, f.session.undoCount)
+            assertEquals(5, f.session.undoCount)
         } finally { f.close() }
     }
     @Test fun oldDocumentNotificationAfterReloadCannotInvalidateNewPreparedWork() = runBlocking {
