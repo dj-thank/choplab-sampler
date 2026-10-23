@@ -57,6 +57,8 @@ ChopLab単体のMIT表示だけで、組合せ全体をMIT-onlyと扱いませ�
 署名鍵・token・利用者音声は対応sourceへ含めません。
 旧版は `archive/pre-rebuild-v0.18.0` から追跡できます。
 
+Mac media policy `config/mac-media-tool-files-20261024.txt` adds the exact observed 40-file graph with Brotli 1.2.1 (MIT), c-ares 1.34.9 (MIT), HdrHistogram_c 0.12.1 (CC0-1.0 OR BSD-2-Clause), and SQLite 3.54.1 (upstream blessing). Source URLs, publisher-declared source hashes, ABI evidence and the CI observation are recorded in `config/mac-media-source-review-20261024.json` and included in source notices. The c-ares `21:8:19` libtool version maps to `2.19.8`, and HdrHistogram's ABI version is `6.5.4`; neither is the project version. Previous exact graphs remain valid; mixed or unknown library sets are rejected. This reviewed input graph is not a complete corresponding-source or public-release receipt.
+
 ## Android NIO desugar 2.1.5 — source and license evidence
 
 `config/newpipe-dependencies.json` はGoogle Mavenで取得したNIO本体とconfigurationの両JAR/POMをURL・bytes・SHA-256で固定します。`:app:verifyNewPipeDesugaring` は解決した推移依存を含む全座標と両JARを照合します。設定だけでなく、configuration JARにある29個の補助classも検査対象です。これらが最終APKへどの形で入るかはD8/R8後の配布物で確認します。
