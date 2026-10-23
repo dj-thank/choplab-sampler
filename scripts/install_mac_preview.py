@@ -13,6 +13,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 import uuid
 
 
@@ -50,12 +51,20 @@ def verify_package(app, manifest_path):
 def require_idle(app):
     if not app.exists():
         return
-    check = subprocess.run(['/usr/sbin/lsof', '-t', '+D', str(app)],
-                           capture_output=True, text=True, timeout=30)
-    if check.returncode not in (0, 1) or check.stderr.strip():
-        raise RuntimeError('Could not confirm the app is closed. Close it and try again.')
-    if check.stdout.strip():
-        raise RuntimeError('The app is running. Save your work and quit the app, then try again.')
+    # A newly copied bundle can be briefly read by OS services without being launched.
+    # Still require every open handle to disappear; do not ignore a reader by process name.
+    deadline = time.monotonic() + 30
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise RuntimeError('The app bundle is still in use. Save your work and quit the app, then try again.')
+        check = subprocess.run(['/usr/sbin/lsof', '-t', '+D', str(app)],
+                               capture_output=True, text=True, timeout=remaining)
+        if check.returncode not in (0, 1) or check.stderr.strip():
+            raise RuntimeError('Could not confirm the app is closed. Close it and try again.')
+        if not check.stdout.strip():
+            return
+        time.sleep(min(0.25, max(0, deadline - time.monotonic())))
 
 
 def copy_app(source, target):
