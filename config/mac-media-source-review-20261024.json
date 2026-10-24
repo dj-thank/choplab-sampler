@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "reviewedOn": "2026-10-24",
+  "scope": "Four updated dependency families in the exact 40-file Mac media policy; not complete corresponding source or release clearance",
+  "policy": "config/mac-media-tool-files-20261024.txt",
+  "observation": "https://github.com/dj-thank/choplab-sampler/actions/runs/39971706266/job/120475794434",
+  "sources": [
+    {
+      "name": "brotli", "version": "1.2.1", "license": "MIT",
+      "formula": "https://formulae.brew.sh/api/formula/brotli.json",
+      "source": "https://github.com/google/brotli/archive/refs/tags/v1.2.1.tar.gz",
+      "sourceSha256": "98d35d11a78dc453aebb7d10c3748f3f73ff78c8267c0dc697b8631f67bf7e8f",
+      "files": ["libbrotlicommon.1.2.1.dylib", "libbrotlidec.1.2.1.dylib", "libbrotlienc.1.2.1.dylib"]
+    },
+    {
+      "name": "c-ares", "version": "1.34.9", "license": "MIT",
+      "formula": "https://formulae.brew.sh/api/formula/c-ares.json",
+      "source": "https://github.com/c-ares/c-ares/releases/download/v1.34.9/c-ares-1.34.9.tar.gz",
+      "sourceSha256": "9364b70a12eb59a06830fb488d9357f90100dff0d98b23ea3593a183d43e6f2f",
+      "abiEvidence": "https://github.com/c-ares/c-ares/blob/v1.34.9/CMakeLists.txt",
+      "files": ["libcares.2.19.8.dylib"]
+    },
+    {
+      "name": "HdrHistogram_c", "version": "0.12.1", "license": "CC0-1.0 OR BSD-2-Clause",
+      "formula": "https://formulae.brew.sh/api/formula/hdrhistogram_c.json",
+      "source": "https://github.com/HdrHistogram/HdrHistogram_c/archive/refs/tags/0.12.1.tar.gz",
+      "sourceSha256": "b2cff564b49f900e7f951c95428100a4aed36561703237ffc5e41b4843d804ce",
+      "abiEvidence": "https://github.com/HdrHistogram/HdrHistogram_c/blob/0.12.1/CMakeLists.txt",
+      "files": ["libhdr_histogram.6.5.4.dylib"]
+    },
+    {
+      "name": "sqlite", "version": "3.54.1", "license": "blessing",
+      "formula": "https://formulae.brew.sh/api/formula/sqlite.json",
+      "source": "https://www.sqlite.org/2026/sqlite-autoconf-3540100.tar.gz",
+      "sourceSha256": "926ef8d3eab93fbf6e06011901273eec076b25594a4e1cdadd50c987f4f6d64e",
+      "files": ["libsqlite3.3.54.1.dylib"]
+    }
+  ],
+  "sourceHashes": "Declared by the official Homebrew formula metadata; not a local source archive download receipt",
+  "sourcePublicationVerified": false
+}

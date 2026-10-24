@@ -95,6 +95,8 @@ Mac NEXT preview（`:desktop:packageMacLinkedPreview`、workflow `mac-preview.ym
 
 Mac NEXTのCI ZIPにはappと同じsource/bytesのmanifest、Python 3用installer、最低macOS版を記載した導入手順を含めます。最終ZIPを展開し、隔離したApplicationsへ新規導入→同じpackageで更新→導入先の全制作・通常終了再開を検査します。appだけのbuild出力で成功しても、この配布経路の成功へ置き換えません。インストール先は標準で利用者のホーム内Applications、以前のapp/manifestは同所の `.choplab-backups` に保存し、制作profileは変更しません。
 
+導入直後の一時的なOS読取も含め、bundle内の全open handleがなくなったことを確認してから更新します。idle確認は既存の30秒上限全体を共有して再観測し、使用が続く・検査が失敗する・timeoutする場合は更新を拒否します。process名による除外や強制終了は行いません。
+
 ONNX Runtimeのテレメトリはアプリのプロセス内で停止する。非Windowsは[公式の初期化前要件](https://github.com/microsoft/onnxruntime/blob/main/docs/Privacy.md#disabling-telemetry)に従い、native ORTを読む前に`ORT_DISABLE_TELEMETRY=1`を設定する。MacのLaunchServices用plistと直接起動するdesktop入口、AndroidのApplication初期化、GradleのJavaExec/Test、同梱Javaを直接実行するMac受入scriptを対象にする。Javaの`setTelemetry(false)`も両分離モデルで呼ぶが、非Windowsの初期1DS uploaderを防ぐ代わりにはしない。WindowsはこのORT APIでETWを停止し、OS全体の設定は変更しない。モデル・推論設定は維持し、固定モデルの同じPCMとプロセスの自然終了を確認する。既存配布物への一時環境変数による診断は、修正を含むfresh packageの受入と区別する。
 
 ## 鍵と設定の区分
