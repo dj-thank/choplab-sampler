@@ -1,0 +1,48 @@
+name: Verify pinned NIO configuration helpers
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/nio-configuration-verification.yml'
+      - 'scripts/acceptance/verify_nio_configuration.py'
+      - 'scripts/acceptance/NioConfigurationConversions.java'
+      - 'config/nio-configuration-source-class-map-20261025.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  helpers:
+    name: Rebuild all 29 NIO configuration helper classes
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '8.0.442+6'
+      - name: Keep the Java 8 compiler path
+        run: echo "NIO_JAVAC8=$JAVA_HOME/bin/javac" >> "$GITHUB_ENV"
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Compile the pinned sources and apply the upstream wrapper conversion
+        run: |
+          python3 scripts/acceptance/verify_nio_configuration.py \
+            --work "$RUNNER_TEMP/nio-configuration" --javac8 "$NIO_JAVAC8" \
+            --javac "$JAVA_HOME/bin/javac" --java "$JAVA_HOME/bin/java"
+      - name: Preserve success or failure evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: choplab-nio-configuration-evidence
+          path: |
+            ${{ runner.temp }}/nio-configuration/receipt.json
+            ${{ runner.temp }}/nio-configuration/build.log
+          if-no-files-found: warn
+          retention-days: 7

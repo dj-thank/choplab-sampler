@@ -1,0 +1,440 @@
+{
+  "version": 1,
+  "scope": "All helper class bytes only; generated desugar.json and lint files remain unverified. Whole source delivery/public acceptance not granted.",
+  "source": {
+    "revision": "c331a820ddae7dea41f41a04375b784486d0f705",
+    "url": "https://r8.googlesource.com/r8/+archive/c331a820ddae7dea41f41a04375b784486d0f705/src/library_desugar.tar.gz",
+    "sha256": "8754aff4f8e7b6a4caa892e386b2cbcb722440c89e7c8440af2b4882d4f42b2e",
+    "archiveHashIsObservationOnly": true,
+    "contentDigest": "31c3aecc6349d292b8ac85d4d460aee2853817943d1b352484e92f259ca89a49",
+    "fileCount": 74
+  },
+  "binary": {
+    "url": "https://dl.google.com/dl/android/maven2/com/android/tools/desugar_jdk_libs_configuration_nio/2.1.5/desugar_jdk_libs_configuration_nio-2.1.5.jar",
+    "sha256": "7db51661cd07d1fd5cf12769a75ba201910624bb3801c09363dd3cb28e31c51b"
+  },
+  "license": "BSD-3-Clause",
+  "classCount": 29,
+  "compileInputCount": 67,
+  "inputs": [
+    {
+      "path": "src/library_desugar/java/android/os/Build.java",
+      "sha256": "8b29870a9697246d451802e839f2dbfb6fab1783c58765fde45fc61c3d805f9a"
+    },
+    {
+      "path": "src/library_desugar/java/android/os/StrictMode.java",
+      "sha256": "118301b8de29a991a1d8b98d8f49330bca416903197d488955c208a0bb26d343"
+    },
+    {
+      "path": "src/library_desugar/java/desugar/sun/nio/fs/DesugarDefaultFileSystemProvider.java",
+      "sha256": "06c5330b65168f3bf7491417c691c1f300ea8ae6b0d020b687fe26b91edd7196"
+    },
+    {
+      "path": "src/library_desugar/java/desugar/sun/nio/fs/DesugarDefaultFileTypeDetector.java",
+      "sha256": "036c09a9743a6f4640f893cc47c85ee571555798fe4aaac426c222d1c77e03c4"
+    },
+    {
+      "path": "src/library_desugar/java/desugar/sun/nio/fs/DesugarFileChannel.java",
+      "sha256": "a0d7ebbc21b20c643eff493eca79b0646dd6cfa18916d92e2983c3fc3f4c30fe"
+    },
+    {
+      "path": "src/library_desugar/java/j$/nio/file/attribute/AclFileAttributeView.java",
+      "sha256": "9326bfa0b870a4447fe50dacf61d9b5b0bae1344c7735634b511be0d742bf3e3"
+    },
+    {
+      "path": "src/library_desugar/java/j$/nio/file/attribute/BasicFileAttributes.java",
+      "sha256": "5a5cb5ac8bb7e5035e105e2ca5590f9c9d078e9738edce875007f6a11c2590e8"
+    },
+    {
+      "path": "src/library_desugar/java/j$/nio/file/attribute/BasicFileAttributeView.java",
+      "sha256": "b3eee9cae0ed303b96d81fb55d82ea83264cd67c33da594e604fe5a35031df81"
+    },
+    {
+      "path": "src/library_desugar/java/j$/nio/file/attribute/DosFileAttributes.java",
+      "sha256": "72d154e7f5ba8ade66c842507546566bc6dd6c92b93b3a03407297ae6af9b739"
+    },
+    {
+      "path": "src/library_desugar/java/j$/nio/file/attribute/DosFileAttributeView.java",
+      "sha256": "e97b30279b4d98279ec8e28baf37d1989a0b1f91d1ab30948e6e10b142f50076"
+    },
+    {
+      "path": "src/library_desugar/java/j$/nio/file/attribute/FileAttribute.java",
+      "sha256": "80ba39d26d17589e13fc43524106f6b2273dcff22fb54f4825665873998daf2e"
+    },
+    {
+      "path": "src/library_desugar/java/j$/nio/file/attribute/FileAttributeView.java",
+      "sha256": "155f3f4800f5006bf6fb7bdf62afb1d4be95ca5e7d4d54e1e82ede1bb477f0a5"
+    },
+    {
+      "path": "src/library_desugar/java/j$/nio/file/attribute/FileAttributeWrapperMethods.java",
+      "sha256": "5aeb31102e1a2aa46b487c4176b99aaad6f32aa3d05aac2b911a11bd11c82496"
+    },
+    {
+      "path": "src/library_desugar/java/j$/nio/file/attribute/FileOwnerAttributeView.java",
+      "sha256": "542257046fcc406272bbcbed944a66b0df4d4f86fca4f0d1d8a9b1aea2a2a1a1"
+    },
+    {
+      "path": "src/library_desugar/java/j$/nio/file/attribute/FileTime.java",
+      "sha256": "447e6765c7711cf7512ad81c64f60011f0ba4907cc02d1c6f6025e35485749aa"
+    },
+    {
+      "path": "src/library_desugar/java/j$/nio/file/attribute/PosixFileAttributes.java",
+      "sha256": "591de3e98e301471e7e9718502905980a5b69dbcc05384ad24e901370ee55b05"
+    },
+    {
+      "path": "src/library_desugar/java/j$/nio/file/attribute/PosixFileAttributeView.java",
+      "sha256": "eab8922c51ae53926d713693b9828aabdca6ff639a6bcbca71a3be288dc4f3f3"
+    },
+    {
+      "path": "src/library_desugar/java/j$/nio/file/attribute/PosixFilePermission.java",
+      "sha256": "7116dbf5295f14c5431a1c3921ef3ef7e280c68a8169d0dd98768c87de0e4165"
+    },
+    {
+      "path": "src/library_desugar/java/j$/nio/file/attribute/UserDefinedFileAttributeView.java",
+      "sha256": "d38cea030acf7d3e90ebe0406a8866fb17cce565a3af9f97b1352a9969001f99"
+    },
+    {
+      "path": "src/library_desugar/java/j$/nio/file/Files.java",
+      "sha256": "5d2ee62b7f29739a2b7e4a12c01312bd32a99d62fde4c4fff5027e076cad513d"
+    },
+    {
+      "path": "src/library_desugar/java/j$/nio/file/FileSystem.java",
+      "sha256": "58d37ecddacb05904a878fdec1c411ec68d9f920a86e9f962ea0004fa831bb25"
+    },
+    {
+      "path": "src/library_desugar/java/j$/nio/file/FileSystems.java",
+      "sha256": "c206ac15f0f7c309aa64880975a6fdd4314fcd73df6b69461ec0ea731ce024c4"
+    },
+    {
+      "path": "src/library_desugar/java/j$/nio/file/LinkOption.java",
+      "sha256": "3600c6a7e871dc598ac095512822a0483f465355754f6ce5eb2dddbba2bd77c9"
+    },
+    {
+      "path": "src/library_desugar/java/j$/nio/file/OpenOption.java",
+      "sha256": "48cb7527a2f76477dd0ff9af07ea5bfb0583c18f9d100d40583a4b32161723e6"
+    },
+    {
+      "path": "src/library_desugar/java/j$/nio/file/Path.java",
+      "sha256": "7dfbfa0a14ff0666030eeb0cf5c452daeb4a98218238f003b21848fe064283e5"
+    },
+    {
+      "path": "src/library_desugar/java/j$/nio/file/spi/FileSystemProvider.java",
+      "sha256": "0255b5369b8956ff50813c7e3a707671318d88a263e5a121aeb4f2bbc73e9541"
+    },
+    {
+      "path": "src/library_desugar/java/j$/nio/file/StandardWatchEventKinds.java",
+      "sha256": "edd1d1e5d42fd57044091b21e6010685c57450d870b45077f907fa6168483bfd"
+    },
+    {
+      "path": "src/library_desugar/java/j$/nio/file/WatchEvent.java",
+      "sha256": "e86a01e70e972d9ab41753cfc44af3cbac43f495481a02de53f6db703281e5f7"
+    },
+    {
+      "path": "src/library_desugar/java/j$/time/Duration.java",
+      "sha256": "f36cb9069b4999a7790eb2554d5ffc72fed19476da699b8e215c4bf8b03b76c0"
+    },
+    {
+      "path": "src/library_desugar/java/j$/time/Instant.java",
+      "sha256": "cafaff105098755f8a1d1f402abbe173020ba74781d7e7d9435c427c0b9346b2"
+    },
+    {
+      "path": "src/library_desugar/java/j$/time/LocalDate.java",
+      "sha256": "cac81e6badb718b61bcf5d2c8ecbd67ff0c85f61a17979dfe729f023b4008c2f"
+    },
+    {
+      "path": "src/library_desugar/java/j$/time/LocalDateTime.java",
+      "sha256": "0b97cc1f77348af7c5a1d921d9949498761b9e6613173a92a9935c83e6f16423"
+    },
+    {
+      "path": "src/library_desugar/java/j$/time/LocalTime.java",
+      "sha256": "b7ba4fa16895705bd1534b76a8d7fc4fb72635774e24a151c4f09332b2b2c230"
+    },
+    {
+      "path": "src/library_desugar/java/j$/time/MonthDay.java",
+      "sha256": "d092da27883e4b1a9db24391a729bb801fd4a61352cbfe26be2d3bbc5058fc0a"
+    },
+    {
+      "path": "src/library_desugar/java/j$/time/Period.java",
+      "sha256": "439cd80e06ef830b1133098dbcc72385e4a91c69210e594ee6343ea4ca437f03"
+    },
+    {
+      "path": "src/library_desugar/java/j$/time/ZonedDateTime.java",
+      "sha256": "c6a2eb245be82ad3dece8678c47abd64b31d9ef528997904da0e77e0ddf7b8b1"
+    },
+    {
+      "path": "src/library_desugar/java/j$/time/ZoneId.java",
+      "sha256": "3b6946453ce0d89ced98b363ccb4cfcb4476e61d8773368b6a00955b73d82a5d"
+    },
+    {
+      "path": "src/library_desugar/java/j$/time/ZoneOffset.java",
+      "sha256": "c8d80a5908d3284b2a9ef5f27c3d5dfdd2ac278538e4d9f3722e0ad6e3f174b5"
+    },
+    {
+      "path": "src/library_desugar/java/j$/util/optionalstubs/Optional.java",
+      "sha256": "58cc05522a1993a003bc772588687655231169070509cea464a60bb31ae34578"
+    },
+    {
+      "path": "src/library_desugar/java/j$/util/optionalstubs/OptionalDouble.java",
+      "sha256": "cf2618a3a96c362ee4e19ea64a10ba6a5ae549409595cd1b851b489a43bc0def"
+    },
+    {
+      "path": "src/library_desugar/java/j$/util/optionalstubs/OptionalInt.java",
+      "sha256": "df951974812d23f0c4ca3a3aac83dfabf308521e346436895124be99a0361842"
+    },
+    {
+      "path": "src/library_desugar/java/j$/util/optionalstubs/OptionalLong.java",
+      "sha256": "97103a3c5131b5632dd497126e1c3c6a3b8cee198e387702558fb03452bc2d38"
+    },
+    {
+      "path": "src/library_desugar/java/j$/util/stream/Collector.java",
+      "sha256": "d8230272d2bf682bbd0184094690ba5d3089d9b29096aeb5c264cb55dd14c0d5"
+    },
+    {
+      "path": "src/library_desugar/java/j$/util/stream/DoubleStream.java",
+      "sha256": "4e31c75cbab04f250adb53083a42539e10c1a97cbb5472fa8ab71bb0008f49ac"
+    },
+    {
+      "path": "src/library_desugar/java/j$/util/stream/IntStream.java",
+      "sha256": "eef4562c0e14800db83ee1cd3f06370a4595aaddb4c201fed263811859d484c3"
+    },
+    {
+      "path": "src/library_desugar/java/j$/util/stream/LongStream.java",
+      "sha256": "89d079285e6e28d166dd9cb52dd0841fa1e98b47471767186e85a339e13fbe5c"
+    },
+    {
+      "path": "src/library_desugar/java/j$/util/stream/Stream.java",
+      "sha256": "bd10824de422faf4866adafad5500a9832f2c18f605d0d2e25826f7354baa503"
+    },
+    {
+      "path": "src/library_desugar/java/j$/util/summarystatisticsstubs/DoubleSummaryStatistics.java",
+      "sha256": "72ac8e72ad628951240dc5e10c92f09d765c263c93ed83be9928caba6aa4850a"
+    },
+    {
+      "path": "src/library_desugar/java/j$/util/summarystatisticsstubs/IntSummaryStatistics.java",
+      "sha256": "665d03ae96b3f254f12ba5015a981793b36a792157f02abff94b8b612d7f1434"
+    },
+    {
+      "path": "src/library_desugar/java/j$/util/summarystatisticsstubs/LongSummaryStatistics.java",
+      "sha256": "94e461063d3a15a7c86bb7eeb15f68fca5aa7acf49c3eabfbe1bdd693975160d"
+    },
+    {
+      "path": "src/library_desugar/java/java/adapter/AndroidVersionTest.java",
+      "sha256": "8d3b3ed2cddf648c5b65eb9c8d231b68bd7e46bd5d9aa8e9f86c287098227f42"
+    },
+    {
+      "path": "src/library_desugar/java/java/adapter/HybridFileSystemProvider.java",
+      "sha256": "204a6c42f5729833a02ce9ddc27b63e1d580ca2687abfa7d4a08b1229f08691c"
+    },
+    {
+      "path": "src/library_desugar/java/java/adapter/HybridFileTypeDetector.java",
+      "sha256": "c91dfe3521c293ccc6bf27a77f6a826b935a4e660751a50a3e9ec1a56004f74b"
+    },
+    {
+      "path": "src/library_desugar/java/java/nio/channels/DesugarChannels.java",
+      "sha256": "bc63abc4f7ed3dabd571cc2c11049fd0f49a166777457d35916113b980ae18f4"
+    },
+    {
+      "path": "src/library_desugar/java/java/nio/file/attribute/FileAttributeConversions.java",
+      "sha256": "e96a247f6f8ce3c0de2a628673431e21cd86fe32eae356d5219c5d0fa49d0755"
+    },
+    {
+      "path": "src/library_desugar/java/java/nio/file/FileApiFlips.java",
+      "sha256": "11b5ca8d5b9e6cdb94825bc55a4b5b6f2a769ebf3b44ded92e34ba3979c8d978"
+    },
+    {
+      "path": "src/library_desugar/java/java/nio/file/PathApiFlips.java",
+      "sha256": "512a078c390c6966d376a66e3c91bba8a775ad8f775e0c454b6e46defb59f325"
+    },
+    {
+      "path": "src/library_desugar/java/java/nio/file/WatchEventKindConversions.java",
+      "sha256": "e30ece0c6c68b7539538741fdb08df57c28a4cb069e1a6ce32829e70ba762bae"
+    },
+    {
+      "path": "src/library_desugar/java/java/time/TimeConversions.java",
+      "sha256": "c29b02d5ceaf8ca4f4a6b07cc506c9b57ed141506e851587b1d9730f9394e87f"
+    },
+    {
+      "path": "src/library_desugar/java/java/util/ConversionRuntimeException.java",
+      "sha256": "07267f8bc0deb0cbea11259cc0199c21f185cf84435b9ecd609eb097b09a75c2"
+    },
+    {
+      "path": "src/library_desugar/java/java/util/DoubleSummaryStatisticsConversions.java",
+      "sha256": "e9112436bc632f838f8e57eb759c4fb3d1f87014240895f9ef3a65511000a6da"
+    },
+    {
+      "path": "src/library_desugar/java/java/util/IntSummaryStatisticsConversions.java",
+      "sha256": "3e9db24ce9316caa3855389469a804cd542d7beade79620a09eceb847915d164"
+    },
+    {
+      "path": "src/library_desugar/java/java/util/LongSummaryStatisticsConversions.java",
+      "sha256": "84e7f3b9e390b2528fa0b995beae4259548aca9374afca7ace70a7cdae06bcc8"
+    },
+    {
+      "path": "src/library_desugar/java/java/util/OptionalConversions.java",
+      "sha256": "329307ead224c8d81ef32faff582c3d4bd388a27446a4fa4d111dad91681f333"
+    },
+    {
+      "path": "src/library_desugar/java/java/util/stream/FlatMapApiFlips.java",
+      "sha256": "ca8520c11152491e3a96f91f2f1348bbede91017ff560875d952b067c077eb43"
+    },
+    {
+      "path": "src/library_desugar/java/java/util/stream/StackWalkerApiFlips.java",
+      "sha256": "589aae1f133aa7a422dff465caf6bca9d4acaf55059d43594fa2375b111dd342"
+    },
+    {
+      "path": "src/library_desugar/java/java/util/stream/StreamApiFlips.java",
+      "sha256": "9485d12d744d5d74f9c451cdf8507d44e0f88f6945f488196334e627173f8a11"
+    }
+  ],
+  "classes": [
+    {
+      "path": "java/time/TimeConversions.class",
+      "sha256": "c130bbcee45720a75082ec1e344467146b1335b2c9741fee908099efd0a2136f",
+      "source": "src/library_desugar/java/java/time/TimeConversions.java"
+    },
+    {
+      "path": "java/util/LongSummaryStatisticsConversions.class",
+      "sha256": "bc802af9ad742d5eab2001752aa7bf518418e2e4f9eb79d89967ae7b0240e345",
+      "source": "src/library_desugar/java/java/util/LongSummaryStatisticsConversions.java"
+    },
+    {
+      "path": "java/util/OptionalConversions.class",
+      "sha256": "b015322199e9cebd62c3b703ba56e7fe999d8029b48e7fe915e8f3e0a20843c0",
+      "source": "src/library_desugar/java/java/util/OptionalConversions.java"
+    },
+    {
+      "path": "java/util/IntSummaryStatisticsConversions.class",
+      "sha256": "384f67e1c49645cd7af396dbcd7afaf6d9b3d581f1a9c34186b4ccb460ceec2c",
+      "source": "src/library_desugar/java/java/util/IntSummaryStatisticsConversions.java"
+    },
+    {
+      "path": "java/util/DoubleSummaryStatisticsConversions.class",
+      "sha256": "f359f396282d5f8cbcabccaf8015d81ed7858dfa18fddb4ce074309597574fd6",
+      "source": "src/library_desugar/java/java/util/DoubleSummaryStatisticsConversions.java"
+    },
+    {
+      "path": "java/util/ConversionRuntimeException.class",
+      "sha256": "37d851a7e6ee65b53c06a22c5441a584d046ac555efdb110524f8cc5a9c88980",
+      "source": "src/library_desugar/java/java/util/ConversionRuntimeException.java"
+    },
+    {
+      "path": "java/util/stream/FlatMapApiFlips$LongFunctionStreamWrapper.class",
+      "sha256": "b5c0046c3a19fc45d4bff50198ef0a4c2e980ced115a20da8a9875ef3e45eb17",
+      "source": "src/library_desugar/java/java/util/stream/FlatMapApiFlips.java"
+    },
+    {
+      "path": "java/util/stream/FlatMapApiFlips$DoubleFunctionStreamWrapper.class",
+      "sha256": "86650f62d96c5eeba3bb405bd12210eaf50665a7dbfa91fb5ad8fed014396f67",
+      "source": "src/library_desugar/java/java/util/stream/FlatMapApiFlips.java"
+    },
+    {
+      "path": "java/util/stream/StackWalkerApiFlips$FunctionStreamWrapper.class",
+      "sha256": "234d2b05f064304490e1c0323513d9cf32a9a7fab8703fab7c82d6199a5b303b",
+      "source": "src/library_desugar/java/java/util/stream/StackWalkerApiFlips.java"
+    },
+    {
+      "path": "java/util/stream/FlatMapApiFlips$IntFunctionStreamWrapper.class",
+      "sha256": "5dbcc788accc3808aa4088e7655af25b596e60f7855f9ca395760ca21286cbd4",
+      "source": "src/library_desugar/java/java/util/stream/FlatMapApiFlips.java"
+    },
+    {
+      "path": "java/util/stream/StreamApiFlips.class",
+      "sha256": "0c9f21e2f97c2b58d349f9fd3e6876d9bc7df88b94d3dddc7678801c2c95d00a",
+      "source": "src/library_desugar/java/java/util/stream/StreamApiFlips.java"
+    },
+    {
+      "path": "java/util/stream/FlatMapApiFlips$FunctionStreamWrapper.class",
+      "sha256": "252bbbc0391e5ac817feefee0559233dd0dbc921784943b21cee2880dfd27915",
+      "source": "src/library_desugar/java/java/util/stream/FlatMapApiFlips.java"
+    },
+    {
+      "path": "java/util/stream/FlatMapApiFlips.class",
+      "sha256": "4c7b686fe11ac9725664ff8d44e1cf7d448aa5519a3e954be2f4ec2f314b95bb",
+      "source": "src/library_desugar/java/java/util/stream/FlatMapApiFlips.java"
+    },
+    {
+      "path": "java/util/stream/StackWalkerApiFlips.class",
+      "sha256": "fc16baff30c42318858d61142cd98fb03273d6c3fad8704337d0e00412d2d8c4",
+      "source": "src/library_desugar/java/java/util/stream/StackWalkerApiFlips.java"
+    },
+    {
+      "path": "java/adapter/HybridFileSystemProvider.class",
+      "sha256": "4749c8ea7c322a27ea35748b5b6ad7f36c5ea4da7c6c8c7493b7844759591dd7",
+      "source": "src/library_desugar/java/java/adapter/HybridFileSystemProvider.java"
+    },
+    {
+      "path": "java/adapter/AndroidVersionTest.class",
+      "sha256": "006b2f2ecf1f6046ab9c9fa63b5c903419566e457981a333f4b8ddf1f88f6026",
+      "source": "src/library_desugar/java/java/adapter/AndroidVersionTest.java"
+    },
+    {
+      "path": "java/adapter/HybridFileTypeDetector.class",
+      "sha256": "36c7456b77583a4410195762f769743168f9e5bd29c9146262e7dc3a313298a0",
+      "source": "src/library_desugar/java/java/adapter/HybridFileTypeDetector.java"
+    },
+    {
+      "path": "java/adapter/HybridFileTypeDetector$PlatformFileTypeDetector.class",
+      "sha256": "a4d7ce52f3402ef075f1744c5e7d5c62434171454ade5b0853607ecdaf95e128",
+      "source": "src/library_desugar/java/java/adapter/HybridFileTypeDetector.java"
+    },
+    {
+      "path": "java/nio/file/WatchEventKindConversions.class",
+      "sha256": "6a1cd2150f3d21e80884c1421a4fdc05d8d311816c9046ab78ce028db471a906",
+      "source": "src/library_desugar/java/java/nio/file/WatchEventKindConversions.java"
+    },
+    {
+      "path": "java/nio/file/PathApiFlips$DirectoryStreamFilterWrapper.class",
+      "sha256": "27958918942a9547a0f6d78e7a60cd54abd5a7a9ce5983961971788e14fc058d",
+      "source": "src/library_desugar/java/java/nio/file/PathApiFlips.java"
+    },
+    {
+      "path": "java/nio/file/PathApiFlips$IterablePathWrapper.class",
+      "sha256": "54e57d5e791df59e93d4ce807f4f2889ef6b49ccddb446d865e87460a6f153b5",
+      "source": "src/library_desugar/java/java/nio/file/PathApiFlips.java"
+    },
+    {
+      "path": "java/nio/file/PathApiFlips$DirectoryStreamPathWrapper.class",
+      "sha256": "19da7e7c22e8350fdaa7a65e0799501a1e0ffc653bcd5829bcb064f652ec11b3",
+      "source": "src/library_desugar/java/java/nio/file/PathApiFlips.java"
+    },
+    {
+      "path": "java/nio/file/PathApiFlips$IteratorPathWrapper.class",
+      "sha256": "6d1787a2d9e97984ffb64b545553615fa1502a97f6ee92ba20a83eb042853b85",
+      "source": "src/library_desugar/java/java/nio/file/PathApiFlips.java"
+    },
+    {
+      "path": "java/nio/file/FileApiFlips.class",
+      "sha256": "83f2007e1b44381a3f1c061071859e94d9d766ee4d7b3872128c494fbcc43c73",
+      "source": "src/library_desugar/java/java/nio/file/FileApiFlips.java"
+    },
+    {
+      "path": "java/nio/file/PathApiFlips.class",
+      "sha256": "ce0230ac82de5ca56e830dcab7bba71e8c6e276534725d90de4857358500bc76",
+      "source": "src/library_desugar/java/java/nio/file/PathApiFlips.java"
+    },
+    {
+      "path": "java/nio/file/attribute/FileAttributeConversions$2.class",
+      "sha256": "525cffc85bee2fb26248ead536a3cd29e786220838cc7f7508f1a1783b8ecfe2",
+      "source": "src/library_desugar/java/java/nio/file/attribute/FileAttributeConversions.java"
+    },
+    {
+      "path": "java/nio/file/attribute/FileAttributeConversions$1.class",
+      "sha256": "b065f0b68b7ae9b2a7fdc4201dafc349f313f744ea29df64b15a31bbb6e31652",
+      "source": "src/library_desugar/java/java/nio/file/attribute/FileAttributeConversions.java"
+    },
+    {
+      "path": "java/nio/file/attribute/FileAttributeConversions.class",
+      "sha256": "0358d7f3d8b8ab7750dcb4cd49a8f06016f5164c502fef99401f8632ae23dfc6",
+      "source": "src/library_desugar/java/java/nio/file/attribute/FileAttributeConversions.java"
+    },
+    {
+      "path": "java/nio/channels/DesugarChannels.class",
+      "sha256": "b0df97f16bff37c6f788fe6ba4de9add481cc041483b42edfc3ac91712c87611",
+      "source": "src/library_desugar/java/java/nio/channels/DesugarChannels.java"
+    }
+  ],
+  "upstreamTransform": [
+    "https://r8.googlesource.com/r8/+/c331a820ddae7dea41f41a04375b784486d0f705/src/test/java/com/android/tools/r8/desugar/desugaredlibrary/customconversion/GenerateCustomConversion.java",
+    "https://r8.googlesource.com/r8/+/c331a820ddae7dea41f41a04375b784486d0f705/src/test/java/com/android/tools/r8/desugar/desugaredlibrary/customconversion/CustomConversionAsmRewriteDescription.java"
+  ]
+}

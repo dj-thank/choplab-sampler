@@ -1718,12 +1718,12 @@ class ContinuousEditorPresenter(val studio: Studio, scope: CoroutineScope, priva
             }
             override suspend fun render(project: Project, draft: com.choplab.core.edit.StretchDraft, progress: (Int, Int) -> Unit) = host.render(project, draft, progress)
             override suspend fun original(project: Project, draft: com.choplab.core.edit.StretchDraft) = host.original(project, draft)
-            override suspend fun preview(asset: Asset, revision: Long): Boolean {
+            override suspend fun preview(asset: Asset, range: FrameRange, revision: Long): Boolean {
                 val claimed = serialized.withLock {
                     if (stretch.value !== controller || bankPadBlock(view.value, studio.work.value) != null || studio.document.value.revision != revision) false
                     else {
                         releaseHeld(); letGoScratch()
-                        val result = host.preview.start(asset, revision, false, VocalPreviewOwner.STRETCH) is TtsResult.Success
+                        val result = host.preview.startRange(asset, range, revision, VocalPreviewOwner.STRETCH) is TtsResult.Success
                         view.update { it.copy(originalPlaying = false, liveChop = null) }; result
                     }
                 }

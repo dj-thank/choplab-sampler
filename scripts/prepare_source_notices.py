@@ -26,6 +26,8 @@ INPUTS = (
     "config/source-notice-texts.json",
     "config/android-ffmpeg-audio.json", "scripts/android_runtime_pins.json",
     "config/newpipe-dependencies.json", "config/windows-ffmpeg-audio.json",
+    "config/nio-source-class-map-20261025.json", "licenses/r8-verification-BSD.txt", "licenses/desugar-jdk-libs-LICENSE.txt",
+    "config/nio-configuration-source-class-map-20261025.json",
     "config/windows-onnxruntime.json", "config/windows-quickjs.json",
     "config/mac-media-tool-files.txt",
     "config/mac-media-tool-files-20261006.txt", "scripts/mac_tool_policy.py",
@@ -54,7 +56,7 @@ UNRESOLVED = (
     {"id": "android-reused-native", "license": "NOASSERTION", "sourcePublicationVerified": False,
      "detail": "Reused AAR ELF components still need their exact source, Termux patches and build/install correspondence. The 18 header archives and Java source JAR are not that complete source."},
     {"id": "android-nio", "license": "NOASSERTION", "sourcePublicationVerified": False,
-     "detail": "NIO 1,459 classes and configuration 29 helper classes still need exact generated/renamed source, header and build correspondence; recorded source candidates are not verified coverage."},
+     "detail": "NIO 1,459 class bytes and all 577 source headers were reproduced and mapped. Configuration 29 helper class bytes were reproduced from 67 BSD source inputs with the upstream wrapper conversion. Generated configuration JSON/lint, complete application source and notice delivery remain unverified."},
     {"id": "mac-tools", "license": "NOASSERTION", "sourcePublicationVerified": False,
      "detail": "Relocated Homebrew FFmpeg/Node libraries and standalone yt-dlp still need exact matching source/build and notice coverage. Tool version/hash records alone do not provide it."},
 )

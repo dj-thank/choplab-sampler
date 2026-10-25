@@ -130,16 +130,18 @@ source/history scannerを短くすること自体は合格条件ではありま�
 NewPipeExtractorはGPL-3.0-or-laterで、直接リンクした組合せをChopLabのMIT表示だけで配布可能とは扱いません。元コードのMIT表示を保持しながら、組合せ全体と各依存に必要な条件を満たします。[GNUの組合せに関する説明](https://www.gnu.org/licenses/gpl-faq.en.html#GPLStaticVsDynamic)と[GPLv3の対応source・配布条件](https://www.gnu.org/licenses/gpl-3.0.html)を根拠とし、次を公開判定へ含めます。Preview/CI artifactという呼称だけでは、第三者への配布に伴う条件を免除しません。
 
 1. **配布bytesとの対応**: `config/newpipe-dependencies.json` のruntime 7 JARとAndroid desugar 2 JARの解決graph・bytes/hashを検証し、APK内のD8/R8生成classとdesktopに同梱する実JARをsource・licenseへ対応付ける。config JARにも補助classがあるため、build用設定だけとして除外しない。hash一致は取得物の同一性であり、licenseやsourceの完全性の代用ではない。
-2. **対応sourceとbuild**: 配布revisionのChopLab、NewPipeと必要な依存の改変に適したsource、生成設定・変換・build/install用script、必要なversion/取得手順を提供する。一般のtool/system libraryの範囲はGPL本文に従って判定する。source JAR、Git source manifest、ChopLabだけの `git archive` は単独で完全なCorresponding Sourceを示さない。NIOの公式source候補とbuild targetは[NOTICE](../NOTICE.md#android-nio-desugar-215--source-and-license-evidence)に記録済みだが、全class/header対応と再build一致は未検証。byte一致の再buildは対応を確認する検証方法であり、それだけをGPLの法的要件と読み替えない。
+2. **対応sourceとbuild**: 配布revisionのChopLab、NewPipeと必要な依存の改変に適したsource、生成設定・変換・build/install用script、必要なversion/取得手順を提供する。一般のtool/system libraryの範囲はGPL本文に従って判定する。source JAR、Git source manifest、ChopLabだけの `git archive` は単独で完全なCorresponding Sourceを示さない。NIO本体の全1,459 class/header対応と再buildでのclass bytes一致は[NOTICE](../NOTICE.md#android-nio-desugar-215--source-and-license-evidence)に記録済み。byte一致の再buildは対応を確認する検証方法であり、それだけをGPLの法的要件と読み替えない。
 3. **実際の提供経路**: 配布binaryと一緒に完全なlicense本文・著作権/noticeを渡し、binary取得ページのすぐ近くから対応sourceを同等に取得できるようにする。GPLv3 6(d)の第三者server利用を選ぶ場合も、正しいsourceへの明確な案内と必要な可用性の責任は配布者に残る。最終APK/ZIPを再取得して本文とsource linkをreadbackする。現状のrelease asset一覧/SBOMだけでは、NIOを含む完全な対応source提供とAPKへのnotice配達は確認できていない。
-4. **未確定なlicense対応**: NIO本体の `NOASSERTION` を残したまま一律Classpath例外の適用済みとはしない。configurationのBSD本文を含め、実classと元header/例外を照合する。既存のyoutubedl-android、FFmpeg、yt-dlp、Java runtime等も、それぞれの配布構成に必要な条件を別に満たす。機能やcodecを削ってサイズ・license判定だけを通過させない。
+4. **未確定なlicense対応**: NIO本体は各source headerと再現したclassの対応からGPL-2.0-only＋Classpath例外とApache-2.0を記録する。configurationのBSD本文と29補助classのsource/build対応を記録し、生成JSON/lintと配布物での対応は別に確認する。既存のyoutubedl-android、FFmpeg、yt-dlp、Java runtime等も、それぞれの配布構成に必要な条件を別に満たす。機能やcodecを削ってサイズ・license判定だけを通過させない。
 5. **provider受入との分離**: 実サービスへの取得試験は、素材の権利とサービスが許す取得・自動アクセスの条件、利用者の明示同意をそれぞれ確認してrootが実行する。[YouTube利用規約](https://www.youtube.com/static?template=terms)はダウンロード等と自動アクセスを別に制限しているため、権利者の許可・CC表記・アプリの同意だけでNewPipeによる取得が許可されたと推定しない。今回の依存調査では実providerを呼び出しておらず、許可根拠のある対象・方法を確定するまでは `PROVIDER_PASS` は未確認。softwareの配布条件も満たしたことにはならない。
 
 これらの未確認事項が残る間は `PUBLIC_PASS` にしません。sourceの公開場所や配布条件を変更する外部操作はrootの配布判断で実施し、秘密鍵・token・私有音声を対応sourceへ含めません。
 
+固定NIO sourceの検証入口は `scripts/acceptance/rebuild_nio_linux.sh` です。source/binary hashを照合し、BUILDの選択・生成・addon統合順で全classの候補を対応付け、隔離したLinuxのBazel/JDK/Android SDKで再buildを試します。これはpublisherの未記録toolchainを確定したものではなく、候補toolchainによる比較です。CIはmissing/extra/異なるclass bytesを成功にせず、失敗時もbuild log・toolchain・比較を保持します。全class一致してもcombined work全体の対応source提供・notice配達・公開許可の代用にはしません。
+
 noticeの配達は `scripts/prepare_source_notices.py` で共通化します。Androidの `assets/source-notices/`、Macの `Contents/app/`、Windows app-image直下へ、正本NOTICE・LICENSE、独立したlicense本文、固定manifest、使用するrecipe、`SOURCE-INDEX.json` / `SOURCE-INDEX.md` を配置します。既存のnative ZIP内license、JARのThirdPartyNoticesとJavaのlegal文書は保持します。NOTICEから配布条件へのリンクは同梱文書で解決し、同梱しない参照とrecipeの外部linkには実際に同bytesのGit commitだけを使います。作業treeまたは入力がcommitと異なる場合はlocal変更を示し、source snapshot URLと該当fileのimmutable URLをnullにします。 Python recipeは説明headerと明示区切りを付けた `.py.txt` の参照用plain textで、区切りの間に元source bytes・copyright・shebangを無改変で保持します。indexのsourcePath/sourceBytes/sourceSha256は原本、path/bytes/sha256は表示copyを区別し、元 `.py` は固定URLまたはGit snapshotから取得します。変更されたheader/bodyもclean source checkoutによる全canonical bytes照合で拒否します。Android/WindowsのGradle taskは自分のgenerated notice出力だけを毎回再生成し、旧recipeをpackageへ残しません。
 
-手動NEXT候補の3jobはartifact近傍の `source-notices/` と `source-notices.zip` に同じ取得indexを添付します。正式releaseには `ChopLab-v<version>-source-notices.zip` とchecksumを追加し、既存manifestが同revision・固定file集合・各hash・未解決表示を照合します。候補と正式releaseのsidecar生成は `--require-committed` で変更中のsourceを拒否します。索引は取得URLとhash、header/source JAR/対応source候補の区別を提供するもので、source archive本体の代わりではありません。Android再利用nativeのsource/Termux patch対応、NIO生成class/header/build対応、Mac toolsのsource/notice対応は `NOASSERTION` / `sourcePublicationVerified=false` のままです。index生成・source取得link・notice stagingを完全source、署名、実機や `PUBLIC_PASS` の合格に数えません。
+手動NEXT候補の3jobはartifact近傍の `source-notices/` と `source-notices.zip` に同じ取得indexを添付します。正式releaseには `ChopLab-v<version>-source-notices.zip` とchecksumを追加し、既存manifestが同revision・固定file集合・各hash・未解決表示を照合します。候補と正式releaseのsidecar生成は `--require-committed` で変更中のsourceを拒否します。索引は取得URLとhash、header/source JAR/対応source候補の区別を提供するもので、source archive本体の代わりではありません。Android再利用nativeのsource/Termux patch対応、NIO configurationの生成JSON/lint、Mac toolsのsource/notice対応は未解決です。NIO本体のclass再現後も、全体の `sourcePublicationVerified=false` は維持します。index生成・source取得link・notice stagingを完全source、署名、実機や `PUBLIC_PASS` の合格に数えません。
 
 ## CIと運用のreadback
 
@@ -154,3 +156,5 @@ gh api repos/dj-thank/choplab-sampler/actions/permissions/workflow
 ```
 
 配布を受け取る人は同梱SHA-256を照合し、attestationがある場合はrepository/sourceと一致するか検証します。attestationはplatform code-signing、脆弱性不存在、実機品質の保証ではありません。
+
+NIO configurationの29補助classの再現入口は `scripts/acceptance/verify_nio_configuration.py` です。67個のBSD source入力と公式wrapper変換を検証します。class一致は生成JSON/lint、ZIP全体、完全source配布の合格を意味しません。

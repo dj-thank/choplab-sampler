@@ -71,7 +71,7 @@ class SourceVocalPreview(private val studio: Studio, private val engine: Streami
         startScoped(asset, expectedRevision, loop, owner, null)
 
     override suspend fun startRange(asset: Asset, range: FrameRange, expectedRevision: Long, owner: VocalPreviewOwner): TtsResult<Unit> =
-        if (owner == VocalPreviewOwner.CHOP || owner == VocalPreviewOwner.PITCH) startScoped(asset, expectedRevision, false, owner, range)
+        if (owner == VocalPreviewOwner.CHOP || owner == VocalPreviewOwner.PITCH || owner == VocalPreviewOwner.STRETCH) startScoped(asset, expectedRevision, false, owner, range)
         else ttsFailure(TtsProblem.UNAVAILABLE)
 
     private suspend fun startScoped(asset: Asset, expectedRevision: Long, loop: Boolean, owner: VocalPreviewOwner, range: FrameRange?): TtsResult<Unit> = controls.withLock {
@@ -84,8 +84,8 @@ class SourceVocalPreview(private val studio: Studio, private val engine: Streami
             if (range == null || source?.assetHash != asset.hash || project.assets.none { it == asset } ||
                 range.start < source.range.start || range.end > source.range.end) return@withLock ttsFailure(TtsProblem.INVALID_AUDIO)
         } else {
-            val roleAllowed = asset.role == AssetRole.RENDERED || (owner == VocalPreviewOwner.PITCH && asset.role == AssetRole.ORIGINAL)
-            if ((range != null && (owner != VocalPreviewOwner.PITCH || range.end > asset.frames)) ||
+            val roleAllowed = asset.role == AssetRole.RENDERED || ((owner == VocalPreviewOwner.PITCH || owner == VocalPreviewOwner.STRETCH) && asset.role == AssetRole.ORIGINAL)
+            if ((range != null && (owner !in setOf(VocalPreviewOwner.PITCH, VocalPreviewOwner.STRETCH) || range.end > asset.frames)) ||
                 asset.sampleRate != 48_000 || asset.channels != 2 || !roleAllowed) return@withLock ttsFailure(TtsProblem.INVALID_AUDIO)
         }
         if (state.value.ownsSource && state.value.owner != owner) return@withLock ttsFailure(TtsProblem.BUSY)

@@ -42,7 +42,7 @@ class BeatStretchEditTest {
         assertEquals(before.assets, after.assets); assertEquals(before.pads, after.pads)
         assertEquals(before.pads[0].range, after.beatStretches.single().renderedRange)
     }
-    @Test fun trimmedStretchedPadAndClipExplainUnsupportedReeditInsteadOfRequestingAReload() {
+    @Test fun trimmedStretchedPadAndClipRerenderTheOriginalContextAndKeepTheirCrop() {
         for (target in listOf(StretchTarget(StretchKind.PAD, "0"), StretchTarget(StretchKind.CLIP, "clip"))) {
             val before = project()
             val draft = BeatStretchEdits.draft(DocumentState(before, 0), target, 120_000)
@@ -52,9 +52,13 @@ class BeatStretchEditTest {
             val trimmed = if (target.kind == StretchKind.PAD) stretched.copy(pads = stretched.pads.map {
                 if (it.id == 0) it.copy(range = range) else it
             }.frozen()) else stretched.copy(clips = frozenListOf(stretched.clips.single().copy(range = range)))
-            assertEquals(StretchProblem.TRIMMED, assertFailsWith<StretchException> {
-                BeatStretchEdits.draft(DocumentState(trimmed, 1), target, 120_000)
-            }.problem)
+            val next = BeatStretchEdits.draft(DocumentState(trimmed, 1), target, 120_000)
+            assertEquals(draft.sourceAssetHash, next.sourceAssetHash)
+            assertEquals(draft.sourceRange, next.sourceRange)
+            assertEquals(StretchCrop(range, asset.frames), next.crop)
+            val applied = Reducer.reduce(trimmed, BeatStretchEdits.apply(DocumentState(trimmed, 1), next, asset)).project
+            assertEquals(trimmed.clips, applied.clips)
+            assertEquals(trimmed.pads, applied.pads)
             assertEquals(stretched.beatStretches, trimmed.beatStretches)
         }
     }

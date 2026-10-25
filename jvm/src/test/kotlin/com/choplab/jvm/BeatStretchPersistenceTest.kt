@@ -9,7 +9,32 @@ import kotlinx.serialization.json.*
 import kotlin.test.*
 
 class BeatStretchPersistenceTest {
-    @Test fun schemasTenThroughFourteenMigrateWithoutAcceptingFutureFieldsAndFifteenIsStrict() {
+    @Test fun schemaFifteenRecipesMigrateButCannotSmuggleNewCropFields() {
+        val source = Asset("a".repeat(64), "wav", 80_044, 48_000, 2, 10_000, "Original")
+        val before = Project(assets = frozenListOf(source), pads = (0..127).map { if (it == 0) Pad(0, source.hash, FrameRange(1, 9_999)) else Pad(it) }.frozen(), tempo = Tempo(150_000))
+        val draft = BeatStretchEdits.draft(DocumentState(before, 0), StretchTarget(StretchKind.PAD, "0"), 120_000)
+        val frames = stretchFrames(source, draft.sourceRange, 120_000, 150_000)
+        val output = Asset("b".repeat(64), "wav", 44 + frames * 8, 48_000, 2, frames, "Stretch", AssetRole.RENDERED, derivedFrom = source.hash)
+        val after = Reducer.reduce(before, BeatStretchEdits.apply(DocumentState(before, 0), draft, output)).project
+        val current = ProjectJson.parse(ProjectJson.encode(after)).jsonObject
+        val recipe = current.getValue("beatStretches").jsonArray.single().jsonObject
+        fun document(version: Int, entry: JsonObject) = ProjectJson.encodeElement(JsonObject(current + mapOf(
+            "schemaVersion" to JsonPrimitive(version), "beatStretches" to JsonArray(listOf(entry)))))
+        assertEquals(after, ProjectJson.decode(document(15, JsonObject(recipe - "crop"))))
+        assertFailsWith<IllegalArgumentException> { ProjectJson.decode(document(15, recipe)) }
+        for (bad in listOf(
+            "{\"start\":0,\"end\":2,\"referenceFrames\":1}",
+            "{\"start\":0,\"end\":1,\"referenceFrames\":9223372036854775807}",
+            "{\"start\":0,\"end\":1,\"referenceFrames\":2,\"unknown\":0}",
+            "{\"start\":0,\"end\":1}",
+            "{\"start\":0,\"end\":1,\"referenceFrames\":\"2\"}")) {
+            assertFailsWith<IllegalArgumentException> { ProjectJson.decode(document(16, JsonObject(recipe + ("crop" to ProjectJson.parse(bad.encodeToByteArray()))))) }
+        }
+        val old = requireNotNull(javaClass.getResourceAsStream("/schema15-empty.json")).use { it.readBytes() }
+        assertEquals(Project(), ProjectJson.decode(old))
+    }
+
+    @Test fun schemasTenThroughFourteenMigrateWithoutAcceptingFutureFieldsAndCurrentIsStrict() {
         for (schema in 10..14) {
             val bytes = requireNotNull(javaClass.getResourceAsStream("/schema$schema-empty.json")).use { it.readBytes() }
             assertEquals(Project(), ProjectJson.decode(bytes))
@@ -17,7 +42,7 @@ class BeatStretchPersistenceTest {
             assertFailsWith<IllegalArgumentException> { ProjectJson.decode(ProjectJson.encodeElement(JsonObject(original + ("beatStretches" to JsonArray(emptyList()))))) }
         }
         val current = ProjectJson.parse(ProjectJson.encode(Project())).jsonObject
-        assertEquals(15, current.getValue("schemaVersion").jsonPrimitive.int)
+        assertEquals(ProjectLimits.SCHEMA, current.getValue("schemaVersion").jsonPrimitive.int)
         assertFailsWith<IllegalArgumentException> { ProjectJson.decode(ProjectJson.encodeElement(JsonObject(current - "beatStretches"))) }
         assertFailsWith<IllegalArgumentException> { ProjectJson.decode(ProjectJson.encodeElement(JsonObject(current + ("unknown" to JsonPrimitive(1))))) }
     }

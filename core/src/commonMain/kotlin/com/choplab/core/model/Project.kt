@@ -15,7 +15,7 @@ fun <T> Iterable<T>.frozen(): FrozenList<T> = FrozenList.from(this)
 fun <T> frozenListOf(vararg values: T): FrozenList<T> = values.asList().frozen()
 
 object ProjectLimits {
-    const val SCHEMA = 15
+    const val SCHEMA = 16
     const val PPQ = 960
     const val PAD_COUNT = 128
     const val BANK_COUNT = 8
