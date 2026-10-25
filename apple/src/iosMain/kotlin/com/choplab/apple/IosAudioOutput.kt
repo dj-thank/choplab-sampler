@@ -48,7 +48,7 @@ internal class IosAudioOutput private constructor(private val blockFrames: Int, 
         check(!closed)
         require(frames in 1..blockFrames && interleaved.size >= frames * 2)
         if (free.load() == 0) return false
-        free.decrementAndFetch()
+        free.addAndFetch(-1)
         val buffer = buffers[next]
         next = (next + 1) % queueBlocks
         val channels = requireNotNull(buffer.floatChannelData)
@@ -61,8 +61,8 @@ internal class IosAudioOutput private constructor(private val blockFrames: Int, 
         published.store(scheduledFrames)
         player.scheduleBuffer(buffer, completionCallbackType = AVAudioPlayerNodeCompletionDataConsumed) { _ ->
             val consumed = consumedFrames.addAndFetch(frames.toLong())
-            if (!closed && consumed >= published.load()) emptyEvents.incrementAndFetch()
-            free.incrementAndFetch()
+            if (!closed && consumed >= published.load()) emptyEvents.addAndFetch(1)
+            free.addAndFetch(1)
             dispatch_semaphore_signal(space)
         }
         return true

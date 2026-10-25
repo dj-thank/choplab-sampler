@@ -113,7 +113,7 @@ internal class IosVocalPreview(private val studio: Studio, private val engine: I
 
     private fun current(token: Long, revision: Long) = !closed.load() && generation.load() == token && studio.document.value.revision == revision
     private fun cancelLoad(): Long {
-        val token = generation.incrementAndFetch()
+        val token = generation.addAndFetch(1)
         loading?.cancel(); loading = null
         audition.cancelPreparation()
         return token

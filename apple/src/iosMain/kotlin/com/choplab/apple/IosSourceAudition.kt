@@ -34,7 +34,7 @@ internal class IosSourceAudition(private val driver: IosEnginePort, private val 
     @Volatile private var handMonitorGain = 1f
 
     fun cancelPreparation() {
-        generation.incrementAndFetch()
+        generation.addAndFetch(1)
         preparation.exchange(null)?.cancel()
     }
 
@@ -166,7 +166,7 @@ internal class IosSourceAudition(private val driver: IosEnginePort, private val 
         return (driver.originalPlayback().sourceFrame * asset.sampleRate / 48_000).coerceIn(0, asset.frames)
     }
     private suspend fun command(factory: (Long, Long) -> EngineCommand): Boolean =
-        driver.applyMonitoring(factory(driver.snapshot().frame, order.incrementAndFetch()))
+        driver.applyMonitoring(factory(driver.snapshot().frame, order.addAndFetch(1)))
 
     override fun close() { cancelPreparation(); loadedSession = null; loaded.store(null); loadedPcm.exchange(null)?.close(); owner.cancel() }
 
