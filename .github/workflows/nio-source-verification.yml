@@ -1,0 +1,52 @@
+name: Verify pinned NIO source
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/nio-source-verification.yml'
+      - 'scripts/acceptance/rebuild_nio_linux.sh'
+      - 'scripts/acceptance/verify_nio_sources.py'
+      - 'scripts/acceptance/NioUndesugar.java'
+      - 'config/newpipe-dependencies.json'
+      - 'config/nio-source-class-map-20261025.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nio-source-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rebuild:
+    name: Rebuild pinned Android NIO source
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Rebuild the pinned source with an isolated candidate toolchain
+        env:
+          NIO_RUN: ${{ runner.temp }}/choplab-nio-source-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          bash scripts/acceptance/rebuild_nio_linux.sh "$NIO_RUN"
+          python3 - "$NIO_RUN/receipts/comparison/summary.json" <<'PY'
+          import json, sys
+          from pathlib import Path
+          data = json.loads(Path(sys.argv[1]).read_text())
+          result = data['rebuildComparison']
+          if result['missingClasses'] or result['extraClasses'] or result['differentClassBytes']:
+              raise SystemExit('Rebuilt class bytes differ; preserve the comparison and investigate the toolchain.')
+          if result['sameClassBytes'] != 1459:
+              raise SystemExit('Expected all 1459 pinned classes.')
+          PY
+      - name: Preserve successful or failed build evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: choplab-nio-source-evidence
+          path: ${{ runner.temp }}/choplab-nio-source-${{ github.run_id }}-${{ github.run_attempt }}/receipts/
+          if-no-files-found: error
+          retention-days: 7

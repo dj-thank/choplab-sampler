@@ -15,7 +15,8 @@ sealed interface Intent {
     data class SetBankMix(val bankId: Int, val track: Track) : Intent
     data class SetMasterMix(val settings: com.choplab.engine.MixSettings) : Intent
     data class ApplyVocalPitch(val correction: VocalPitchCorrection, val rendered: Asset, val expectedClip: Clip) : Intent
-    data class SelectVocalPitch(val correctionId: String, val expectedClip: Clip, val original: Boolean) : Intent
+    data class SelectVocalPitch(val correctionId: String, val expectedClip: Clip, val original: Boolean,
+                               val normalizedOriginal: Asset? = null) : Intent
     data class ImportAsset(val asset: Asset) : Intent
     data class SetSourceRange(val range: FrameRange, val gesture: String? = null) : Intent
     data class SetSourcePitch(val semitones: Double, val gesture: String? = null) : Intent
@@ -106,10 +107,17 @@ object Reducer {
                 require(current == intent.expectedClip) { "Pitch target changed" }
                 val source = before.asset(correction.sourceAssetHash)
                 val output = requireNotNull(correction.outputRange(source, current)) { "Pitch source range changed" }
-                val original = requireNotNull(correction.originalRange(source, output)) { "Native crop correspondence is unavailable" }
-                val hash = if (intent.original) correction.sourceAssetHash else correction.renderedAssetHash
-                val range = if (intent.original) original else output
-                before.copy(clips = before.clips.map { if (it.id == current.id) it.copy(assetHash = hash, range = range) else it }.frozen())
+                val updated = intent.normalizedOriginal?.let {
+                    require(intent.original)
+                    correction.validateNormalizedOriginal(source, it)
+                    require(correction.normalizedOriginalHash == null || correction.normalizedOriginalHash == it.hash)
+                    correction.copy(normalizedOriginalHash = it.hash)
+                } ?: correction
+                val hash = if (intent.original) updated.normalizedOriginalHash ?: updated.sourceAssetHash else updated.renderedAssetHash
+                val range = if (intent.original) requireNotNull(updated.originalRange(source, output)) { "Exact original is not prepared" } else output
+                before.copy(assets = intent.normalizedOriginal?.let { mergeAssets(before.assets, frozenListOf(it)) } ?: before.assets,
+                    clips = before.clips.map { if (it.id == current.id) it.copy(assetHash = hash, range = range) else it }.frozen(),
+                    pitchCorrections = before.pitchCorrections.map { if (it.id == correction.id) updated else it }.frozen())
             }
             is Intent.Rename -> before.copy(title = intent.title)
             is Intent.SetTempo -> before.copy(tempo = intent.tempo)
@@ -345,7 +353,7 @@ object Reducer {
         project.clips.forEach { used += it.assetHash }
         project.takes.forEach { used += it.assetHash }
         project.vocalComps.forEach { used += it.renderedAssetHash }
-        project.pitchCorrections.forEach { used += it.sourceAssetHash; used += it.renderedAssetHash }
+        project.pitchCorrections.forEach { used += it.sourceAssetHash; used += it.renderedAssetHash; it.normalizedOriginalHash?.let(used::add) }
         project.beatStretches.forEach { used += it.sourceAssetHash; used += it.renderedAssetHash }
         project.assets.forEach { asset -> asset.derivedFrom?.let { used += it } }
         val kept = project.assets.filter { it.hash in used || it.role != AssetRole.RENDERED }

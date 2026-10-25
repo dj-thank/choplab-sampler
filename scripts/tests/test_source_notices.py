@@ -106,7 +106,15 @@ class SourceNoticesTest(unittest.TestCase):
         self.assertIn("原source bytesは無改変", (self.output / notices.README).read_text())
         self.assertIn("再build用の元 `.py`", (self.output / notices.README).read_text())
         with zipfile.ZipFile(self.archive) as archive:
-            self.assertEqual(38, len(archive.namelist()))
+            self.assertEqual(42, len(archive.namelist()))
+            self.assertIn("source-notices/config/nio-configuration-source-class-map-20261025.json", archive.namelist())
+            self.assertIn("source-notices/config/nio-source-class-map-20261025.json", archive.namelist())
+            self.assertIn("source-notices/licenses/r8-verification-BSD.txt", archive.namelist())
+            license_bytes = archive.read("source-notices/licenses/desugar-jdk-libs-LICENSE.txt")
+            nio = next(row for row in json.loads((ROOT / "config/newpipe-dependencies.json").read_text())["artifacts"]
+                       if row["coordinate"] == "com.android.tools:desugar_jdk_libs_nio:2.1.5")
+            self.assertEqual(nio["source_license_text"]["sha256"], notices.digest(license_bytes))
+            self.assertEqual(nio["source_license_text"]["bytes"], len(license_bytes))
             self.assertEqual((notices.ROOT / "config/mac-media-tool-files-20261024.txt").read_bytes(),
                              archive.read("source-notices/config/mac-media-tool-files-20261024.txt"))
             self.assertIn("source-notices/config/mac-media-source-review-20261024.json", archive.namelist())

@@ -9,7 +9,7 @@ import com.choplab.engine.Tempo
 import kotlin.test.*
 
 class CroppedPitchEditsTest {
-    @Test fun splittingAStretchedClipKeepsBothRecipesAndCannotProcessTheRenderedRightHalfAgain() {
+    @Test fun splittingAStretchedClipKeepsBothRecipesAndReprocessesOnlyTheFullNativeSource() {
         val source = Asset("a".repeat(64), "wav", 352_844, 44_100, 2, 44_100, "Original")
         val original = Project(assets = frozenListOf(source), tracks = frozenListOf(Track("track", "Beat", TrackKind.BANK)),
             clips = frozenListOf(Clip("clip", "track", source.hash, FrameRange(13, 40_007))), tempo = Tempo(100_000))
@@ -24,9 +24,12 @@ class CroppedPitchEditsTest {
         for (clip in split.clips) {
             val target = StretchTarget(StretchKind.CLIP, clip.id)
             assertEquals(source.hash, split.beatStretches.single { it.target == target }.sourceAssetHash)
-            assertEquals(StretchProblem.TRIMMED, assertFailsWith<StretchException> {
-                BeatStretchEdits.draft(DocumentState(split, 2), target, 120_000)
-            }.problem)
+            val reedit = BeatStretchEdits.draft(DocumentState(split, 2), target, 120_000)
+            assertEquals(source.hash, reedit.sourceAssetHash)
+            assertEquals(draft.sourceRange, reedit.sourceRange)
+            assertEquals(StretchCrop(clip.range, frames), reedit.crop)
+            val changed = Reducer.reduce(split, BeatStretchEdits.apply(DocumentState(split, 2), reedit, rendered)).project
+            assertEquals(split.clips, changed.clips, "Same tempo retains both split ranges and their placement")
         }
         assertEquals(split.clips[0].range.end, split.clips[1].range.start)
     }

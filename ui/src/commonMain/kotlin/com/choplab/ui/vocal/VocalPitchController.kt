@@ -153,7 +153,10 @@ class VocalPitchController(private val document: StateFlow<DocumentState>, priva
                 checkCurrent(token, value.revision)
                 if (action is PitchAction.SelectSaved) {
                     val saved = value.project.pitchCorrections.firstOrNull { it.clipId == id } ?: error("No saved correction")
-                    val intent = VocalPitchEdits.select(DocumentState(value.project, value.revision), saved.id, action.original)
+                    val normalized = if (action.original && saved.normalizedOriginalHash == null &&
+                        value.project.asset(saved.sourceAssetHash).sampleRate != 48_000) ports.original(value.project, draft) else null
+                    checkCurrent(token, value.revision)
+                    val intent = VocalPitchEdits.select(DocumentState(value.project, value.revision), saved.id, action.original, normalized)
                     apply(token, value.revision, intent)
                 } else if (action == PitchAction.PreviewOriginal) {
                     val original = ports.original(value.project, draft)

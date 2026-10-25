@@ -64,21 +64,32 @@ object VocalPitchEdits {
     fun apply(document: DocumentState, draft: VocalPitchDraft, rendered: Asset): Intent.ApplyVocalPitch {
         if (document.revision != draft.revision) throw VocalPitchException(VocalPitchProblem.STALE)
         validate(document.project, draft)
-        val correction = VocalPitchCorrection(draft.id, draft.expectedClip.id, draft.sourceAssetHash, draft.sourceRange, rendered.hash, draft.settings)
+        val old = document.project.pitchCorrections.firstOrNull { it.clipId == draft.expectedClip.id }
+        val original = old?.takeIf { it.sourceAssetHash == draft.sourceAssetHash && it.sourceRange == draft.sourceRange }?.normalizedOriginalHash
+        val correction = VocalPitchCorrection(draft.id, draft.expectedClip.id, draft.sourceAssetHash, draft.sourceRange, rendered.hash, draft.settings,
+            normalizedOriginalHash = original)
         return Intent.ApplyVocalPitch(correction, rendered, draft.expectedClip).also {
             val after = Reducer.reduce(document.project, it).project
             if (!ProgramCompiler.songFits(after)) throw VocalPitchException(VocalPitchProblem.LIMIT)
         }
     }
 
-    fun select(document: DocumentState, correctionId: String, original: Boolean): Intent.SelectVocalPitch {
+    fun select(document: DocumentState, correctionId: String, original: Boolean, normalizedOriginal: Asset? = null): Intent.SelectVocalPitch {
         val correction = requireNotNull(document.project.pitchCorrections.firstOrNull { it.id == correctionId })
         val clip = document.project.clips.firstOrNull { it.id == correction.clipId } ?: throw VocalPitchException(VocalPitchProblem.NO_VOICE_CLIP)
         val source = document.project.asset(correction.sourceAssetHash)
         val output = correction.outputRange(source, clip)
-        if (output == null || correction.originalRange(source, output) == null)
+        if (normalizedOriginal != null) {
+            correction.validateNormalizedOriginal(source, normalizedOriginal)
+            require(correction.normalizedOriginalHash == null || correction.normalizedOriginalHash == normalizedOriginal.hash)
+            if (document.project.assets.none { it.hash == normalizedOriginal.hash } &&
+                (document.project.assets.size >= ProjectLimits.MAX_ASSETS ||
+                    document.project.assets.sumOf { it.byteCount } + normalizedOriginal.byteCount > ProjectLimits.MAX_TOTAL_BYTES))
+                throw VocalPitchException(VocalPitchProblem.LIMIT)
+        }
+        if (output == null || (original && normalizedOriginal == null && correction.originalRange(source, output) == null))
             throw VocalPitchException(VocalPitchProblem.TRIMMED_SELECTION)
-        return Intent.SelectVocalPitch(correctionId, clip, original).also { Reducer.reduce(document.project, it) }
+        return Intent.SelectVocalPitch(correctionId, clip, original, normalizedOriginal).also { Reducer.reduce(document.project, it) }
     }
 
     private fun requireVoice(project: Project, clip: Clip) {

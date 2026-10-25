@@ -49,7 +49,7 @@ class CroppedPitchSelectionTest {
     @Test fun otherSampleRatesAndReplacedSourcesCannotBypassTheSelectionGuard() {
         for (rate in listOf(8_000, 44_100, 96_000)) {
             val before = corrected(rate, FrameRange(1, 100))
-            for (original in listOf(true, false)) {
+            for (original in listOf(true)) {
                 assertEquals(VocalPitchProblem.TRIMMED_SELECTION, assertFailsWith<VocalPitchException> {
                     VocalPitchEdits.select(DocumentState(before, 2), "pitch", original)
                 }.problem)
@@ -57,6 +57,7 @@ class CroppedPitchSelectionTest {
                     Reducer.reduce(before, Intent.SelectVocalPitch("pitch", before.clips[0], original))
                 }
             }
+            assertEquals(before, Reducer.reduce(before, VocalPitchEdits.select(DocumentState(before, 2), "pitch", false)).project)
         }
         val before = corrected(48_000, FrameRange(7, 9_980))
         val changed = before.copy(clips = before.clips.map { if (it.id == "voice")
@@ -67,6 +68,56 @@ class CroppedPitchSelectionTest {
         assertFailsWith<IllegalArgumentException> {
             Reducer.reduce(before, Intent.SelectVocalPitch("pitch", before.clips[0].copy(timelineStartFrame = 0), true))
         }
+    }
+
+    @Test fun normalizedOriginalSwitchesEveryNativeRateWithoutRoundingCropAndSurvivesReeditUndoAndOneFrameEdges() {
+        for (rate in listOf(8_000, 44_100, 96_000)) {
+            val full = corrected(rate, FrameRange(1, 100))
+            val correction = full.pitchCorrections.single()
+            val rendered = full.asset(correction.renderedAssetHash)
+            val normalized = rendered.copy(hash = "d".repeat(64), name = "Normalized original")
+            for (crop in listOf(FrameRange(0, 1), FrameRange(1, rendered.frames - 1), FrameRange(rendered.frames - 1, rendered.frames))) {
+                val before = full.copy(clips = full.clips.map { if (it.id == "voice") it.copy(range = crop) else it }.frozen())
+                val session = EditSession(before, 2)
+                fun commit(plan: EditPlan) { plan.effects.indices.forEach { session.acknowledge(plan, it) }; session.commit(plan) }
+                commit(session.plan(VocalPitchEdits.select(DocumentState(before, 2), "pitch", true, normalized)))
+                val original = session.project
+                assertEquals(before.clips[0].copy(assetHash = normalized.hash), original.clips[0])
+                assertEquals(before.clips[1], original.clips[1])
+                assertEquals(before.asset(correction.sourceAssetHash), original.asset(correction.sourceAssetHash))
+                assertEquals(normalized.hash, original.pitchCorrections.single().normalizedOriginalHash)
+                assertEquals(1, session.undoCount)
+                commit(session.planUndo()!!); assertEquals(before, session.project)
+                commit(session.planRedo()!!); assertEquals(original, session.project)
+                val draft = VocalPitchEdits.draft(DocumentState(original, session.revision), "voice", "unused", correction.settings.copy(amount = .5f))
+                assertEquals(correction.sourceAssetHash, draft.sourceAssetHash)
+                assertEquals(correction.sourceRange, draft.sourceRange)
+                assertEquals(crop, draft.auditionRange(original))
+                val reapplied = Reducer.reduce(original, VocalPitchEdits.apply(DocumentState(original, session.revision), draft, rendered.copy(hash = "e".repeat(64)))).project
+                assertEquals(normalized.hash, reapplied.pitchCorrections.single().normalizedOriginalHash)
+                assertEquals(crop, reapplied.clips[0].range)
+                commit(session.plan(VocalPitchEdits.select(DocumentState(original, session.revision), "pitch", false)))
+                assertEquals(before.clips, session.project.clips)
+                assertEquals(2, session.undoCount)
+            }
+        }
+    }
+
+    @Test fun wrongNormalizedContextAndCapacityAreRefusedBeforeDocumentMutation() {
+        val before = corrected(44_100, FrameRange(1, 100))
+        val normalized = before.asset("b".repeat(64)).copy(hash = "d".repeat(64))
+        for (invalid in listOf(normalized.copy(frames = normalized.frames - 1), normalized.copy(sampleRate = 44_100),
+            normalized.copy(derivedFrom = "c".repeat(64)), normalized.copy(role = AssetRole.PCM_CACHE))) {
+            assertFailsWith<IllegalArgumentException> {
+                Reducer.reduce(before, Intent.SelectVocalPitch("pitch", before.clips[0], true, invalid))
+            }
+        }
+        val full = before.copy(assets = (before.assets + (2 until ProjectLimits.MAX_ASSETS).map {
+            before.assets[0].copy(hash = it.toString(16).padStart(64, '0'), byteCount = 100)
+        }).frozen())
+        assertEquals(VocalPitchProblem.LIMIT, assertFailsWith<VocalPitchException> {
+            VocalPitchEdits.select(DocumentState(full, 2), "pitch", true, normalized)
+        }.problem)
     }
 
     private fun corrected(rate: Int, crop: FrameRange): Project {
