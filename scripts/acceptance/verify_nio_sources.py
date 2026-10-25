@@ -58,10 +58,33 @@ def compare(left, right):
                 'differentClassBytes': sorted(n for n in ac.keys() & bc.keys() if ac[n] != bc[n]),
                 'sameClassBytes': sum(ac[n] == bc[n] for n in ac.keys() & bc.keys())}
 
+def validate_manifest(manifest, rows, binary):
+    if (type(manifest.get('schemaVersion')) is not int or manifest['schemaVersion'] != 1 or
+        manifest.get('sourceRevision') != REVISION or manifest.get('sourceArchiveSha256') != SOURCE_SHA or
+        manifest.get('publishedJarSha256') != BINARY_SHA or manifest.get('sourcePublicationVerified') is not False):
+        raise ValueError('Manifest provenance or publication boundary differs')
+    if manifest.get('sourceColumns') != ['path','sha256','headerLicense'] or manifest.get('classColumns') != ['path','sha256','sourceIndex','generated']:
+        raise ValueError('Unknown manifest columns')
+    sources = manifest.get('sources', [])
+    expected = {r['source']: [r['sourceSha256'], 'Apache-2.0' if r['sourceHeaderClassification'] == 'Apache-2.0-header'
+                            else 'GPL-2.0-only WITH Classpath-exception-2.0'] for r in rows}
+    if (any(not isinstance(s, list) or len(s) != 3 for s in sources) or
+        len(sources) != len(expected) or {s[0]: s[1:] for s in sources} != expected):
+        raise ValueError('Manifest source header map differs')
+    classes = manifest.get('classes', [])
+    if (len(classes) != len(rows) or manifest.get('classCount') != len(rows) or manifest.get('sourceFileCount') != len(sources) or
+        any(not isinstance(c, list) or len(c) != 4 or type(c[2]) is not int or not 0 <= c[2] < len(sources) or type(c[3]) is not bool for c in classes)):
+        raise ValueError('Manifest class map is incomplete')
+    actual = {c[0]: [c[1], sources[c[2]][0], c[3]] for c in classes}
+    wanted = {r['class']: [sha(binary.read(r['class'])), r['source'], r['mappingKind'] == 'static-generator-origin'] for r in rows}
+    if len(actual) != len(classes) or actual != wanted:
+        raise ValueError('Manifest class/source/hash binding differs')
+
 def main():
     p = argparse.ArgumentParser(); p.add_argument('--source', type=Path, required=True)
     p.add_argument('--binary', type=Path, required=True); p.add_argument('--output', type=Path, required=True)
-    p.add_argument('--rebuilt', type=Path); a = p.parse_args(); a.output.mkdir(parents=True, exist_ok=True)
+    p.add_argument('--rebuilt', type=Path); p.add_argument('--manifest', type=Path)
+    a = p.parse_args(); a.output.mkdir(parents=True, exist_ok=True)
     assert sha(a.source.read_bytes()) == SOURCE_SHA, 'source hash mismatch'
     assert sha(a.binary.read_bytes()) == BINARY_SHA, 'binary hash mismatch'
     with zipfile.ZipFile(a.source) as z, zipfile.ZipFile(a.binary) as binary:
@@ -102,12 +125,23 @@ def main():
                 assert 'DesugarSupportedApi' in text, path
                 row['generatorSources'] = [TOOL+x for x in ['JarFileClassEntrySelector.java','PreScanner.java','DesugarSupportedApiClassGenerator.java','AsmHelpers.java']]
             rows.append(row)
+        if a.manifest:
+            if a.manifest.stat().st_size > 512 * 1024: raise ValueError('Manifest too large')
+            validate_manifest(json.loads(a.manifest.read_text(encoding='utf-8')), rows, binary)
         report = {'sourceRevision': REVISION, 'sourceSha256': SOURCE_SHA, 'binarySha256': BINARY_SHA,
                   'scope': 'Static source-selection/header map; generated mapping is origin inference, not rebuilt bytecode proof or distribution clearance.',
                   'classes': len(rows), 'origins': dict(Counter(r['buildOrigin'] for r in rows)),
                   'headerClasses': dict(Counter(r['sourceHeaderClassification'] for r in rows)),
                   'mappingKinds': dict(Counter(r['mappingKind'] for r in rows)), 'rows': rows}
-        if a.rebuilt: report['rebuildComparison'] = compare(a.binary, a.rebuilt)
+        report['committedManifestVerified'] = bool(a.manifest)
+        if a.rebuilt:
+            comparison = compare(a.binary, a.rebuilt)
+            report['rebuildComparison'] = comparison
+            different = set(comparison['differentClassBytes']) | set(comparison['missingClasses'])
+            for row in rows:
+                row['bytecodeProvenanceVerified'] = row['class'] not in different
+            report['scope'] = 'Source-selection/header map with supplied rebuilt class-byte comparison; not distribution clearance.'
+            report['allClassBytesReproduced'] = not (different or comparison['extraClasses'])
         (a.output/'mapping.json').write_text(json.dumps(report, indent=2)+'\n', encoding='utf-8')
         (a.output/'summary.json').write_text(json.dumps({k:v for k,v in report.items() if k != 'rows'}, indent=2)+'\n', encoding='utf-8')
         print(json.dumps({k:v for k,v in report.items() if k != 'rows'}, indent=2))

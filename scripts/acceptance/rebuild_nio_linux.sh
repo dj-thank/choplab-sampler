@@ -98,5 +98,5 @@ mkdir "$run/helper"
 java -version > "$run/receipts/adapter-java-version.txt" 2>&1
 javac -encoding UTF-8 -cp "$run/downloads/asm.jar" -d "$run/helper" "$here/NioUndesugar.java"
 java -cp "$run/helper:$run/downloads/asm.jar" NioUndesugar "$run/receipts/d8_java_base_selected_with_addon.jar" "$run/receipts/undesugared.jar"
-python3 "$here/verify_nio_sources.py" --source "$run/downloads/source.zip" --binary "$run/downloads/published.jar" --rebuilt "$run/receipts/undesugared.jar" --output "$run/receipts/comparison"
+python3 "$here/verify_nio_sources.py" --source "$run/downloads/source.zip" --binary "$run/downloads/published.jar" --rebuilt "$run/receipts/undesugared.jar" --manifest "$here/../../config/nio-source-class-map-20261025.json" --output "$run/receipts/comparison"
 date -u +%FT%TZ

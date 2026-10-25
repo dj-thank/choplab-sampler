@@ -1,4 +1,5 @@
-// Derived from R8's DesugaredLibraryJDK11Undesugarer (2021 R8 project authors).
+// Copyright (c) 2021, the R8 project authors.
+// Derived from R8's DesugaredLibraryJDK11Undesugarer.
 // BSD license: licenses/r8-verification-BSD.txt; standalone ASM adapter by ChopLab contributors.
 // Upstream: r8.googlesource.com/r8/+/077a41997c296ed70aea6ac09ae24d8330421055
 import java.nio.file.*;
