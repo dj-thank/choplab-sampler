@@ -4,6 +4,8 @@
 
 ## 現在地
 
+- [PR251](https://github.com/dj-thank/choplab-sampler/pull/251)をmain `6e0e550d`へ統合。Native64件、実Simulatorアプリのbuild/導入/起動と再起動、arm64/iPhoneOS未署名buildが成功。原音/保存/構想の回帰を含み、実アプリの48kHz stereo出力routeも接続済みです。追加の実アプリ制作通しは `app-results.json` の再生buffer消費・24bit書出し・保存・新プロセスでのUndo/Redoを必須にします。所有iPadの署名はMacキーチェーン解除待ちで、実機導入・聴感・マイク・VoiceOverは未確認です。
+- Mac版は検証済み配布物をTailscale経由で独立profileへ配置し、bundle署名整合と実Mac上のウィンドウ起動を確認。通常の制作データは開いていません。実音と物理入力、人の使い勝手は別の受入です。
 - [PR249](https://github.com/dj-thank/choplab-sampler/pull/249) をmain `bba765e2`へ統合。実HTTPS receiptのJAR照合とMacの16/64track計測を追加し、ICU79.1を含むexact依存集合を照合。必須3CI・Mac CI成功。計測は合成JVMの結果で、物理音と10分underrunは未確認です。
 - NIO 2.1.5本体は、固定source・Bazel・公開R8配布変換から全1,459 classのbytes一致を確認しました。577 source fileのheaderとclassの対応を機械可読表にし、GPLv2＋Classpath例外本文を配布用noticeへ追加。configurationの29補助classも[PR254](https://github.com/dj-thank/choplab-sampler/pull/254)で全class bytesを再現。生成JSON/lint、他native依存、全体のsource配布経路は引続き未確認です。
 - 出力再接続の試験計測 [PR246](https://github.com/dj-thank/choplab-sampler/pull/246) と、Mac更新待機・現行native依存の照合 [PR247](https://github.com/dj-thank/choplab-sampler/pull/247) をmain `dedaecba` まで統合済み。必須CI3件とMac CIが成功し、main treeは検証済み候補と一致します。Macの実ZIP導入・更新、14単体試験、合成制作・11codec・通常終了/再開を確認。実音/物理マイク/VoiceOverは未確認です。
@@ -44,7 +46,7 @@
 | 9 4パート分離 | 本番ORT経路、メモリ境界、取消、固定モデル推論。JVM既定HTTPSの初回取得/修復を実通信で確認 | 長尺/実曲品質、取得UIと他OSのネットワーク経路、実機受入 |
 | 10 練習coach | 練習・履歴・掛合いの制作接続 | 実音・人の体験受入 |
 | 11 仕上げ・1.0 | WASAPI、初回guide、配布/NOTICE基盤 | 正式署名/公証、完全source、実route/性能/VoiceOver/TalkBack、HUMAN_GO |
-| iPadOS | Apple host、厳密な保存/資産、AVAudioEngine、4工程、構想、24bit WAV、Simulator/実機向けbuild入口 | [PR251](https://github.com/dj-thank/choplab-sampler/pull/251)の実アプリbuild/readback、署名・所有iPadでの制作通し。未接続adapterは[Apple host](../apple/README.md)に明記 |
+| iPadOS | Apple host、厳密な保存/資産、AVAudioEngine、4工程、構想、24bit WAV、Simulator/実機向けbuild入口 | 実Simulator/未署名device appのbuild・導入・再起動はCI成功。署名・所有iPadでの制作通し。未接続adapterは[Apple host](../apple/README.md)に明記 |
 
 ## 次に取り組む残課題
 
@@ -54,8 +56,8 @@ Issueを閉じることと、機能の実装完了は区別します。下記は
 |---|---|---|
 | P1 | 旧形式stagingの移行（旧 [#207](https://github.com/dj-thank/choplab-sampler/issues/207)） | 新形式はOS排他と完全な所有記録を導入し、異常終了後にquota回収→再試行できる。旧 `.pending-UUID`・不完全な小さな所有記録は所有を証明できないため保全し、quotaに数える。これらの移行は個別確認が必要。prefixだけの削除はしない |
 | P1 | trim済み加工音の品質受入 | 非48kHzの保存版切替は全原音文脈の48kHz比較用資産を使い、WSOLAは基準cropを保持して再処理する。実WAV・archive・取消・Undoを検証。極端な伸縮率や実音の品質受入は残る |
-| P1 | 64trackの実時間性能 | Linux合成p99=0.821ms・追加割当0・PCM欠落0は確認済み。不変のbypass判定を事前計算し、16trackのLinux render CPUは2対の比較で10〜14%減。64trackの差は計測幅内で改善未確定。Mac既存p99=2.059msと対象Mac/Pixelの10分underrunは未解決 |
-| P1 | Macの日常制作受入 | main由来artifactで導入/通常終了/保存再開、実音/物理マイク/システム音、VoiceOverを確認。今回Desktop Commanderはオフラインで新しい端末観測なし |
+| P1 | 64trackの実時間性能 | Linux合成p99=0.821ms・追加割当0・PCM欠落0は確認済み。不変のbypass判定を事前計算し、16trackのLinux render CPUは2対の比較で10〜14%減。64trackの差は計測幅内で改善未確定。Windowsの実出力へ無音を送る64FX/32同時clipの10分harnessは、artifact取得/検査並行時にp99=4.0713ms、render割当896bytes、softwareStarvation141672framesで未達。hardware underrunは未計測。負荷を欠いた旧測定や合成Macの短時間測定で代替せず、実pump条件で切り分ける。Mac/Pixelの10分underrunも未解決 |
+| P1 | Macの日常制作受入 | main由来artifactで導入/通常終了/保存再開、実音/物理マイク/システム音、VoiceOverを確認。専用profileの検証済み配布物で実Macの署名整合・ウィンドウ起動を確認。日常制作・実音・物理マイク・システム音・VoiceOverは未確認 |
 | P2 | iPadOSアプリ | 保存/資産・基本制作・構想のNative試験、実アプリのbuild/導入/再起動をCIへ接続。arm64だけを対象にし、app内の既知NOTICE/取得索引をsource revisionと照合。署名・所有iPad・物理音と未接続adapterの受入を継続 |
 | P2 | 正式配布 | [RELEASE](RELEASE.md)の署名・公証・サイズ・完全source/NOTICEと実artifactのhashを確認。main更新から公開を推定しない |
 

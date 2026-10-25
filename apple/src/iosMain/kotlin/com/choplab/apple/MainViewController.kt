@@ -39,7 +39,7 @@ fun MainViewController(): UIViewController {
         LaunchedEffect(Unit) {
             try {
                 createAndPublishOwnedResource(
-                    create = { IosUiHost(IosBackend.create()) },
+                    create = { IosUiHost(createAppBackend()) },
                     release = { it.shutdown() },
                     publish = { check(ownership.install(it)); backend = it },
                 )
@@ -74,7 +74,10 @@ fun MainViewController(): UIViewController {
                         put("schemaVersion", ProjectLimits.SCHEMA); put("outputAttached", host.engine.snapshot().outputAttached)
                         put("driverPhase", driver.phase.name); put("driverFault", driver.fault.name)
                         host.engine.lastOutputCapability()?.let { put("audioCapability", it.json()) }
-                        put("livePlayback", "not-exercised"); put("physicalSoundVerified", false)
+                        val acceptance = appAcceptanceReport()
+                        put("livePlayback", acceptance?.get("livePlayback")?.jsonPrimitive?.content ?: "not-exercised")
+                        acceptance?.let { put("studioAcceptance", it) }
+                        put("physicalSoundVerified", false)
                     }.toString().encodeToByteArray()
                     withContext(Dispatchers.Default) { writeFileAtomically(IosPaths.documents() + "/.simulator-smoke.json", receipt) }
                 }

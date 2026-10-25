@@ -162,6 +162,7 @@ jobs:
               --tests 'com.choplab.apple.AppleCodecTest' --tests 'com.choplab.apple.AppleStorageTest' \
               --tests 'com.choplab.apple.AppleStudioFlowTest' \
               --tests 'com.choplab.apple.AppleResourceOwnershipTest' \
+              --tests 'com.choplab.apple.AppAcceptanceModeTest' \
               --tests 'com.choplab.apple.AppleInceptionStoreTest' \
             2>&1 | tee dist/ipad-native-foundation-evidence/gradle-apple.log
 
@@ -177,7 +178,7 @@ jobs:
               'engine': {'com.choplab.engine.EngineContractTest'},
               'core': {'com.choplab.core.EditSessionTest'},
               'ui': {'com.choplab.ui.source.OnlineArtworkIosTest', 'com.choplab.ui.ContinuousTapTempoTest'},
-              'apple': {'com.choplab.apple.AppleCodecTest', 'com.choplab.apple.AppleStorageTest', 'com.choplab.apple.AppleStudioFlowTest', 'com.choplab.apple.AppleResourceOwnershipTest', 'com.choplab.apple.AppleInceptionStoreTest'},
+              'apple': {'com.choplab.apple.AppleCodecTest', 'com.choplab.apple.AppleStorageTest', 'com.choplab.apple.AppleStudioFlowTest', 'com.choplab.apple.AppleResourceOwnershipTest', 'com.choplab.apple.AppAcceptanceModeTest', 'com.choplab.apple.AppleInceptionStoreTest'},
           }
           tests = {}
           for module, classes in required.items():
