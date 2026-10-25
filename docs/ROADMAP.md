@@ -44,7 +44,7 @@
 | 9 4パート分離 | 本番ORT経路、メモリ境界、取消、固定モデル推論。JVM既定HTTPSの初回取得/修復を実通信で確認 | 長尺/実曲品質、取得UIと他OSのネットワーク経路、実機受入 |
 | 10 練習coach | 練習・履歴・掛合いの制作接続 | 実音・人の体験受入 |
 | 11 仕上げ・1.0 | WASAPI、初回guide、配布/NOTICE基盤 | 正式署名/公証、完全source、実route/性能/VoiceOver/TalkBack、HUMAN_GO |
-| iPadOS | 共通codec・Native frameworkとSimulator基盤 | 保存候補の精査、Apple host、アプリ、署名、所有iPadでの制作通し |
+| iPadOS | Apple host、厳密な保存/資産、AVAudioEngine、4工程、構想、24bit WAV、Simulator/実機向けbuild入口 | [PR251](https://github.com/dj-thank/choplab-sampler/pull/251)の実アプリbuild/readback、署名・所有iPadでの制作通し。未接続adapterは[Apple host](../apple/README.md)に明記 |
 
 ## 次に取り組む残課題
 
@@ -56,7 +56,7 @@ Issueを閉じることと、機能の実装完了は区別します。下記は
 | P1 | trim済み加工音の品質受入 | 非48kHzの保存版切替は全原音文脈の48kHz比較用資産を使い、WSOLAは基準cropを保持して再処理する。実WAV・archive・取消・Undoを検証。極端な伸縮率や実音の品質受入は残る |
 | P1 | 64trackの実時間性能 | Linux合成p99=0.821ms・追加割当0・PCM欠落0は確認済み。不変のbypass判定を事前計算し、16trackのLinux render CPUは2対の比較で10〜14%減。64trackの差は計測幅内で改善未確定。Mac既存p99=2.059msと対象Mac/Pixelの10分underrunは未解決 |
 | P1 | Macの日常制作受入 | main由来artifactで導入/通常終了/保存再開、実音/物理マイク/システム音、VoiceOverを確認。今回Desktop Commanderはオフラインで新しい端末観測なし |
-| P2 | iPadOSアプリ | 試作の精査でdotfileのquota除外、同size破損の見逃し、PCM予算確認前の確保を確認。生成物を除き、まず保存/資産adapterと失敗系試験を導入。アプリ入口・署名・所有iPad受入はその後 |
+| P2 | iPadOSアプリ | 保存/資産・基本制作・構想のNative試験、実アプリのbuild/導入/再起動をCIへ接続。arm64だけを対象にし、app内の既知NOTICE/取得索引をsource revisionと照合。署名・所有iPad・物理音と未接続adapterの受入を継続 |
 | P2 | 正式配布 | [RELEASE](RELEASE.md)の署名・公証・サイズ・完全source/NOTICEと実artifactのhashを確認。main更新から公開を推定しない |
 
 ### 構想形成ワークスペース（旧 #221–#227）

@@ -1,0 +1,5 @@
+<resources>
+    <string name="startup_failed">Could not open the project. Saved files are retained.</string>
+    <string name="autosave_preserved">Unreadable autosaves have been retained.</string>
+    <string name="reconnect_audio">Reconnect audio</string>
+</resources>

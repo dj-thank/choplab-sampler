@@ -164,6 +164,10 @@ ZIP_JIMAGE_HEADER = struct.Struct("<7I")
 ZIP_JIMAGE_MAGIC = 0xCAFEDADA
 ZIP_SKIKO_ICU_SCAN_LIMIT = 16 * 1024 * 1024
 ZIP_BINARY_SECRET_MEMBER_LIMIT = 32 * 1024 * 1024
+# The first-party Kotlin/Native Debug app includes DWARF in its Mach-O body.
+# These exact top-level app executables retain full scanning and the shared 384 MiB aggregate budget.
+ZIP_IPAD_EXECUTABLE_SCAN_LIMIT = 128 * 1024 * 1024
+IPAD_EXECUTABLE_PATHS = frozenset({"ChopLab.app/ChopLab", "ChopLab.app/ChopLab.debug.dylib"})
 ZIP_JIMAGE_FULL_SCAN_LIMIT = 128 * 1024 * 1024
 ZIP_BINARY_SECRET_TOTAL_LIMIT = 384 * 1024 * 1024
 # The packaged Windows app-image carries third-party binaries that are far larger than a
@@ -3268,6 +3272,11 @@ def scan_zip(
                         if runtime_stream is not None and runtime_position is not None:
                             runtime_stream.seek(runtime_position)
                     continue
+                binary_secret_member_limit = (
+                    ZIP_IPAD_EXECUTABLE_SCAN_LIMIT
+                    if _nested_depth == 0 and entry.as_posix() in IPAD_EXECUTABLE_PATHS
+                    else ZIP_BINARY_SECRET_MEMBER_LIMIT
+                )
                 bounded_resource_table = apk_archive and _nested_depth == 0 and name == "resources.arsc"
                 bounded_apk_binary = False
                 bounded_binary_secret = False
@@ -3310,12 +3319,12 @@ def scan_zip(
                         bounded_packaged_runtime = True
                     else:
                         if (
-                            info.file_size > ZIP_BINARY_SECRET_MEMBER_LIMIT
-                            or info.compress_size > ZIP_BINARY_SECRET_MEMBER_LIMIT
+                            info.file_size > binary_secret_member_limit
+                            or info.compress_size > binary_secret_member_limit
                         ):
                             findings.append(
                                 f"{archive_label}: archive entry {name!r}: binary body "
-                                f"exceeds the {ZIP_BINARY_SECRET_MEMBER_LIMIT}-byte "
+                                f"exceeds the {binary_secret_member_limit}-byte "
                                 "full secret-scan limit"
                             )
                             continue
@@ -3500,7 +3509,7 @@ def scan_zip(
                         ZIP_JIMAGE_FULL_SCAN_LIMIT
                         if bounded_jimage
                         else (
-                            ZIP_BINARY_SECRET_MEMBER_LIMIT
+                            binary_secret_member_limit
                             if bounded_binary_secret
                             else (
                                 ZIP_SKIKO_ICU_SCAN_LIMIT
@@ -3621,7 +3630,7 @@ def scan_zip(
                                 ZIP_JIMAGE_FULL_SCAN_LIMIT
                                 if bounded_jimage
                                 else (
-                                    ZIP_BINARY_SECRET_MEMBER_LIMIT
+                                    binary_secret_member_limit
                                     if bounded_binary_secret
                                     else (
                                         ZIP_SKIKO_ICU_SCAN_LIMIT
