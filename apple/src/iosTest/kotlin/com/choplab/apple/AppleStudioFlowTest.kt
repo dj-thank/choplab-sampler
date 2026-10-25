@@ -11,7 +11,7 @@ import kotlin.test.*
 
 /** Runs the production composition root, actor and AVAudioEngine on the simulator. No fake output. */
 class AppleStudioFlowTest {
-    @Test fun productionBackendImportPlayExportArchiveAndAutosaveResume() = runBlocking {
+    @Test fun productionBackendImportPlayExportArchiveAndAutosaveResume(): Unit = runBlocking {
         withTimeout(60_000) {
             val directory = IosPaths.temporary() + "/" + uniqueName("studio-flow-")
             ensureDirectory(directory)

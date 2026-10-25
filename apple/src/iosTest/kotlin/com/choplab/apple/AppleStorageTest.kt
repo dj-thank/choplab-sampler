@@ -22,7 +22,7 @@ class AppleStorageTest {
         return Asset(sha256(bytes), "wav", bytes.size.toLong(), 48_000, 2, 480, "Synthetic stereo") to bytes
     }
     private fun file(path: String, bytes: ByteArray) { FileWriter(path).use { it.write(bytes); it.syncAndClose() } }
-    @Test fun sameSizeCorruptionIsRejectedEvenAfterVerification() = runBlocking {
+    @Test fun sameSizeCorruptionIsRejectedEvenAfterVerification(): Unit = runBlocking {
         val store = IosAssetStore(directory())
         val (asset, bytes) = fixture()
         store.write(asset, bytes)
@@ -51,7 +51,7 @@ class AppleStorageTest {
         assertFails { FileReader("$root/.linked") }
         assertFails { IosAssetStore(root).pendingPath(10) }
     }
-    @Test fun autosaveRetainsThreeGenerationsAndFailedCommitDoesNotReplaceOne() = runBlocking {
+    @Test fun autosaveRetainsThreeGenerationsAndFailedCommitDoesNotReplaceOne(): Unit = runBlocking {
         val store = IosAssetStore(directory())
         val autosaveRoot = directory()
         val autosave = IosAutosave(autosaveRoot, store)
@@ -64,7 +64,7 @@ class AppleStorageTest {
         FileWriter("$autosaveRoot/autosave.0.json", exclusive = false).use { it.write(byteArrayOf(1)); it.syncAndClose() }
         assertEquals(3L, autosave.recover()?.revision)
     }
-    @Test fun unavailableOldAssetDoesNotResetAutosaveGeneration() = runBlocking {
+    @Test fun unavailableOldAssetDoesNotResetAutosaveGeneration(): Unit = runBlocking {
         val store = IosAssetStore(directory())
         val (asset, bytes) = fixture()
         store.write(asset, bytes)
@@ -99,7 +99,7 @@ class AppleStorageTest {
         assertFails { IosArchive.validateName("assets/../escaped.wav") }
         assertFails { IosArchive.validateName("assets\\escaped.wav") }
     }
-    @Test fun decodeAdmissionFailsBeforeLoadingAndRecoversAfterRelease() = runBlocking {
+    @Test fun decodeAdmissionFailsBeforeLoadingAndRecoversAfterRelease(): Unit = runBlocking {
         val store = IosAssetStore(directory())
         val (asset, bytes) = fixture()
         store.write(asset, bytes)
@@ -113,7 +113,7 @@ class AppleStorageTest {
         assertEquals(0L, store.memory.usedBytes)
         assertContentEquals(bytes, store.read(asset))
     }
-    @Test fun unavailableOutputRefusesPlaybackButAcknowledgesEditsAndStop() = runBlocking {
+    @Test fun unavailableOutputRefusesPlaybackButAcknowledgesEditsAndStop(): Unit = runBlocking {
         val store = IosAssetStore(directory())
         val pcm = IosPcmPort(store, store.memory)
         val compiler = ProgramCompiler(pcm)
@@ -145,7 +145,7 @@ class AppleStorageTest {
         file("$root/changed.zip", changed)
         assertFails { IosZip.entries("$root/changed.zip") }
     }
-    @Test fun localImportChopPadArrangementWavSaveResumeAndNewUndo() = runBlocking {
+    @Test fun localImportChopPadArrangementWavSaveResumeAndNewUndo(): Unit = runBlocking {
         val root = directory().also(::ensureDirectory)
         val store = IosAssetStore("$root/assets")
         val (original, bytes) = fixture()
