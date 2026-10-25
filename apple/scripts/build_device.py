@@ -9,7 +9,7 @@ import platform
 import plistlib
 import zipfile
 
-from build_simulator import BUNDLE, ROOT, digest, read, run
+from build_simulator import BUNDLE, ROOT, digest, read, run, verify_notices
 
 
 def verify_device_app(app: Path) -> dict:
@@ -31,7 +31,7 @@ def verify_device_app(app: Path) -> dict:
         raise RuntimeError("Compose localized resources are absent from the device app")
     return {"bundleId": BUNDLE, "platform": "iPhoneOS", "architecture": "arm64",
             "minimumOS": info.get("MinimumOSVersion"), "binaryBytes": binary.stat().st_size,
-            "binarySha256": digest(binary), "composeResourceFiles": len(resources)}
+            "binarySha256": digest(binary), "composeResourceFiles": len(resources), **verify_notices(app)}
 
 
 def main() -> None:
@@ -42,7 +42,7 @@ def main() -> None:
     derived = ROOT / "apple/build/xcode-device"
     run("xcodebuild", "-project", "apple/ChopLab.xcodeproj", "-scheme", "ChopLab", "-configuration", "Debug",
         "-sdk", "iphoneos", "-destination", "generic/platform=iOS", "-derivedDataPath", str(derived),
-        "CODE_SIGNING_ALLOWED=NO", "CODE_SIGNING_REQUIRED=NO", "build")
+        "ARCHS=arm64", "ONLY_ACTIVE_ARCH=YES", "CODE_SIGNING_ALLOWED=NO", "CODE_SIGNING_REQUIRED=NO", "build")
     app = derived / "Build/Products/Debug-iphoneos/ChopLab.app"
     report = verify_device_app(app)
     package = ROOT / "dist/ChopLab-iPad-Unsigned-Device.zip"

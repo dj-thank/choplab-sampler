@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import datetime
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -25,8 +26,43 @@ def read(*args: str) -> str:
     return run(*args, stdout=subprocess.PIPE).stdout.strip()
 
 def digest(path: Path) -> str:
+    result = hashlib.sha256()
     with path.open("rb") as stream:
-        return hashlib.file_digest(stream, "sha256").hexdigest()
+        for block in iter(lambda: stream.read(64 * 1024), b""):
+            result.update(block)
+    return result.hexdigest()
+
+def canonical_notices() -> dict:
+    spec = importlib.util.spec_from_file_location("choplab_source_notices", ROOT / "scripts/prepare_source_notices.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.create_files(ROOT, "all", require_committed=True)
+
+def verify_notices(app: Path) -> dict:
+    root = app / "source-notices"
+    index_path = root / "SOURCE-INDEX.json"
+    expected = canonical_notices()
+    paths = list(root.rglob("*"))
+    if root.is_symlink() or any(path.is_symlink() for path in paths):
+        raise RuntimeError("App notices contain a symlink")
+    actual = {path.relative_to(root).as_posix(): path for path in paths if path.is_file()}
+    if set(actual) != set(expected) or any(actual[name].read_bytes() != data for name, data in expected.items()):
+        raise RuntimeError("App notices differ from the canonical committed source")
+    index = json.loads(index_path.read_text(encoding="utf-8"))
+    if index.get("revision") != read("git", "rev-parse", "HEAD") or index.get("hasLocalChanges") is not False:
+        raise RuntimeError("App notices do not match the committed source revision")
+    if any(index.get(key) is not False for key in ("noticeCoverageComplete", "sourcePublicationVerified", "publicPass")):
+        raise RuntimeError("App notices cannot assert unresolved distribution acceptance")
+    files = index.get("files", [])
+    if not files:
+        raise RuntimeError("App notice inventory is empty")
+    for row in files:
+        target = root / row["path"]
+        if not target.resolve().is_relative_to(root.resolve()) or target.is_symlink() or not target.is_file():
+            raise RuntimeError("Invalid app notice path")
+        if target.stat().st_size != row["bytes"] or digest(target) != row["sha256"]:
+            raise RuntimeError("App notice bytes differ")
+    return {"noticeFiles": len(files), "noticeIndexSha256": digest(index_path), "noticeCoverageComplete": False}
 
 def verify_app(app: Path) -> dict:
     info = plistlib.loads((app / "Info.plist").read_bytes())
@@ -41,7 +77,8 @@ def verify_app(app: Path) -> dict:
     if not resources:
         raise RuntimeError("Compose localized resources are absent from the app")
     return {"bundleId": BUNDLE, "binaryBytes": binary.stat().st_size, "binarySha256": digest(binary),
-            "composeResourceFiles": len(resources), "platform": "iOS Simulator", "architecture": "arm64"}
+            "composeResourceFiles": len(resources), "platform": "iOS Simulator", "architecture": "arm64",
+            **verify_notices(app)}
 
 def launch(device: str, container: Path) -> dict:
     token = str(uuid.uuid4())
@@ -81,7 +118,7 @@ def main() -> None:
     derived = ROOT / "apple/build/xcode"
     run("xcodebuild", "-project", "apple/ChopLab.xcodeproj", "-scheme", "ChopLab", "-configuration", "Debug",
         "-sdk", "iphonesimulator", "-destination", "id=" + args.device,
-        "-derivedDataPath", str(derived), "CODE_SIGNING_ALLOWED=NO", "build")
+        "-derivedDataPath", str(derived), "ARCHS=arm64", "ONLY_ACTIVE_ARCH=YES", "CODE_SIGNING_ALLOWED=NO", "build")
     app = derived / "Build/Products/Debug-iphonesimulator/ChopLab.app"
     report = verify_app(app)
     states = json.loads(read("xcrun", "simctl", "list", "--json", "devices"))["devices"]

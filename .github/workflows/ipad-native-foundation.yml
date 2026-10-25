@@ -65,6 +65,9 @@ jobs:
       - name: Check repository public surface
         run: python3 scripts/check_repo.py
 
+      - name: Check package receipt failure guards
+        run: python3 -m unittest discover -s apple/scripts -p test_package_guards.py
+
       - name: Set up JDK 21
         uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:

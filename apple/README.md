@@ -4,6 +4,7 @@
 既定の Gradle graph には含めず、`-PchoplabIosPreview=true` で有効にします。
 Swift の入口は `app/AppDelegate.swift`、共有画面の入口は `MainViewController.kt` です。
 この host の最小 OS は iPadOS 18 です。デコーダーは明示的な `AVAudioFile.close()` を使います。
+実機・Simulator とも arm64 専用です。Xcode の `ARCHS` を arm64 に固定し、宣言していない x86_64 target を選びません。
 4 工程・大きい PAD・独立した SOURCE/HAND と mixer/FX は共有 UI/EngineCore を使います。
 
 ## 接続している機能
@@ -19,6 +20,7 @@ Swift の入口は `app/AppDelegate.swift`、共有画面の入口は `MainViewC
 | 構想 | 独立した version 1 ノート。原文・訂正・案・判断を保存、採用案を制作タイトル/歌詞へ明示適用し制作の Undo で戻す。音声入力と AI provider は未接続 |
 
 PCM は一つの 128 MiB 予算で resident/copy/resample/作業領域/出力を確保前に予約します。
+Xcode の署名前の build phase で既存の LICENSE/NOTICE と取得索引を app 内の `source-notices/` へ入れ、検証時に source revision と各 bytes/hash を照合します。これは既知の本文と取得先の同梱であり、全依存の対応 source や正式公開の受入を完了したという宣言ではありません。
 長い素材の paged PCM は未接続で、収まらない処理は失敗を返します。元ファイルは失いません。
 マイク、録音 count-in、punch/comp、練習/pitch/coach、TTS、分離、library/provider、
 stem export、system audio capture は未接続です。共有 UI の availability は false/null で、
