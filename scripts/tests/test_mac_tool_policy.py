@@ -7,7 +7,7 @@ from scripts.mac_tool_policy import media_file_sets, matching_policy
 class MacToolPolicyTest(unittest.TestCase):
     def setUp(self):
         self.policies = media_file_sets(Path(__file__).resolve().parents[2])
-        self.old, self.new, self.openssl4, self.sqlite354, self.oct24 = self.policies.values()
+        self.old, self.new, self.openssl4, self.sqlite354, self.oct24, self.oct25 = self.policies.values()
 
     def test_all_observed_native_dependency_graphs_are_accepted_exactly(self):
         self.assertEqual(40, len(self.old))
@@ -15,6 +15,7 @@ class MacToolPolicyTest(unittest.TestCase):
         self.assertEqual(40, len(self.openssl4))
         self.assertEqual(40, len(self.sqlite354))
         self.assertEqual(40, len(self.oct24))
+        self.assertEqual(40, len(self.oct25))
         for name, files in self.policies.items():
             self.assertEqual(name, matching_policy(files, self.policies))
 
@@ -50,6 +51,15 @@ class MacToolPolicyTest(unittest.TestCase):
                       self.new - {'libsimdjson.34.0.0.dylib'} | {'libsimdjson.35.0.0.dylib'}]:
             with self.subTest(files=files):
                 self.assertIsNone(matching_policy(files, self.policies))
+
+    def test_oct25_requires_all_three_icu_libraries_and_rejects_mixed_abis(self):
+        old = {f'libicu{part}.78.3.dylib' for part in ('data', 'i18n', 'uc')}
+        new = {f'libicu{part}.79.1.dylib' for part in ('data', 'i18n', 'uc')}
+        self.assertEqual(old, self.oct24 - self.oct25)
+        self.assertEqual(new, self.oct25 - self.oct24)
+        for part in ('data', 'i18n', 'uc'):
+            self.assertIsNone(matching_policy(self.oct24 - {f'libicu{part}.78.3.dylib'} | {f'libicu{part}.79.1.dylib'}, self.policies))
+            self.assertIsNone(matching_policy(self.oct25 - {f'libicu{part}.79.1.dylib'} | {f'libicu{part}.80.1.dylib'}, self.policies))
 
     def test_oct24_requires_the_complete_reviewed_six_file_update(self):
         old = {'libbrotlicommon.1.2.0.dylib', 'libbrotlidec.1.2.0.dylib',

@@ -106,10 +106,13 @@ class SourceNoticesTest(unittest.TestCase):
         self.assertIn("原source bytesは無改変", (self.output / notices.README).read_text())
         self.assertIn("再build用の元 `.py`", (self.output / notices.README).read_text())
         with zipfile.ZipFile(self.archive) as archive:
-            self.assertEqual(36, len(archive.namelist()))
+            self.assertEqual(38, len(archive.namelist()))
             self.assertEqual((notices.ROOT / "config/mac-media-tool-files-20261024.txt").read_bytes(),
                              archive.read("source-notices/config/mac-media-tool-files-20261024.txt"))
             self.assertIn("source-notices/config/mac-media-source-review-20261024.json", archive.namelist())
+            self.assertIn("source-notices/config/mac-media-source-review-20261025.json", archive.namelist())
+            self.assertEqual((notices.ROOT / "config/mac-media-tool-files-20261025.txt").read_bytes(),
+                             archive.read("source-notices/config/mac-media-tool-files-20261025.txt"))
             self.assertEqual((notices.ROOT / "config/mac-media-tool-files-20261015.txt").read_bytes(),
                              archive.read("source-notices/config/mac-media-tool-files-20261015.txt"))
             self.assertIn("source-notices/config/mac-media-tool-files-20261013.txt", archive.namelist())

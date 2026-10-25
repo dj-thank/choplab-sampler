@@ -8,6 +8,7 @@ on:
   pull_request:
     paths:
       - '.github/workflows/mac-preview.yml'
+      - 'engine/**'
       - 'scripts/package_mac_app.py'
       - 'scripts/stage_mac_preview_distribution.py'
       - 'scripts/install_mac_preview.py'
@@ -61,6 +62,34 @@ jobs:
         run: |
           brew update
           brew install ffmpeg node@24
+
+      - name: Measure the 16 and 64 track mixer on this Mac runner
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p dist/mixer-render
+          git rev-parse HEAD > dist/mixer-render/source-revision.txt
+          date -u +%Y-%m-%dT%H:%M:%SZ > dist/mixer-render/started-at.txt
+          sw_vers > dist/mixer-render/macos.txt
+          uname -sm >> dist/mixer-render/macos.txt
+          sysctl hw.model hw.ncpu hw.memsize machdep.cpu.brand_string > dist/mixer-render/hardware.txt
+          printf 'ImageOS=%s\nImageVersion=%s\nRunnerOS=%s\nRunnerArch=%s\n' \
+            "$ImageOS" "$ImageVersion" "$RUNNER_OS" "$RUNNER_ARCH" > dist/mixer-render/runner-image.txt
+          ./gradlew --no-daemon --max-workers=1 --console=plain --rerun-tasks \
+            :engine:desktopTest --tests com.choplab.engine.LargeArrangementAllocationTest \
+            | tee dist/mixer-render/gradle.log
+
+      - name: Upload mixer measurements including failures
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: choplab-mac-mixer-render-evidence
+          if-no-files-found: warn
+          path: |
+            dist/mixer-render/
+            engine/build/test-results/desktopTest/TEST-com.choplab.engine.LargeArrangementAllocationTest.xml
+          retention-days: 7
 
       - name: Verify Mac process ownership, crash recovery and SOURCE preview
         timeout-minutes: 5

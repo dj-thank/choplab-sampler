@@ -1,9 +1,11 @@
 # ROADMAP — 現在地と残課題
 
-更新: 2026-10-22（JST）。**開発の正本はmain、本書は現在の進捗・残課題の唯一の索引**です。対象はAndroid 10+・Windows・Macと、対応再開中のiPadOS。段階0〜11の実装・検証・PR統合は承認済みです。新しい配布版の公開、実機・providerの成功、人の受入は、それぞれ実際の結果で判断します。
+更新: 2026-10-25（JST）。**開発の正本はmain、本書は現在の進捗・残課題の唯一の索引**です。対象はAndroid 10+・Windows・Macと、対応再開中のiPadOS。段階0〜11の実装・検証・PR統合は承認済みです。新しい配布版の公開、実機・providerの成功、人の受入は、それぞれ実際の結果で判断します。
 
 ## 現在地
 
+- 出力再接続の試験計測 [PR246](https://github.com/dj-thank/choplab-sampler/pull/246) と、Mac更新待機・現行native依存の照合 [PR247](https://github.com/dj-thank/choplab-sampler/pull/247) をmain `dedaecba` まで統合済み。必須CI3件とMac CIが成功し、main treeは検証済み候補と一致します。Macの実ZIP導入・更新、14単体試験、合成制作・11codec・通常終了/再開を確認。実音/物理マイク/VoiceOverは未確認です。
+- 4-partモデルの既定HTTPS取得処理で初回取得・途中取消・cache再使用・破損検出・修復取消時の旧cache保全・全修復を確認しました。固定165,612,636 bytes/SHA-256一致、part残留0。対象JVM/coreは `315e98ba` からmain `dedaecba` までproduction source差分0で、JARのhashと実行receiptを保持。再現入口は [FourStemDownloadCheck](../scripts/acceptance/FourStemDownloadCheck.java)。アプリの取得UI・他OS・推論品質の実機受入は別です。
 - 48kHz原音のトリム済みピッチ補正は、保存済みの原音/補正音を範囲・配置・来歴を保って切替可能です。原音へ戻した後の再編集も全処理文脈とトリムを保持します。異なるrateの保存版切替とWSOLA再伸縮は引き続き未対応です。
 - 追加改善: [MacのZIP導入/更新](https://github.com/dj-thank/choplab-sampler/pull/242)、[ミキサーの不変判定](https://github.com/dj-thank/choplab-sampler/pull/243)、[所有付き資産staging復旧](https://github.com/dj-thank/choplab-sampler/pull/244)、[trim済みpitch再編集と分割来歴](https://github.com/dj-thank/choplab-sampler/pull/245)、[出力再接続の試験計測](https://github.com/dj-thank/choplab-sampler/pull/246)。Mac更新時の一時的なbundle読取にも、上限付きのidle再確認で対応します。未対応・実機未確認の範囲は下表に残します。
 - 制作・録音・編集の保全と操作UX改善 [PR239](https://github.com/dj-thank/choplab-sampler/pull/239) をmain `a3454724`へ統合済み。保存/取消、STEP下書き、録音終了通知、大文字でのミキサー、Mac梱包を改善しました。
@@ -37,7 +39,7 @@
 | 6 作詞・TTS | Google提案の同意/費用/取消境界、構造歌詞、端末TTS | 実Google往復・価格/modelの確認、物理音。実送信の成功は未宣言 |
 | 7 ミックス・FX | ミキサー、FX、24bit/STEM/LRC書出し、同一graph | 実音・64track性能・長時間underrun |
 | 8 ピッチ補正 | 非破壊加工、原音/加工来歴、trim済み再編集、48kHz原音のtrim済み保存版切替、保存再開 | 異なるrateのtrim済み保存版切替、実音・人の品質受入 |
-| 9 4パート分離 | 本番ORT経路、メモリ境界、取消、固定モデル推論 | 長尺/実曲品質、実HTTPS初回取得・修復、実機受入 |
+| 9 4パート分離 | 本番ORT経路、メモリ境界、取消、固定モデル推論。JVM既定HTTPSの初回取得/修復を実通信で確認 | 長尺/実曲品質、取得UIと他OSのネットワーク経路、実機受入 |
 | 10 練習coach | 練習・履歴・掛合いの制作接続 | 実音・人の体験受入 |
 | 11 仕上げ・1.0 | WASAPI、初回guide、配布/NOTICE基盤 | 正式署名/公証、完全source、実route/性能/VoiceOver/TalkBack、HUMAN_GO |
 | iPadOS | 共通codec・Native frameworkとSimulator基盤 | 保存候補の精査、Apple host、アプリ、署名、所有iPadでの制作通し |
