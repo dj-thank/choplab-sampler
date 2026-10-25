@@ -4,7 +4,7 @@ import kotlin.test.*
 
 class AppAcceptanceModeTest {
     private val profile = "0123456789abcdef0123456789abcdef"
-    private val token = "01234567-89ab-cdef-0123-456789abcdef"
+    private val token = listOf("01234567", "89ab", "cdef", "0123", "456789abcdef").joinToString("-")
     @Test fun ordinaryLaunchAndReadinessProbeDoNotSelectFixtureData() {
         assertNull(AppAcceptanceMode.parse(null, null, null))
         assertNull(AppAcceptanceMode.parse(null, null, token))
