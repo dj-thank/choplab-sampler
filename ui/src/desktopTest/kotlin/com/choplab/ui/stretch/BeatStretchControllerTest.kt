@@ -151,7 +151,7 @@ class BeatStretchControllerTest {
             override fun isPreviewing() = actuallyPreviewing
             override suspend fun render(project: Project, draft: StretchDraft, progress: (Int, Int) -> Unit): Asset { renders++; return rendering(draft) }
             override suspend fun original(project: Project, draft: StretchDraft) = source
-            override suspend fun preview(asset: Asset, revision: Long): Boolean { previews++; actuallyPreviewing = acceptPreview; previewing.value = acceptPreview; return acceptPreview }
+            override suspend fun preview(asset: Asset, range: FrameRange, revision: Long): Boolean { previews++; actuallyPreviewing = acceptPreview; previewing.value = acceptPreview; return acceptPreview }
             override suspend fun stopPreview(): Boolean { cancelPreview(); return true }
             override fun cancelPreview() { actuallyPreviewing = false; previewing.value = false }
             override suspend fun apply(intent: Intent, revision: Long): Boolean {

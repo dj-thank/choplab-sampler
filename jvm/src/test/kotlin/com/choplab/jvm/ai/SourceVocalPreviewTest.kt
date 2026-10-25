@@ -13,14 +13,14 @@ import kotlin.test.*
 
 /** Real engine and audition commands with in-memory decoded PCM and a synthetic output endpoint. */
 class SourceVocalPreviewTest {
-    @Test fun pitchCropStopsAtTheExactExclusiveEndAndRestoresSourceWithoutGivingOtherOwnersRangeAccess() = runBlocking<Unit> {
+    @Test fun pitchAndStretchCropsStopAtTheExactExclusiveEndAndRestoreSourceWithoutGivingOtherOwnersRangeAccess() = runBlocking<Unit> {
         val f = Fixture()
         try {
             f.open()
             val before = f.studio.document.value
             val crop = FrameRange(12_003, 24_011)
-            for (asset in listOf(f.source, f.guide)) {
-                assertIs<TtsResult.Success<Unit>>(f.preview.startRange(asset, crop, before.revision, VocalPreviewOwner.PITCH))
+            for (owner in listOf(VocalPreviewOwner.PITCH, VocalPreviewOwner.STRETCH)) for (asset in listOf(f.source, f.guide)) {
+                assertIs<TtsResult.Success<Unit>>(f.preview.startRange(asset, crop, before.revision, owner))
                 waitUntil { f.preview.state.value.phase == VocalPreviewPhase.PLAYING }
                 val region = (f.commands.last { it is EngineCommand.SetOriginalSource } as EngineCommand.SetOriginalSource).source!!
                 assertEquals(crop.start.toInt(), region.startFrame)
@@ -29,7 +29,9 @@ class SourceVocalPreviewTest {
                 assertEquals(asset.hash, f.preview.state.value.assetHash)
                 f.preview.requestStop(VocalPreviewOwner.CHOP)
                 assertIs<TtsResult.Success<Unit>>(f.preview.stop(VocalPreviewOwner.GUIDE))
-                assertEquals(VocalPreviewOwner.PITCH, f.preview.state.value.owner)
+                assertEquals(owner, f.preview.state.value.owner)
+                val other = if (owner == VocalPreviewOwner.PITCH) VocalPreviewOwner.STRETCH else VocalPreviewOwner.PITCH
+                assertEquals(TtsProblem.BUSY, assertIs<TtsResult.Failure>(f.preview.startRange(asset, crop, before.revision, other)).failure.problem)
                 assertEquals(TtsProblem.BUSY, assertIs<TtsResult.Failure>(f.preview.start(f.guide, before.revision)).failure.problem)
                 waitUntil { !f.preview.state.value.ownsSource }
                 assertEquals(5_000L, f.audition.nativeFrame())
@@ -42,7 +44,7 @@ class SourceVocalPreviewTest {
                 FrameRange(1, f.guide.frames + 1), before.revision, VocalPreviewOwner.PITCH)).failure.problem)
             assertEquals(TtsProblem.INVALID_AUDIO, assertIs<TtsResult.Failure>(f.preview.startRange(f.source.copy(sampleRate = 44_100),
                 crop, before.revision, VocalPreviewOwner.PITCH)).failure.problem)
-            for (owner in listOf(VocalPreviewOwner.GUIDE, VocalPreviewOwner.TAKE, VocalPreviewOwner.STRETCH)) {
+            for (owner in listOf(VocalPreviewOwner.GUIDE, VocalPreviewOwner.TAKE)) {
                 assertEquals(TtsProblem.UNAVAILABLE, assertIs<TtsResult.Failure>(f.preview.startRange(f.guide, crop, before.revision, owner)).failure.problem)
             }
         } finally { f.close() }

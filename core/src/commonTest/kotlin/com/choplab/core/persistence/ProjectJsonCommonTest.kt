@@ -60,8 +60,8 @@ class ProjectJsonCommonTest {
     }
 
     @Test fun theDefaultDocumentIsTheJvmGoldenOnEveryHost() {
-        // jvm/src/test/resources/schema15-empty.json, the golden the JVM persistence test compares byte for byte.
-        assertEquals("32552:910debf62d49b11f", fingerprint(ProjectJson.encode(Project())))
+        // jvm/src/test/resources/schema16-empty.json, the golden the JVM persistence test compares byte for byte.
+        assertEquals("32552:22010aed2453b78", fingerprint(ProjectJson.encode(Project())))
     }
 
     @Test fun aRichDocumentEncodesToTheSameBytesAndReadsBackTheSameOnEveryHost() {
@@ -75,10 +75,10 @@ class ProjectJsonCommonTest {
     @Test fun ambiguousOrMalformedDocumentsAreRejected() {
         val text = ProjectJson.encode(Project()).decodeToString()
         for (mutated in listOf(
-            text.replace("\"schemaVersion\":15", "\"schemaVersion\":9"),
-            text.replace("\"schemaVersion\":15", "\"schemaVersion\":15,\"schemaVersion\":15"),
-            text.replace("\"schemaVersion\":15", "\"schemaVersion\":15,\"\\u0073chemaVersion\":15"),
-            text.replace("\"schemaVersion\":15", "\"schemaVersion\":\"15\""),
+            text.replace("\"schemaVersion\":16", "\"schemaVersion\":9"),
+            text.replace("\"schemaVersion\":16", "\"schemaVersion\":16,\"schemaVersion\":16"),
+            text.replace("\"schemaVersion\":16", "\"schemaVersion\":16,\"\\u0073chemaVersion\":16"),
+            text.replace("\"schemaVersion\":16", "\"schemaVersion\":\"16\""),
             text.replace("\"id\":\"untitled\"", "\"id\":\"untitled\",\"privatePath\":\"secret\""),
             text.replace("\"masterGain\":1.0", "\"masterGain\":1e999"),
         )) assertFailsWith<IllegalArgumentException>(mutated.take(80)) { ProjectJson.decode(mutated.encodeToByteArray()) }
@@ -95,6 +95,6 @@ class ProjectJsonCommonTest {
 
     private companion object {
         /** Recorded from the JVM host (desktop target) at the codec's move into core. */
-        const val RICH_FINGERPRINT = "34636:bd7213bfcea633c4"
+        const val RICH_FINGERPRINT = "34636:c5c4c5c411c2e313"
     }
 }

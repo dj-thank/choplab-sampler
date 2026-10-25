@@ -67,6 +67,11 @@ class VocalPitchPersistenceTest {
         assertEquals(corrected, ProjectJson.decode(encoded))
         val root = ProjectJson.parse(encoded).jsonObject
         val correction = root.getValue("pitchCorrections").jsonArray.single().jsonObject
+        val schema15 = JsonObject(root + mapOf("schemaVersion" to JsonPrimitive(15),
+            "pitchCorrections" to JsonArray(listOf(JsonObject(correction - "normalizedOriginalHash")))))
+        assertEquals(corrected, ProjectJson.decode(ProjectJson.encodeElement(schema15)))
+        assertFailsWith<IllegalArgumentException> { ProjectJson.decode(ProjectJson.encodeElement(JsonObject(schema15 +
+            ("pitchCorrections" to JsonArray(listOf(correction)))))) }
         fun reject(value: JsonObject) {
             val mutated = JsonObject(root + ("pitchCorrections" to JsonArray(listOf(value))))
             assertFailsWith<IllegalArgumentException> { ProjectJson.decode(ProjectJson.encodeElement(mutated)) }
@@ -77,6 +82,9 @@ class VocalPitchPersistenceTest {
         reject(JsonObject(correction + ("algorithmVersion" to JsonPrimitive("1"))))
         reject(JsonObject(correction + ("sourceAssetHash" to JsonPrimitive("c".repeat(64)))))
         reject(JsonObject(correction + ("renderedAssetHash" to JsonPrimitive(source.hash))))
+        reject(JsonObject(correction + ("normalizedOriginalHash" to JsonPrimitive(source.hash))))
+        reject(JsonObject(correction + ("normalizedOriginalHash" to JsonPrimitive("d".repeat(64)))))
+        reject(JsonObject(correction + ("normalizedOriginalHash" to JsonPrimitive(17))))
         val originalSettings = correction.getValue("settings").jsonObject
         for ((key, value) in listOf("key" to JsonPrimitive(12), "scale" to JsonPrimitive("UNKNOWN"),
             "amount" to JsonPrimitive(-.1), "vibrato" to JsonPrimitive(1.1), "retuneMs" to JsonPrimitive(501), "amount" to JsonPrimitive("0.63"))) {
