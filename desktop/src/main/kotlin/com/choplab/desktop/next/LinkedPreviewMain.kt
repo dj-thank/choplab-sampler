@@ -48,6 +48,15 @@ fun main() {
     val parent = AtomicReference<AwtWindow?>(null)
     val ports = DesktopEditorPorts(backend) { parent.get() }
     val presenter = ContinuousEditorPresenter(backend.studio, scope, ports)
+    val inception = com.choplab.ui.inception.InceptionController(
+        com.choplab.jvm.inception.FileInceptionStore(directory.resolve("inception-v1")), scope, backend.studio,
+        com.choplab.core.ai.GoogleLyricSession(System::currentTimeMillis),
+        { com.choplab.jvm.inception.GeminiInceptionProvider() },
+        canApply = { presenter.state.value.permits(ContinuousCapability.LYRICS_EDIT) })
+    fun editorAction(action: ContinuousEditorAction) {
+        if (action == ContinuousEditorAction.StopAll) scope.launch { inception.stop() }
+        presenter.onAction(action)
+    }
     val guideStore = FileQuickStartStore(directory.resolve("ui"))
     val quickStart = QuickStartController(scope, autoShow = backend.studio.document.value.revision == 0L,
         guideStore::completed, guideStore::complete)
@@ -62,6 +71,7 @@ fun main() {
                     closing = true
                     scope.launch {
                         val closed = try {
+                            inception.stop()
                             presenter.prepareToClose()
                             closeAfterAutosave({ check(presenter.finishRecording()); backend.flushAutosave() },
                                 { ports.confirmCloseWithoutAutosave().also { if (it) closedWithoutAutosave.set(true) } }) {
@@ -94,7 +104,7 @@ fun main() {
                 NextDisplayEnvironment {
                 SideEffect { parent.set(window) }
                 DisposableEffect(window) {
-                    val dialogOwner = NextDialogOwners.register(window) { presenter.onAction(ContinuousEditorAction.StopAll) }
+                    val dialogOwner = NextDialogOwners.register(window) { editorAction(ContinuousEditorAction.StopAll) }
                     onDispose { dialogOwner.close() }
                 }
                 var editorDialogOpen by remember { mutableStateOf(false) }
@@ -141,7 +151,7 @@ fun main() {
                 MenuBar {
                     NextDesktopMenus(state, closing, onAction = { action ->
                         // A text editor/dialog keeps its own shortcuts and pending edits.
-                        if (action == ContinuousEditorAction.StopAll || window.ownedWindows.filterIsInstance<java.awt.Dialog>().none { it.isVisible }) presenter.onAction(action)
+                        if (action == ContinuousEditorAction.StopAll || window.ownedWindows.filterIsInstance<java.awt.Dialog>().none { it.isVisible }) editorAction(action)
                     }, dialogOpen = editorDialogOpen)
                     NextDisplayMenu(display, closing || editorDialogOpen)
                     NextMacAudioMenus(backend, state, closing || editorDialogOpen)
@@ -175,11 +185,11 @@ fun main() {
                     }
                 }
                 ContinuousEditor(state,
-                    presenter::onAction, presenter::readout, refresh, diagnostics = presenter::diagnostics, mixerReadout = presenter::readMixer,
-                    lyricProposal = lyricProposal, stepPatterns = stepPatterns, vocalGuide = vocalGuide, fourStems = fourStems,
+                    ::editorAction, presenter::readout, refresh, diagnostics = presenter::diagnostics, mixerReadout = presenter::readMixer,
+                    lyricProposal = lyricProposal, stepPatterns = stepPatterns, vocalGuide = vocalGuide, fourStems = fourStems, inception = inception,
                     autoChop = autoChop, onlineSource = onlineSource, sourceAnalysis = sourceAnalysis, vocalTakes = vocalTakes, vocalPunch = vocalPunch, vocalPractice = vocalPractice, vocalPitch = vocalPitch, vocalCoach = vocalCoach, beatStretch = beatStretch, quickStart = quickStart)
                 }
             }
         }
-    } finally { quickStart.close(); ports.close(); recovery?.stop(); runBlocking { backend.shutdown(flush = !closedWithoutAutosave.get()) }; scope.cancel(); display.close() }
+    } finally { runBlocking { inception.close() }; quickStart.close(); ports.close(); recovery?.stop(); runBlocking { backend.shutdown(flush = !closedWithoutAutosave.get()) }; scope.cancel(); display.close() }
 }
