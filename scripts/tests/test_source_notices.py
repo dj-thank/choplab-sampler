@@ -106,7 +106,8 @@ class SourceNoticesTest(unittest.TestCase):
         self.assertIn("原source bytesは無改変", (self.output / notices.README).read_text())
         self.assertIn("再build用の元 `.py`", (self.output / notices.README).read_text())
         with zipfile.ZipFile(self.archive) as archive:
-            self.assertEqual(41, len(archive.namelist()))
+            self.assertEqual(42, len(archive.namelist()))
+            self.assertIn("source-notices/config/nio-configuration-source-class-map-20261025.json", archive.namelist())
             self.assertIn("source-notices/config/nio-source-class-map-20261025.json", archive.namelist())
             self.assertIn("source-notices/licenses/r8-verification-BSD.txt", archive.namelist())
             license_bytes = archive.read("source-notices/licenses/desugar-jdk-libs-LICENSE.txt")
