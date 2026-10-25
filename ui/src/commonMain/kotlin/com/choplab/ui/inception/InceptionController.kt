@@ -47,6 +47,7 @@ class InceptionController(
     private val mutable = MutableStateFlow(InceptionState())
     val state = mutable.asStateFlow()
     val admission get() = google.state
+    val providerAvailable get() = providerFactory != null
     val voiceAvailable get() = voice.available
     private var previous: InceptionWorkspace? = null
     private var fence = 0L

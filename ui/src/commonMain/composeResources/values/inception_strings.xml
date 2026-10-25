@@ -86,4 +86,5 @@
     <string name="inception_reason">Reason for holding or rejecting</string>
     <string name="inception_reject">Reject with reason</string>
     <string name="inception_keep_relation">Confirm and keep connection</string>
+    <string name="inception_provider_unavailable">AI assistance is unavailable in this environment. You can still save and develop concepts manually.</string>
 </resources>

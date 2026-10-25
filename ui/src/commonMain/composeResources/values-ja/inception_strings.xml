@@ -86,4 +86,5 @@
     <string name="inception_reason">保留・不採用の理由</string>
     <string name="inception_reject">理由を残して不採用</string>
     <string name="inception_keep_relation">関係を確認して残す</string>
+    <string name="inception_provider_unavailable">この環境ではAI接続を利用できません。手動の構想は保存して育てられます。</string>
 </resources>
