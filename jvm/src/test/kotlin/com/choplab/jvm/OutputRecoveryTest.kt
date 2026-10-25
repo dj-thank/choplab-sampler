@@ -83,18 +83,24 @@ class OutputRecoveryTest {
     }
 
     @Test fun missingDeviceIsTriedOnTheWholeScheduleNotRestartedByEachFailure() = runBlocking<Unit> {
-        val attempts = CopyOnWriteArrayList<Long>()
-        val driver = StreamingEnginePort(compiler(), { attempts += System.nanoTime(); error("No output device") })
+        val attempts = AtomicInteger()
+        val scheduled = CopyOnWriteArrayList<Long>()
+        val driver = StreamingEnginePort(compiler(), { attempts.incrementAndGet(); error("No output device") })
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        val recovery = OutputRecovery(driver, scope, longArrayOf(40, 80, 160))
+        val recovery = OutputRecovery(driver, scope, longArrayOf(40, 80, 160), clock = {
+            // The policy records each retry before handing it to the asynchronous opener.
+            // Worker scheduling can compress two observed open times even when the policy waits correctly.
+            System.nanoTime().also(scheduled::add) / 1_000_000
+        })
         try {
             waitUntil { driver.status.value.phase == DriverPhase.EDITING_ONLY }
             recovery.start()
-            waitUntil { attempts.size == 4 }
+            waitUntil { attempts.get() == 4 }
             delay(300)
-            assertEquals(4, attempts.size, "Initial open plus the three scheduled attempts")
+            assertEquals(4, attempts.get(), "Initial open plus the three scheduled attempts")
+            assertEquals(3, scheduled.size, "One schedule with exactly three retry requests")
             // Each failed attempt is the same trouble, so the waits keep growing instead of starting over.
-            val gaps = (2 until attempts.size).map { (attempts[it] - attempts[it - 1]) / 1_000_000 }
+            val gaps = scheduled.zipWithNext { before, after -> (after - before) / 1_000_000 }
             assertTrue(gaps[0] >= 60 && gaps[1] >= 130, "Attempts spread over the schedule: gaps $gaps ms")
         } finally { recovery.stop(); scope.cancel(); driver.close() }
     }

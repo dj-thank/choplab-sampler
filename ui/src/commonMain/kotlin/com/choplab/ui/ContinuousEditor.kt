@@ -68,7 +68,11 @@ import kotlin.math.roundToLong
     vocalCoach: com.choplab.ui.vocal.VocalCoachController? = null,
     autoChop: AutoChopController? = null,
     beatStretch: com.choplab.ui.stretch.BeatStretchController? = null,
+    inception: com.choplab.ui.inception.InceptionController? = null,
 ) {
+    LaunchedEffect(inception, state.documentRevision, state.stage, state.recordingVoice, state.recordingSource, state.recordingSystemAudio) {
+        inception?.hostChanged()
+    }
     CETheme {
         BoxWithConstraints(modifier.fillMaxSize().background(CEColor.Ink).padding(8.dp).clip(RoundedCornerShape(16.dp)).background(CEColor.Cream)) {
             val compact = maxWidth < 900.dp
@@ -76,7 +80,7 @@ import kotlin.math.roundToLong
             // entire viewport. Keep Stop fixed and put the measurements in the existing scroll area.
             val scrollRecordingStatus = compact && state.stage == ContinuousStage.BEAT && maxHeight < 480.dp
             Column(Modifier.fillMaxSize().padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                CEHeader(state, onAction, compact, readout, refreshKey)
+                CEHeader(state, onAction, compact, readout, refreshKey, inception)
                 if (state.closing) Row(Modifier.fillMaxWidth().testTag("ce-closing-project")
                     .semantics { liveRegion = LiveRegionMode.Polite }, horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically) {
@@ -164,6 +168,7 @@ import kotlin.math.roundToLong
                 } })
         }
         CELyricsPanel(state, onAction, readout, refreshKey)
+        inception?.let { com.choplab.ui.inception.InceptionPanel(it) }
         lyricProposal?.let { CELyricProposalDialog(it, onAction) }
         vocalPractice?.let { com.choplab.ui.vocal.VocalPracticeDialog(it) { onAction(ContinuousEditorAction.CloseVocalPractice) } }
         vocalPitch?.let { com.choplab.ui.vocal.CEPitchDialog(it, onAction) }
@@ -409,7 +414,8 @@ import kotlin.math.roundToLong
 }
 
 @Composable private fun CEHeader(state: ContinuousEditorState, onAction: (ContinuousEditorAction) -> Unit, compact: Boolean,
-    readout: () -> ContinuousEditorReadout, refreshKey: Long) {
+    readout: () -> ContinuousEditorReadout, refreshKey: Long, inception: com.choplab.ui.inception.InceptionController?) {
+    @Composable fun Idea() { inception?.let { com.choplab.ui.inception.InceptionEntry(it, !state.closing && state.permits(ContinuousCapability.LYRICS_EDIT)) } }
     @Composable fun Brand() { Column {
         Text(stringResource(Res.string.ce_brand), color = CEColor.Cream, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 22.sp)
         Text(stringResource(Res.string.ce_subbrand), color = CEColor.Tan, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
@@ -435,6 +441,8 @@ import kotlin.math.roundToLong
                             fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1)
                     }
                 }
+                Idea()
+                Spacer(Modifier.width(8.dp))
                 CEActionButton(stringResource(Res.string.ce_stop_all), ContinuousEditorAction.StopAll, state, ContinuousCapability.STOP_ALL, onAction, primary = true, tag = "ce-stop-all")
             }
             BoxWithConstraints(Modifier.fillMaxWidth()) {
@@ -453,6 +461,7 @@ import kotlin.math.roundToLong
         } else Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.width(160.dp)) { CEPcmHealth(state, onAction, readout, refreshKey) { Brand() } }
             Stages(Modifier.weight(1f))
+            Idea()
             Text("${stringResource(Res.string.ce_bpm)} ${ceTempoText(state.milliBpm)}", color = CEColor.Green, fontFamily = FontFamily.Monospace, fontSize = 12.sp)
             CEActionButton(stringResource(Res.string.ce_stop_all), ContinuousEditorAction.StopAll, state, ContinuousCapability.STOP_ALL, onAction, Modifier.widthIn(min = 100.dp), primary = true, tag = "ce-stop-all")
         }

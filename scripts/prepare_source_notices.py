@@ -31,6 +31,8 @@ INPUTS = (
     "config/mac-media-tool-files-20261006.txt", "scripts/mac_tool_policy.py",
     "config/mac-media-tool-files-20261013.txt",
     "config/mac-media-tool-files-20261015.txt",
+    "config/mac-media-tool-files-20261024.txt", "config/mac-media-source-review-20261024.json",
+    "config/mac-media-tool-files-20261025.txt", "config/mac-media-source-review-20261025.json",
     "scripts/build_android_audio_runtime.py", "scripts/prepare_android_python_runtime.py",
     "scripts/build_windows_audio_runtime.py", "scripts/prepare_next_native_candidate.py",
     "scripts/prepare_windows_runtime.py", "scripts/prepare_media_tools.py",

@@ -1,10 +1,13 @@
 # ROADMAP — 現在地と残課題
 
-更新: 2026-10-22（JST）。**開発の正本はmain、本書は現在の進捗・残課題の唯一の索引**です。対象はAndroid 10+・Windows・Macと、対応再開中のiPadOS。段階0〜11の実装・検証・PR統合は承認済みです。新しい配布版の公開、実機・providerの成功、人の受入は、それぞれ実際の結果で判断します。
+更新: 2026-10-25（JST）。**開発の正本はmain、本書は現在の進捗・残課題の唯一の索引**です。対象はAndroid 10+・Windows・Macと、対応再開中のiPadOS。段階0〜11の実装・検証・PR統合は承認済みです。新しい配布版の公開、実機・providerの成功、人の受入は、それぞれ実際の結果で判断します。
 
 ## 現在地
 
+- 出力再接続の試験計測 [PR246](https://github.com/dj-thank/choplab-sampler/pull/246) と、Mac更新待機・現行native依存の照合 [PR247](https://github.com/dj-thank/choplab-sampler/pull/247) をmain `dedaecba` まで統合済み。必須CI3件とMac CIが成功し、main treeは検証済み候補と一致します。Macの実ZIP導入・更新、14単体試験、合成制作・11codec・通常終了/再開を確認。実音/物理マイク/VoiceOverは未確認です。
+- 4-partモデルの既定HTTPS取得処理で初回取得・途中取消・cache再使用・破損検出・修復取消時の旧cache保全・全修復を確認しました。固定165,612,636 bytes/SHA-256一致、part残留0。対象JVM/coreは `315e98ba` からmain `dedaecba` までproduction source差分0で、JARのhashと実行receiptを保持。再現入口は [FourStemDownloadCheck](../scripts/acceptance/FourStemDownloadCheck.java)。アプリの取得UI・他OS・推論品質の実機受入は別です。
 - 48kHz原音のトリム済みピッチ補正は、保存済みの原音/補正音を範囲・配置・来歴を保って切替可能です。原音へ戻した後の再編集も全処理文脈とトリムを保持します。異なるrateの保存版切替とWSOLA再伸縮は引き続き未対応です。
+- 追加改善: [MacのZIP導入/更新](https://github.com/dj-thank/choplab-sampler/pull/242)、[ミキサーの不変判定](https://github.com/dj-thank/choplab-sampler/pull/243)、[所有付き資産staging復旧](https://github.com/dj-thank/choplab-sampler/pull/244)、[trim済みpitch再編集と分割来歴](https://github.com/dj-thank/choplab-sampler/pull/245)、[出力再接続の試験計測](https://github.com/dj-thank/choplab-sampler/pull/246)。Mac更新時の一時的なbundle読取にも、上限付きのidle再確認で対応します。未対応・実機未確認の範囲は下表に残します。
 - 制作・録音・編集の保全と操作UX改善 [PR239](https://github.com/dj-thank/choplab-sampler/pull/239) をmain `a3454724`へ統合済み。保存/取消、STEP下書き、録音終了通知、大文字でのミキサー、Mac梱包を改善しました。
 - Android試験の古いXMLによる誤判定を防ぐ [PR240](https://github.com/dj-thank/choplab-sampler/pull/240) は [PR241](https://github.com/dj-thank/choplab-sampler/pull/241) でmain `cce5207d`へ統合済み。元コミット `3b66138a` を履歴に保持。統合後mainのWindows/Android/履歴とMac CIも成功しました。
 - `main-onmp9o` の変更履歴とVOCAL試験の保存再開timeout診断を採用。Applyの診断はmainの新しい実装を保持しました。`claude/mac-status-20261007` の内容は既にmainへ含まれています。
@@ -36,7 +39,7 @@
 | 6 作詞・TTS | Google提案の同意/費用/取消境界、構造歌詞、端末TTS | 実Google往復・価格/modelの確認、物理音。実送信の成功は未宣言 |
 | 7 ミックス・FX | ミキサー、FX、24bit/STEM/LRC書出し、同一graph | 実音・64track性能・長時間underrun |
 | 8 ピッチ補正 | 非破壊加工、原音/加工来歴、trim済み再編集、48kHz原音のtrim済み保存版切替、保存再開 | 異なるrateのtrim済み保存版切替、実音・人の品質受入 |
-| 9 4パート分離 | 本番ORT経路、メモリ境界、取消、固定モデル推論 | 長尺/実曲品質、実HTTPS初回取得・修復、実機受入 |
+| 9 4パート分離 | 本番ORT経路、メモリ境界、取消、固定モデル推論。JVM既定HTTPSの初回取得/修復を実通信で確認 | 長尺/実曲品質、取得UIと他OSのネットワーク経路、実機受入 |
 | 10 練習coach | 練習・履歴・掛合いの制作接続 | 実音・人の体験受入 |
 | 11 仕上げ・1.0 | WASAPI、初回guide、配布/NOTICE基盤 | 正式署名/公証、完全source、実route/性能/VoiceOver/TalkBack、HUMAN_GO |
 | iPadOS | 共通codec・Native frameworkとSimulator基盤 | 保存候補の精査、Apple host、アプリ、署名、所有iPadでの制作通し |
@@ -56,11 +59,11 @@ Issueを閉じることと、機能の実装完了は区別します。下記は
 
 ### 構想形成ワークスペース（旧 #221–#227）
 
-テーマが未定の素材・独り言から「何を表現したいか」を育てる構想です。歌詞の自動量産とは区別し、原文・AI仮説・本人の採用を分離します。**mainにはまだ実装されていません。** 元の候補は下のIssueに名前/hashが記録されていますが、取得URLはなく今回はsource未取得です。採用には元ZIPの取得・精査、または要件からの新規実装としての検証が必要です。閉鎖は追跡先の集約です。添付の存在や独立source試験をrepository/実AIの成功に読み替えません。
+テーマが未定の素材・独り言から「何を表現したいか」を育てる構想です。歌詞の自動量産とは区別し、原文・AI仮説・本人の採用を分離します。旧Issueの要件から新規実装した候補は、Android/Desktopの手動編集→根拠→採用→プレビュー→制作へ1Undoで適用、独立version 1の保存再開、許可ノートだけの文字列検索を接続しました。[実装契約](inception/README.md)と[評価境界](inception/EVALS.md)を参照してください。元ZIPは取得していません。providerは毎回の用途・model・料金上限の確認と同意を必要とし、実通信は未検証です。Androidの端末内ASRは対応端末だけで有効で、原音保存・Desktop ASR・JAM自動応答・意味検索・Apple接続・実機と人の受入は未完です。
 
 | 順序・旧Issue | 実装と受入条件 |
 |---|---|
-| IN-01 / [#221](https://github.com/dj-thank/choplab-sampler/issues/221) | 添付候補を取得・精査し、素材/仮構想/関係/採用履歴、呼出し/取消/古い応答拒否/明示適用を正式Gradleで検証。候補packageのSHA-256は `67b26a58e3b2f71aa8dfc253348e3eca01111caecaefa342019169abca765355`。`docs/inception/`は現在のmainに存在しない |
+| IN-01 / [#221](https://github.com/dj-thank/choplab-sampler/issues/221) | 要件から新規実装した素材/仮構想/関係/採用履歴、取消/古い応答拒否/明示適用の候補を正式Gradleで検証。元候補package（SHA-256 `67b26a58e3b2f71aa8dfc253348e3eca01111caecaefa342019169abca765355`）は未取得で、同一実装とは主張しない |
 | IN-02A / [#222](https://github.com/dj-thank/choplab-sampler/issues/222) | schema15と独立したversion付きローカル保存。原文/根拠ID/判断の保存再開、atomic publish、中断/破損/未知version/容量不足/過大入力の拒否。削除は索引/cache/Undo/autosaveへ伝播し、backup/provider保持は明示 |
 | IN-02B / [#223](https://github.com/dj-thank/choplab-sampler/issues/223) | 既存4工程から明示入口。AIなしの手動作成/更新/Undo、原文と根拠の往復、0〜3案の比較/編集/採用/保留。連打/新入力/停止/画面閉鎖/workspace切替で旧応答を破棄。IME/長文/幅/キーボード/空・エラーを検証 |
 | IN-03 / [#224](https://github.com/dj-thank/choplab-sampler/issues/224) | provider実接続は毎回同意・選択素材・整数費用上限・期限・取消境界を守る。strict応答schema、根拠/ID/revision、未知field/過大/二重応答/timeout/429を試験。自動retryなし。公式model/価格と意味評価を実providerで確認し、合成fixtureと分離 |
@@ -81,6 +84,9 @@ Issueを閉じることと、機能の実装完了は区別します。下記は
 - ミキサーのbypass事前計算は旧main `cce5207d` とmaster/pre-master・全134 stem sample・meter・停止/交換/tailのbit一致を比較。Linux amd64/JDK21、192frame、warm-up/計測各1万block、32同時clipの2対比較で16track render CPU 3.2640/3.1400s→2.8020/2.8254s、64track 4.4458/4.1180s→4.2333/4.1906s。全回割当/PCM欠落0。並行build負荷があるためwall p99や実機改善には読み替えません。
 - 資産stagingの新形式はLinux/JDK21のJVM全276件成功（失敗/skip 0）。新規10件で実子JVMの強制終了・生きたpublish/adopt/retaining・複数Storeの再入lock・容量不足/取消/再試行と未知ファイル保全を確認。Mac CIにも同じprocess所有試験を追加。Windowsのsymlink権限に依存する1件は明示skipとし、lock/強制終了試験は実行する。旧形式の自動削除・電源断・分離全体のprocess間transactionは保証しない。
 - trim済みpitch再編集はcore9/UI45/JVM17/Desktop2の関連73件成功（失敗/skip 0）。8/44.1/48/96kHz境界、1frame crop、A/Bの実SOURCE再生と復帰、複製/反復/分割、Undo、元音全範囲とのrender一致・archive再開を確認。旧コードへ戻した3負例はそれぞれSTALE、recipe欠落、PITCH範囲試聴拒否で失敗。再編集の計算量は原音の全処理範囲に依存する。
+- 上記4差分の合成後もcore124/JVM278/UI15/Desktop2の419件がLinux/JDK21で成功（失敗/skip 0）。再接続の待機間隔試験は非同期openerの実行時刻から要求時刻の計測へ修正し、実open4回・要求3回と同じ待機下限を保持。関連6件成功、待機を毎回40msに戻す負例は失敗し、元の本番実装へ復元しました。
+- Windowsの資産復旧CIでは子processの終了通知後もOSのlock解放が遅れる場合を確認。既存10秒期限内で実lockの取得・解放を観測してから通常publishを1回行う試験へ修正しました。製品の待機・排他契約は維持し、修正後の関連10件はLinuxで成功。Windows/Macの結果はPR244の同一head CIを参照します。
+- PR242統合後main `bc4e0a78` の[Mac run38687220552](https://github.com/dj-thank/choplab-sampler/actions/runs/38687220552)では未起動bundleのopen handleにより更新検査が停止。所有processの種類はログでは特定できないため除外せず、既存30秒上限内で全handleの解放を再観測します。関連14件成功、旧コードの一時的読取負例は失敗。検査エラー・timeout・使用継続の拒否と、copy前後の再確認・app/manifestの復元を保持します。
 - `LOCAL_PASS → DEVICE_PASS → PROVIDER_PASS → PUBLIC_PASS → HUMAN_GO` を区別します。新しいソースや合成試験の成功を過去の実機結果へ接ぎ合わせません。
 
 - main `a3454724` のWindows再実行では、H13録音中PAD試験がSTARTING→RECORDINGの正常遷移と競合して失敗しました（[run38584688682](https://github.com/dj-thank/choplab-sampler/actions/runs/38584688682)）。recorderのflagはcontrollerの状態通知より先にtrueになるため、試験は開始をgateで保持してSTARTINGを検査し、解除後に正確なRECORDING通知を待って同じPAD/Undo/試聴禁止を検査します。本番録音・状態比較・既存5秒上限は保持し、PR241最終headとmain `cce5207d` のWindows CIで成功を確認しました。

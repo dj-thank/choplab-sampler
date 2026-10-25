@@ -133,8 +133,8 @@ class NextActivity : ComponentActivity() {
         val failed by session.backend.persistenceFailure.collectAsState()
         Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).testTag("next-editor")) {
             ContinuousEditor(if (failed) state.copy(status = ContinuousStatus.FAILED) else state,
-                session.presenter::onAction, session.presenter::readout, refresh, diagnostics = session.presenter::diagnostics, mixerReadout = session.presenter::readMixer,
-                lyricProposal = lyricProposal, stepPatterns = stepPatterns, vocalGuide = vocalGuide, fourStems = fourStems,
+                session::onEditorAction, session.presenter::readout, refresh, diagnostics = session.presenter::diagnostics, mixerReadout = session.presenter::readMixer,
+                lyricProposal = lyricProposal, stepPatterns = stepPatterns, vocalGuide = vocalGuide, fourStems = fourStems, inception = session.inception,
                 autoChop = autoChop, onlineSource = onlineSource, sourceAnalysis = sourceAnalysis, vocalTakes = vocalTakes, vocalPunch = vocalPunch, vocalPractice = vocalPractice, vocalPitch = vocalPitch, vocalCoach = vocalCoach, beatStretch = beatStretch, quickStart = session.quickStart)
         }
     }
