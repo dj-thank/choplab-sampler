@@ -40,7 +40,7 @@ Apple の確認には ARM64 Mac、対応 Xcode/iOS SDK と iPad Simulator が必
   :apple:linkDebugFrameworkIosArm64 :apple:linkDebugFrameworkIosSimulatorArm64 \
   :apple:iosSimulatorArm64Test --device "$CHOPLAB_SIMULATOR" \
   --tests 'com.choplab.apple.AppleCodecTest' --tests 'com.choplab.apple.AppleStorageTest' \
-  --tests 'com.choplab.apple.AppleStudioFlowTest'
+  --tests 'com.choplab.apple.AppleStudioFlowTest' --tests 'com.choplab.apple.AppleResourceOwnershipTest'
 python3 apple/scripts/build_simulator.py --device "$CHOPLAB_SIMULATOR"
 ```
 
@@ -54,6 +54,8 @@ ARM64/iOS Simulator identity と Compose リソース、package bytes/hash を�
 `AppleStudioFlowTest` は production の `IosBackend` と `Studio` actor を起動し、
 実 AVAudioEngine route で SOURCE/HAND/曲を操作してから export/archive/autosave の終了再開を通します。
 このテストでは出力が得られなければ失敗とし、偽出力へ置き換えません。聴感の評価は実機で行います。
+`AppleResourceOwnershipTest` は起動途中の取消、初回再描画前の終了、公開失敗時の資源回収を検査します。
+autosave の復元が古い有効世代へ戻っても新編集を保存し、上書き先の読めない世代は別名で保全します。
 
 ## 署名と所有 iPad での確認
 

@@ -22,14 +22,31 @@ fun MainViewController(): UIViewController {
     lateinit var controller: UIViewController
     controller = ComposeUIViewController {
         val scope = rememberCoroutineScope()
-        var backend by remember { mutableStateOf<IosBackend?>(null) }
+        val ownership = remember { ResourceOwner<IosUiHost>() }
+        var backend by remember { mutableStateOf<IosUiHost?>(null) }
         var failed by remember { mutableStateOf(false) }
+        DisposableEffect(Unit) {
+            onDispose {
+                ownership.close()?.let { owned ->
+                    CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
+                        try { owned.shutdown() } finally { cancel() }
+                    }
+                }
+            }
+        }
         LaunchedEffect(Unit) {
-            try { backend = withContext(Dispatchers.Default) { IosBackend.create() } }
+            try {
+                createAndPublishOwnedResource(
+                    create = { IosUiHost(IosBackend.create()) },
+                    release = { it.shutdown() },
+                    publish = { check(ownership.install(it)); backend = it },
+                )
+            }
             catch (cancel: CancellationException) { throw cancel }
             catch (_: Exception) { failed = true }
         }
-        val host = backend
+        val owned = backend
+        val host = owned?.backend
         if (host == null) {
             MaterialTheme { if (failed) Text(stringResource(Res.string.startup_failed)) else CircularProgressIndicator() }
         } else {
@@ -54,6 +71,7 @@ fun MainViewController(): UIViewController {
             var refresh by remember { mutableLongStateOf(0L) }
             LaunchedEffect(host) { while (isActive) { delay(33); host.studio.dispatch(Action.RefreshTransport); refresh++ } }
             DisposableEffect(host) {
+                requireNotNull(owned).beforeShutdown = { try { presenter.close() } finally { ports.sourcePreview.close() } }
                 val center = NSNotificationCenter.defaultCenter
                 val observers = listOf(
                     center.addObserverForName(UIApplicationDidEnterBackgroundNotification, null, NSOperationQueue.mainQueue) {
@@ -66,7 +84,6 @@ fun MainViewController(): UIViewController {
                 )
                 onDispose {
                     observers.forEach(center::removeObserver)
-                    CoroutineScope(SupervisorJob() + Dispatchers.Default).launch { try { presenter.close(); ports.sourcePreview.close(); host.shutdown() } finally { cancel() } }
                 }
             }
             Column(Modifier.fillMaxSize()) {
@@ -82,4 +99,9 @@ fun MainViewController(): UIViewController {
         }
     }
     return controller
+}
+
+private class IosUiHost(val backend: IosBackend) {
+    var beforeShutdown: suspend () -> Unit = {}
+    suspend fun shutdown() { try { beforeShutdown() } finally { backend.shutdown() } }
 }
