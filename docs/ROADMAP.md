@@ -5,6 +5,7 @@
 ## 現在地
 
 - [PR249](https://github.com/dj-thank/choplab-sampler/pull/249) をmain `bba765e2`へ統合。実HTTPS receiptのJAR照合とMacの16/64track計測を追加し、ICU79.1を含むexact依存集合を照合。必須3CI・Mac CI成功。計測は合成JVMの結果で、物理音と10分underrunは未確認です。
+- NIO 2.1.5本体は、固定source・Bazel・公開R8配布変換から全1,459 classのbytes一致を確認しました。577 source fileのheaderとclassの対応を機械可読表にし、GPLv2＋Classpath例外本文を配布用noticeへ追加。configurationの29補助classも[PR254](https://github.com/dj-thank/choplab-sampler/pull/254)で全class bytesを再現。生成JSON/lint、他native依存、全体のsource配布経路は引続き未確認です。
 - 出力再接続の試験計測 [PR246](https://github.com/dj-thank/choplab-sampler/pull/246) と、Mac更新待機・現行native依存の照合 [PR247](https://github.com/dj-thank/choplab-sampler/pull/247) をmain `dedaecba` まで統合済み。必須CI3件とMac CIが成功し、main treeは検証済み候補と一致します。Macの実ZIP導入・更新、14単体試験、合成制作・11codec・通常終了/再開を確認。実音/物理マイク/VoiceOverは未確認です。
 - 4-partモデルの既定HTTPS取得処理で初回取得・途中取消・cache再使用・破損検出・修復取消時の旧cache保全・全修復を確認しました。固定165,612,636 bytes/SHA-256一致、part残留0。対象JVM/coreは `315e98ba` からmain `dedaecba` までproduction source差分0で、JARのhashと実行receiptを保持。再現入口は [FourStemDownloadCheck](../scripts/acceptance/FourStemDownloadCheck.java)。アプリの取得UI・他OS・推論品質の実機受入は別です。
 - トリム済みピッチ補正は非48kHz原音も正規化した比較用原音を保存し、範囲・配置・来歴を保って切替できます。WSOLA再伸縮は全原音文脈から再処理し、基準cropから端点を求めるためテンポを往復しても丸め誤差を累積しません。schema16で保存し、schema10–15を明示移行します。実音・人の品質受入は別です。
