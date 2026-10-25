@@ -189,6 +189,9 @@ import org.jetbrains.compose.resources.stringResource
                         state.hits.forEach { hit -> OutlinedButton(onClick = { leave { scope.launch { controller.openHit(hit) } } }) { Text("${hit.workspaceId}/${hit.materialId}: ${hit.excerpt}") } }
                         HorizontalDivider()
                         Text(stringResource(Res.string.inception_provider), style = MaterialTheme.typography.titleLarge)
+                        if (!controller.providerAvailable) {
+                            Text(stringResource(Res.string.inception_provider_unavailable), modifier = Modifier.testTag("inception-provider-unavailable"))
+                        } else {
                         Text(stringResource(Res.string.inception_provider_hint))
                         Text(state.selected.joinToString())
                         OutlinedTextField(model, { model = it; scope.launch { controller.bindProvider(model, key) } }, label = { Text(stringResource(Res.string.inception_model)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -208,6 +211,7 @@ import org.jetbrains.compose.resources.stringResource
                         state.suggestedRelations.forEach { r -> Text("${r.from} → ${r.to}: ${r.explanation}")
                             OutlinedButton(onClick = { scope.launch { controller.keepRelation(r.id) } }) { Text(stringResource(Res.string.inception_keep_relation)) } }
                         state.questions.forEach { Text(it) }
+                        }
                         Text(stringResource(Res.string.inception_voice_hint))
                         FlowRow { InceptionVoiceMode.entries.forEach { mode -> FilterChip(state.mode == mode, { scope.launch { controller.mode(mode) } }, label = { Text(mode.name) }) } }
                         Button(onClick = { scope.launch { controller.listen() } }, enabled = controller.voiceAvailable && !state.listening && !state.generating, modifier = Modifier.testTag("inception-listen")) { Text(stringResource(Res.string.inception_listen)) }

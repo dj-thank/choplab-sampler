@@ -7,6 +7,7 @@ import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.Density
 import com.choplab.core.inception.*
+import com.choplab.core.ai.GoogleLyricSession
 import com.choplab.ui.*
 import kotlinx.coroutines.*
 import java.io.File
@@ -14,6 +15,21 @@ import java.util.Locale
 import kotlin.test.*
 
 class InceptionPanelTest {
+    @Test fun unavailableProviderKeepsManualWorkspaceAndHidesKeyInputs() = runBlocking<Unit> {
+        val fixture = InceptionFixture(this)
+        val controller = InceptionController(MemoryInceptionStore(), this, { fixture.current }, { _, _ -> false }, GoogleLyricSession { 100L })
+        controller.open(); controller.create("Manual notebook")
+        val scene = ImageComposeScene(width = 1280, height = 1000, coroutineContext = coroutineContext) { MaterialTheme { InceptionPanel(controller) } }
+        try {
+            scene.settle()
+            assertFalse(controller.providerAvailable)
+            assertNotNull(scene.tag("inception-provider-unavailable"))
+            assertNull(scene.tag("inception-generate"))
+            scene.type("inception-material-input", "A local idea")
+            scene.click("inception-add-material"); scene.settle()
+            assertEquals("A local idea", controller.state.value.workspace!!.materials.single().original)
+        } finally { scene.close(); controller.close(); fixture.controller.close() }
+    }
     @Test fun actualPanelTextEvidenceAdoptionSaveAndProductionApply() = runBlocking<Unit> {
         val f = InceptionFixture(this)
         f.controller.open()
