@@ -61,6 +61,8 @@ ChopLab単体のMIT表示だけで、組合せ全体をMIT-onlyと扱いませ�
 
 Mac media policy `config/mac-media-tool-files-20261024.txt` adds the exact observed 40-file graph with Brotli 1.2.1 (MIT), c-ares 1.34.9 (MIT), HdrHistogram_c 0.12.1 (CC0-1.0 OR BSD-2-Clause), and SQLite 3.54.1 (upstream blessing). Source URLs, publisher-declared source hashes, ABI evidence and the CI observation are recorded in `config/mac-media-source-review-20261024.json` and included in source notices. The c-ares `21:8:19` libtool version maps to `2.19.8`, and HdrHistogram's ABI version is `6.5.4`; neither is the project version. Previous exact graphs remain valid; mixed or unknown library sets are rejected. This reviewed input graph is not a complete corresponding-source or public-release receipt.
 
+The October 25 policy `config/mac-media-tool-files-20261025.txt` replaces only the three ICU 78.3 libraries with ICU 79.1. [ICU's fixed release license](https://github.com/unicode-org/icu/blob/release-79.1/LICENSE) is Unicode-3.0 with included third-party notices. The official source URL, declared hash, version-header evidence and failed CI observation are in `config/mac-media-source-review-20261025.json`. All three libraries must match the same reviewed graph; partial upgrades and future versions are rejected. This source review does not complete the bundle's corresponding-source delivery.
+
 ## Android NIO desugar 2.1.5 — source and license evidence
 
 `config/newpipe-dependencies.json` はGoogle Mavenで取得したNIO本体とconfigurationの両JAR/POMをURL・bytes・SHA-256で固定します。`:app:verifyNewPipeDesugaring` は解決した推移依存を含む全座標と両JARを照合します。設定だけでなく、configuration JARにある29個の補助classも検査対象です。これらが最終APKへどの形で入るかはD8/R8後の配布物で確認します。
