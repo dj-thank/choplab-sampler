@@ -76,6 +76,33 @@ class AppleStorageTest {
         assertEquals(3L, autosave.recover()?.revision)
         assertEquals("New empty project", autosave.recover()?.project?.title)
     }
+    @Test fun freshEditsPersistAfterFallingBackFromHigherUnreadableRevision(): Unit = runBlocking {
+        val store = IosAssetStore(directory())
+        val (asset, bytes) = fixture()
+        store.write(asset, bytes)
+        val root = directory()
+        val original = IosAutosave(root, store)
+        original.save(Project(title = "Recoverable"), 2)
+        original.save(Project(title = "Broken newer", assets = frozenListOf(asset)), 100)
+        val brokenSlot = readFile("$root/autosave.1.json", ProjectJson.MAX_BYTES.toLong())
+        val assetPath = "${store.directory}/${asset.hash}.${asset.extension}"
+        FileWriter(assetPath, exclusive = false).use { it.write(bytes.copyOf().also { b -> b[44] = 1 }); it.syncAndClose() }
+        val restarted = IosAutosave(root, store)
+        assertEquals(2L, restarted.recover()?.revision)
+        val fresh = Project(title = "Fresh edit")
+        assertTrue(restarted.save(fresh, 3))
+        assertEquals(3L, restarted.recover()?.revision)
+        assertTrue(restarted.contains(fresh, 3))
+        restarted.save(Project(title = "Fresh edit 2"), 4)
+        val latest = Project(title = "Fresh edit 3")
+        restarted.save(latest, 5)
+        assertFalse(restarted.save(latest, 5))
+        assertFails { restarted.save(Project(title = "Stale request"), 4) }
+        val retained = listFiles(root).single { it.startsWith("retained-unreadable-") }
+        assertContentEquals(brokenSlot, readFile("$root/$retained", ProjectJson.MAX_BYTES.toLong()))
+        FileWriter(assetPath, exclusive = false).use { it.write(bytes); it.syncAndClose() }
+        assertEquals(5L, IosAutosave(root, store).recover()?.revision)
+    }
     @Test fun unknownSchemaAndUnknownZipEntryAreRejected() {
         val store = IosAssetStore(directory())
         val root = directory().also(::ensureDirectory)

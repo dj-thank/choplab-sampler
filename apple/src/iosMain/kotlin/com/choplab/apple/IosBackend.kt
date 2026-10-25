@@ -49,7 +49,10 @@ internal class IosBackend private constructor(
     }
 
     private suspend fun save(project: Project, revision: Long) = withContext(Dispatchers.Default) {
-        try { autosave.save(project, revision); persistenceFailed.value = false }
+        try {
+            check(autosave.save(project, revision) || autosave.contains(project, revision)) { "Document was not persisted" }
+            persistenceFailed.value = false
+        }
         catch (cancel: CancellationException) { throw cancel }
         catch (_: Exception) { persistenceFailed.value = true }
     }
