@@ -6,6 +6,8 @@ MEDIA_POLICY_FILES = (
     "config/mac-media-tool-files-20261006.txt",
     "config/mac-media-tool-files-20261013.txt",
     "config/mac-media-tool-files-20261015.txt",
+    "config/mac-media-tool-files-20261024.txt",
+    "config/mac-media-tool-files-20261025.txt",
 )
 
 
