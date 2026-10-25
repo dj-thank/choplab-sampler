@@ -39,7 +39,8 @@ Apple の確認には ARM64 Mac、対応 Xcode/iOS SDK と iPad Simulator が必
 ./gradlew --no-daemon --max-workers=1 --console=plain -PchoplabIosPreview=true \
   :apple:linkDebugFrameworkIosArm64 :apple:linkDebugFrameworkIosSimulatorArm64 \
   :apple:iosSimulatorArm64Test --device "$CHOPLAB_SIMULATOR" \
-  --tests 'com.choplab.apple.AppleCodecTest' --tests 'com.choplab.apple.AppleStorageTest'
+  --tests 'com.choplab.apple.AppleCodecTest' --tests 'com.choplab.apple.AppleStorageTest' \
+  --tests 'com.choplab.apple.AppleStudioFlowTest'
 python3 apple/scripts/build_simulator.py --device "$CHOPLAB_SIMULATOR"
 ```
 
@@ -50,6 +51,9 @@ ARM64/iOS Simulator identity と Compose リソース、package bytes/hash を�
 失敗時の artifact の存在や、共有 framework 試験だけをアプリの成功とは扱いません。
 `AppleStorageTest` は合成左右音源の取込→chop→PAD→曲→24-bit WAV→保存→再開→新編集 Undo/Redo と
 破損・unknown schema・ZIP 不整合・quota・無出力・PCM 予算拒否を実行します。
+`AppleStudioFlowTest` は production の `IosBackend` と `Studio` actor を起動し、
+実 AVAudioEngine route で SOURCE/HAND/曲を操作してから export/archive/autosave の終了再開を通します。
+このテストでは出力が得られなければ失敗とし、偽出力へ置き換えません。聴感の評価は実機で行います。
 
 ## 署名と所有 iPad での確認
 

@@ -156,6 +156,7 @@ jobs:
               --tests 'com.choplab.ui.source.OnlineArtworkIosTest' --tests 'com.choplab.ui.ContinuousTapTempoTest' \
             :apple:iosSimulatorArm64Test --device "$FOUNDATION_SIMULATOR" \
               --tests 'com.choplab.apple.AppleCodecTest' --tests 'com.choplab.apple.AppleStorageTest' \
+              --tests 'com.choplab.apple.AppleStudioFlowTest' \
             2>&1 | tee dist/ipad-native-foundation-evidence/gradle-apple.log
 
       - name: Require executed native tests and hash the actual frameworks
@@ -170,7 +171,7 @@ jobs:
               'engine': {'com.choplab.engine.EngineContractTest'},
               'core': {'com.choplab.core.EditSessionTest'},
               'ui': {'com.choplab.ui.source.OnlineArtworkIosTest', 'com.choplab.ui.ContinuousTapTempoTest'},
-              'apple': {'com.choplab.apple.AppleCodecTest', 'com.choplab.apple.AppleStorageTest'},
+              'apple': {'com.choplab.apple.AppleCodecTest', 'com.choplab.apple.AppleStorageTest', 'com.choplab.apple.AppleStudioFlowTest'},
           }
           tests = {}
           for module, classes in required.items():
