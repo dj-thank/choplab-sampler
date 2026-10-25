@@ -4,7 +4,7 @@
 
 ## 現在地
 
-- [PR251](https://github.com/dj-thank/choplab-sampler/pull/251)をmain `6e0e550d`へ統合。Native64件、実Simulatorアプリのbuild/導入/起動と再起動、arm64/iPhoneOS未署名buildが成功。原音/保存/構想の回帰を含み、実アプリの48kHz stereo出力routeも接続済みです。追加の実アプリ制作通しは `app-results.json` の再生buffer消費・24bit書出し・保存・新プロセスでのUndo/Redoを必須にします。所有iPadの署名はMacキーチェーン解除待ちで、実機導入・聴感・マイク・VoiceOverは未確認です。
+- [PR251](https://github.com/dj-thank/choplab-sampler/pull/251)をmain `6e0e550d`へ統合。Native64件、実Simulatorアプリのbuild/導入/起動と再起動、arm64/iPhoneOS未署名buildが成功。原音/保存/構想の回帰を含み、実アプリの48kHz stereo出力routeも接続済みです。[PR256](https://github.com/dj-thank/choplab-sampler/pull/256)もmain `58bcd7b9`へ統合。[実アプリCI](https://github.com/dj-thank/choplab-sampler/actions/runs/40200772853)でNative67件と、取込→再生buffer消費→SOURCE/HAND/曲の独立→24bit書出し→保存→新プロセスでの復元/Undo/Redoが成功。原音hashは再起動前後で一致しました。所有iPadの署名はMacキーチェーン解除待ちで、実機導入・聴感・マイク・VoiceOverは未確認です。
 - Mac版は検証済み配布物をTailscale経由で独立profileへ配置し、bundle署名整合と実Mac上のウィンドウ起動を確認。通常の制作データは開いていません。実音と物理入力、人の使い勝手は別の受入です。
 - [PR249](https://github.com/dj-thank/choplab-sampler/pull/249) をmain `bba765e2`へ統合。実HTTPS receiptのJAR照合とMacの16/64track計測を追加し、ICU79.1を含むexact依存集合を照合。必須3CI・Mac CI成功。計測は合成JVMの結果で、物理音と10分underrunは未確認です。
 - NIO 2.1.5本体は、固定source・Bazel・公開R8配布変換から全1,459 classのbytes一致を確認しました。577 source fileのheaderとclassの対応を機械可読表にし、GPLv2＋Classpath例外本文を配布用noticeへ追加。configurationの29補助classも[PR254](https://github.com/dj-thank/choplab-sampler/pull/254)で全class bytesを再現。生成JSON/lint、他native依存、全体のsource配布経路は引続き未確認です。
@@ -63,7 +63,7 @@ Issueを閉じることと、機能の実装完了は区別します。下記は
 
 ### 構想形成ワークスペース（旧 #221–#227）
 
-テーマが未定の素材・独り言から「何を表現したいか」を育てる構想です。歌詞の自動量産とは区別し、原文・AI仮説・本人の採用を分離します。旧Issueの要件から新規実装した候補は、Android/Desktopの手動編集→根拠→採用→プレビュー→制作へ1Undoで適用、独立version 1の保存再開、許可ノートだけの文字列検索を接続しました。[実装契約](inception/README.md)と[評価境界](inception/EVALS.md)を参照してください。元ZIPは取得していません。providerは毎回の用途・model・料金上限の確認と同意を必要とし、実通信は未検証です。Androidの端末内ASRは対応端末だけで有効で、原音保存・Desktop ASR・JAM自動応答・意味検索・Apple接続・実機と人の受入は未完です。
+テーマが未定の素材・独り言から「何を表現したいか」を育てる構想です。歌詞の自動量産とは区別し、原文・AI仮説・本人の採用を分離します。旧Issueの要件から新規実装した候補は、Android/Desktop/iPadの手動編集→根拠→採用→プレビュー→制作へ1Undoで適用、独立version 1の保存再開、許可ノートだけの文字列検索を接続しました。[実装契約](inception/README.md)と[評価境界](inception/EVALS.md)を参照してください。元ZIPは取得していません。providerは毎回の用途・model・料金上限の確認と同意を必要とし、実通信は未検証です。Androidの端末内ASRは対応端末だけで有効で、原音保存・Desktop/iPad ASR・JAM自動応答・意味検索・実機と人の受入は未完です。
 
 | 順序・旧Issue | 実装と受入条件 |
 |---|---|

@@ -10,7 +10,7 @@
 
 ## 保存と削除
 
-`InceptionWorkspace` のversion 1は制作schema15/16から独立する。Android/Desktopの既存隔離profileの `inception-v1/` だけに保存し、制作archiveへ自動混入しない。1文書256KiB、32ノート、総容量8MiB（旧版と書込中の両方を含む）、128素材、各素材8,192文字、3案、256判断の上限を持つ。
+`InceptionWorkspace` のversion 1は制作schema15/16から独立する。Android/Desktop/iPadの既存隔離profileの `inception-v1/` だけに保存し、制作archiveへ自動混入しない。1文書256KiB、32ノート、総容量8MiB（旧版と書込中の両方を含む）、128素材、各素材8,192文字、3案、256判断の上限を持つ。
 
 JVM storeはプロセス内排他とOS file lock、revision CASを組み合わせる。UTF-8と重複key／未知field／型／深さ／参照整合性を検証する。payloadのSHA-256付き封筒を書き、flush・読戻し検証の後にatomic moveで公開する。atomic move非対応や容量不足を成功扱いせず、既存版を保持する。空き容量はAndroidでも利用できる保存先の `File.usableSpace` の実値を使い、0や不足を拒否する。電源断に対するdirectory fsyncの保証はしない。中断で残った同ノートの完全な一時版は検証して回収し、不完全または未知の一時版は保全して失敗を表示する。
 
@@ -47,7 +47,7 @@ Android API31以降で実際に利用可能な端末内SpeechRecognizerがある
 
 ## ホスト接続の契約
 
-共通APIは `core/.../inception/Inception.kt` の `InceptionStore` と `ui/.../inception/InceptionController.kt` にある。Apple固有adapterはこの変更に含まない。未接続hostでは `ContinuousEditor` の `inception` は既定の `null` で、入口を表示しない。
+共通APIは `core/.../inception/Inception.kt` の `InceptionStore` と `ui/.../inception/InceptionController.kt` にある。iPadは `IosInceptionStore` と専用controllerを接続し、手動編集・保存再開・採用から制作への1Undo適用を利用できる。Appleのprovider/ASRは未接続である。未接続hostでは `ContinuousEditor` の `inception` は既定の `null` で、入口を表示しない。
 
 - `list(): List<InceptionWorkspace>` と `load(id): InceptionWorkspace?` は検証済みの独立snapshotを返す。
 - `save(document, expectedRevision)` は `null` の場合だけ新規作成し、既存文書はrevision一致・次revisionでatomic置換する。競合は `InceptionException(STALE)`、破損・未知version・容量不足もtyped失敗にする。失敗時には旧版を保持する。
@@ -57,4 +57,4 @@ hostは `InceptionController(store, scope, studio, google, providerFactory, voic
 
 `ContinuousEditor(..., inception=controller)` が4工程の入口、表示と文書／工程／録音変化時の `hostChanged()` を接続する。hostの全停止（メニューとdialog shortcutを含む）、音声割込・background移行では `stop()` を呼ぶ。破棄時にはscopeをcancelする前に `close()` を完了させ、認識・通信・鍵を破棄する。外部送信を有効にする場合だけ、hostの実時計を持つ専用 `GoogleLyricSession` と、その回の選択素材・protocol上界について確認したreviewを使う。
 
-JVM実装 `FileInceptionStore` は参考になるが、Apple adapterのatomic保存・実機のファイル保護・容量・中断・再開は別途そのhostで検証する。JVMの通過をApple保存やiPad UIの受入へ読み替えない。
+Appleの `AppleInceptionStoreTest` はNative上でatomic保存、revision競合、容量、破損・未知version・UTF-8、一時版、削除失敗の保全、controllerからの適用/Undoを検証する。iPadの保存境界と実行入口は [Apple host](../../apple/README.md) を参照する。物理iPadのファイル保護・中断・UIと人の受入は別で、JVM/Simulatorの通過から推定しない。
