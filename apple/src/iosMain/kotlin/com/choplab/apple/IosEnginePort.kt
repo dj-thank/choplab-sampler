@@ -42,7 +42,7 @@ internal fun monotonicNanos(): Long = clock_gettime_nsec_np(CLOCK_UPTIME_RAW.toU
  */
 internal class IosEnginePort(
     private val compiler: ProgramCompiler,
-    private val openOutput: () -> IosAudioOutput?,
+    private val openOutput: () -> AudioOutputOpen,
     private val blockFrames: Int = 256,
     private val acknowledgementMillis: Long = 1_000,
     private val memory: PcmAdmission = PcmAdmission(),
@@ -80,6 +80,8 @@ internal class IosEnginePort(
     @Volatile private var acknowledgedReadout: AcknowledgedReadout? = null
     @Volatile private var confirmedProgram = EngineProgram.EMPTY
     @Volatile private var attached: IosAudioOutput? = null
+    @Volatile private var outputCapability: AudioOutputCapability? = null
+    fun lastOutputCapability(): AudioOutputCapability? = outputCapability
     @Volatile private var outputSession: Any = Any()
     @Volatile private var writtenFrame = -1L
     @Volatile private var ownerLoops = 0L
@@ -231,6 +233,9 @@ internal class IosEnginePort(
             statusValue.value.faults, window, p99, if (window == 0) null else times[window - 1] / blockNanos)
     }
 
+    /** Actual AVAudioPlayerNode completion count; absent when a hardware route is not attached. */
+    fun outputConsumedFrames(): Long? = attached.takeIf { statusValue.value.phase == DriverPhase.ATTACHED }?.consumedFrameCount()
+
     /** Control-thread estimate of when an engine frame reaches the speaker; not a route calibration. */
     fun estimatedOutputNanos(engineFrame: Long): Long? {
         val device = attached ?: return null
@@ -277,7 +282,9 @@ internal class IosEnginePort(
             inFlight.indices.forEach { index -> inFlight[index]?.let { complete(it, false, dropped = true) }; inFlight[index] = null }
         }
         fun openRoute() {
-            val opened = openOutput()
+            val result = openOutput()
+            outputCapability = result.capability
+            val opened = result.output
             when {
                 opened == null -> {
                     faultLatched.store(1)

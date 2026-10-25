@@ -55,9 +55,20 @@ def launch(device: str, container: Path) -> dict:
             if value.get("token") == token:
                 if value.get("padCount") != 128 or value.get("stage") != "CAPTURE":
                     raise RuntimeError("Unexpected composed editor state")
-                return {key: value[key] for key in ("padCount", "stage", "outputAttached", "schemaVersion")}
+                capability = value.get("audioCapability")
+                if not isinstance(capability, dict) or not capability.get("stage"):
+                    raise RuntimeError("The app did not record its actual audio capability")
+                return {key: value[key] for key in ("padCount", "stage", "outputAttached", "schemaVersion",
+                        "driverPhase", "driverFault", "audioCapability", "livePlayback", "physicalSoundVerified")}
         time.sleep(0.5)
     raise RuntimeError("The app did not compose a ready editor within its deadline")
+
+def verify_capability(value: dict) -> None:
+    stage = value["audioCapability"]["stage"]
+    if stage in ("UNEXPECTED_FAILURE", "DISABLED"):
+        raise RuntimeError("Unexpected or disabled production audio driver; see app-capabilities.json")
+    if value["outputAttached"] != (stage == "READY"):
+        raise RuntimeError("The app lost its output route before readiness; see app-capabilities.json")
 
 def main() -> None:
     parser = argparse.ArgumentParser()
@@ -81,9 +92,13 @@ def main() -> None:
     run("xcrun", "simctl", "install", args.device, str(app))
     container = Path(read("xcrun", "simctl", "get_app_container", args.device, BUNDLE, "data"))
     report["firstLaunch"] = launch(args.device, container)
+    (evidence / "app-capabilities.json").write_text(json.dumps({"firstLaunch": report["firstLaunch"]}, indent=2) + "\n", encoding="utf-8")
+    verify_capability(report["firstLaunch"])
     run("xcrun", "simctl", "io", args.device, "screenshot", str(evidence / "ipad-editor.png"))
     run("xcrun", "simctl", "terminate", args.device, BUNDLE)
     report["relaunch"] = launch(args.device, container)
+    (evidence / "app-capabilities.json").write_text(json.dumps({key: report[key] for key in ("firstLaunch", "relaunch")}, indent=2) + "\n", encoding="utf-8")
+    verify_capability(report["relaunch"])
     run("xcrun", "simctl", "terminate", args.device, BUNDLE)
     package = ROOT / "dist/ChopLab-iPad-Simulator.zip"
     with zipfile.ZipFile(package, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as archive:

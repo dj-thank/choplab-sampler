@@ -70,7 +70,7 @@ internal class IosBackend private constructor(
 
     companion object {
         fun create(directory: String = IosPaths.applicationSupport() + "/ChopLab/next-v10",
-                   openOutput: () -> IosAudioOutput? = { IosAudioOutput.open() }): IosBackend {
+                   openOutput: () -> AudioOutputOpen = { IosAudioOutput.open() }): IosBackend {
             ensureDirectory(directory)
             val memory = PcmAdmission()
             val assets = IosAssetStore("$directory/assets", memory = memory)

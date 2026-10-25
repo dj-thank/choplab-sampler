@@ -32,7 +32,7 @@ JDK 21 と Android SDK を設定して repository root で実行します。Wind
 python3 scripts/check_repo.py
 ```
 
-`desktopTest` は共通 WAV/予算の単体試験です。Apple API・実アプリの成功を証明しません。
+`desktopTest` は共通 WAV/予算・起動時資源回収の単体試験です。Apple API・実アプリの成功を証明しません。
 Apple の確認には ARM64 Mac、対応 Xcode/iOS SDK と iPad Simulator が必要です。
 
 ```sh
@@ -52,8 +52,12 @@ ARM64/iOS Simulator identity と Compose リソース、package bytes/hash を�
 `AppleStorageTest` は合成左右音源の取込→chop→PAD→曲→24-bit WAV→保存→再開→新編集 Undo/Redo と
 破損・unknown schema・ZIP 不整合・quota・無出力・PCM 予算拒否を実行します。
 `AppleStudioFlowTest` は production の `IosBackend` と `Studio` actor を起動し、
-実 AVAudioEngine route で SOURCE/HAND/曲を操作してから export/archive/autosave の終了再開を通します。
-このテストでは出力が得られなければ失敗とし、偽出力へ置き換えません。聴感の評価は実機で行います。
+実 AVAudioEngine route が得られると SOURCE/HAND/曲を操作し、実 player の buffer 消費を確認します。
+出力が得られない Native テスト runner では再生の拒否を検査し、export/archive/autosave の終了再開まで進みます。
+テスト成功を音声出力の成功とは扱わず、`native-audio-capabilities.json` の `livePlayback` を確認します。
+アプリ自身の出力状態は `app-capabilities.json` に別記録します。起動確認だけでは再生確認になりません。
+両方に失敗段階・error domain/code・sample rate/channels を記録し、端末名や識別子は含めません。
+予期しない driver 例外は利用不能とみなさず失敗にします。偽出力へ置き換えず、聴感は実機で確認します。
 `AppleResourceOwnershipTest` は起動途中の取消、初回再描画前の終了、公開失敗時の資源回収を検査します。
 autosave の復元が古い有効世代へ戻っても新編集を保存し、上書き先の読めない世代は別名で保全します。
 

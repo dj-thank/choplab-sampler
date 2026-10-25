@@ -57,6 +57,7 @@ jobs:
           This artifact contains build logs, native unit-test XML, source revision,
           framework hashes and (only after success) the actual app launch/relaunch receipt.
           Artifact presence does not imply success: inspect outcomes.json and test results.
+          Audio capability and livePlayback evidence are separate: an unavailable route is not audio success.
           The separate unsigned Simulator app is not an installable device IPA.
           Physical-device sound/input, device signing, provider and human acceptance are untested.
           EOF
@@ -235,16 +236,25 @@ jobs:
           SIMULATOR_APP_OUTCOME: ${{ steps.simulator_app.outcome }}
         run: |
           python3 - <<'PY'
-          import json, os, shutil, subprocess, sys
+          import json, os, shutil, subprocess, sys, xml.etree.ElementTree as ET
           from pathlib import Path
 
           root = Path('dist/ipad-native-foundation-evidence')
           root.mkdir(parents=True, exist_ok=True)
+          audio = []
           for module in ('engine', 'core', 'ui', 'apple'):
               for path in Path(module, 'build/test-results/iosSimulatorArm64Test').glob('TEST-*.xml'):
                   destination = root / 'test-results' / module / path.name
                   destination.parent.mkdir(parents=True, exist_ok=True)
                   shutil.copyfile(path, destination)
+                  if module == 'apple':
+                      for output in ET.parse(path).getroot().iter('system-out'):
+                          for line in (output.text or '').splitlines():
+                              if line.startswith('CHOPLAB_AUDIO_CAPABILITY '):
+                                  audio.append(json.loads(line.split(' ', 1)[1]))
+          (root / 'native-audio-capabilities.json').write_text(json.dumps({
+              'scope': 'native-test-runner-audio-capability', 'observations': audio,
+              'physicalSoundVerified': False}, indent=2) + '\n')
           outcomes = {'scope': 'native-host-and-simulator-app',
                       'buildAndTests': os.environ['FOUNDATION_BUILD_OUTCOME'] or 'not_run',
                       'verifiedResults': os.environ['FOUNDATION_RESULTS_OUTCOME'] or 'not_run',

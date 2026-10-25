@@ -60,10 +60,14 @@ fun MainViewController(): UIViewController {
                 val token = NSProcessInfo.processInfo.environment["CHOPLAB_SIMULATOR_SMOKE_TOKEN"] as? String
                 if (token != null && token.length <= 64) {
                     val ready = presenter.state.first { it.pads.size == 128 && it.status != ContinuousStatus.LOADING }
+                    val driver = withTimeout(15_000) { host.engine.status.first { it.phase != DriverPhase.STARTING } }
                     withFrameNanos { }
                     val receipt = buildJsonObject {
                         put("token", token); put("stage", ready.stage.name); put("padCount", ready.pads.size)
                         put("schemaVersion", ProjectLimits.SCHEMA); put("outputAttached", host.engine.snapshot().outputAttached)
+                        put("driverPhase", driver.phase.name); put("driverFault", driver.fault.name)
+                        host.engine.lastOutputCapability()?.let { put("audioCapability", it.json()) }
+                        put("livePlayback", "not-exercised"); put("physicalSoundVerified", false)
                     }.toString().encodeToByteArray()
                     withContext(Dispatchers.Default) { writeFileAtomically(IosPaths.documents() + "/.simulator-smoke.json", receipt) }
                 }

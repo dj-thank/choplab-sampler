@@ -144,7 +144,7 @@ class AppleStorageTest {
         val store = IosAssetStore(directory())
         val pcm = IosPcmPort(store, store.memory)
         val compiler = ProgramCompiler(pcm)
-        val driver = IosEnginePort(compiler, { null }, memory = store.memory)
+        val driver = IosEnginePort(compiler, { AudioOutputOpen.disabled() }, memory = store.memory)
         try {
             withTimeout(10_000) { driver.status.first { it.phase == DriverPhase.EDITING_ONLY } }
             assertFalse(driver.snapshot().outputAttached)

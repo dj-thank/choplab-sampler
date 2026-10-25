@@ -24,6 +24,7 @@ internal class IosAudioOutput private constructor(private val blockFrames: Int, 
     private val emptyEvents = AtomicInt(0)
     private val failed = AtomicInt(0)
     private var next = 0
+    private var playerAttached = false
     /** Frames handed to the player by the owner thread. */
     var scheduledFrames = 0L
         private set
@@ -40,6 +41,7 @@ internal class IosAudioOutput private constructor(private val blockFrames: Int, 
     }
     /** Times the queue ran dry while the route was playing: an audible gap. */
     fun underruns(): Int = emptyEvents.load()
+    fun consumedFrameCount(): Long = consumedFrames.load()
     /** True once AVFoundation reported a stopped engine (route or configuration change, interruption). */
     val faulted: Boolean get() = failed.load() != 0 || !engine.running
 
@@ -83,37 +85,55 @@ internal class IosAudioOutput private constructor(private val blockFrames: Int, 
         closed = true
         player.stop()
         engine.stop()
-        engine.detachNode(player)
+        if (playerAttached) engine.detachNode(player)
     }
 
     companion object {
-        /** Activates the playback session and starts a route, or returns null when no output is available. */
-        fun open(blockFrames: Int = 256, queueBlocks: Int = 4): IosAudioOutput? {
-            if (!AudioSessionControl.activate()) return null
-            val output = IosAudioOutput(blockFrames, queueBlocks)
+        /** Activates playback and records exactly why a real output route could not be opened. */
+        fun open(blockFrames: Int = 256, queueBlocks: Int = 4): AudioOutputOpen {
+            AudioSessionControl.activate()?.let { return AudioOutputOpen(null, it) }
+            var output: IosAudioOutput? = null
             return try {
-                output.engine.attachNode(output.player)
-                output.engine.connect(output.player, to = output.engine.mainMixerNode, format = output.format)
-                output.engine.prepare()
-                val started = memScoped {
-                    val error = alloc<ObjCObjectVar<NSError?>>().apply { value = null }
-                    output.engine.startAndReturnError(error.ptr) && error.value == null
+                val opened = IosAudioOutput(blockFrames, queueBlocks)
+                output = opened
+                val hardware = opened.engine.outputNode.outputFormatForBus(0u)
+                // Apple defines zero sample rate/channel count as disabled hardware output.
+                if (!hardware.sampleRate.isFinite() || hardware.sampleRate <= 0 || hardware.channelCount == 0u) {
+                    val capability = AudioOutputCapability.capture(AudioOutputStage.OUTPUT_FORMAT, hardware = hardware)
+                    opened.close()
+                    return AudioOutputOpen(null, capability)
                 }
-                if (!started) { output.close(); return null }
-                output.player.play()
-                output
-            } catch (_: Throwable) { output.close(); null }
+                opened.engine.attachNode(opened.player)
+                opened.playerAttached = true
+                opened.engine.connect(opened.player, to = opened.engine.mainMixerNode, format = opened.format)
+                opened.engine.prepare()
+                val failure = memScoped {
+                    val error = alloc<ObjCObjectVar<NSError?>>().apply { value = null }
+                    if (opened.engine.startAndReturnError(error.ptr) && error.value == null) null
+                    else AudioOutputCapability.capture(AudioOutputStage.ENGINE_START, error.value, hardware)
+                }
+                if (failure != null) { opened.close(); return AudioOutputOpen(null, failure) }
+                opened.player.play()
+                AudioOutputOpen(opened, AudioOutputCapability.capture(AudioOutputStage.READY, hardware = hardware))
+            } catch (_: Throwable) {
+                output?.close()
+                AudioOutputOpen(null, AudioOutputCapability.capture(AudioOutputStage.UNEXPECTED_FAILURE))
+            }
         }
     }
 }
 
 /** The app's single audio session: playback, low IO buffer, activated before any route opens. */
 internal object AudioSessionControl {
-    fun activate(): Boolean = memScoped {
+    /** Null means the session activated; a failure carries sanitized platform evidence. */
+    fun activate(): AudioOutputCapability? = memScoped {
         val session = AVAudioSession.sharedInstance()
         val error = alloc<ObjCObjectVar<NSError?>>().apply { value = null }
-        if (!session.setCategory(AVAudioSessionCategoryPlayback, error.ptr)) return@memScoped false
+        if (!session.setCategory(AVAudioSessionCategoryPlayback, error.ptr) || error.value != null)
+            return@memScoped AudioOutputCapability.capture(AudioOutputStage.SESSION_CATEGORY, error.value)
         session.setPreferredIOBufferDuration(0.005, null)
-        session.setActive(true, error.ptr)
+        error.value = null
+        if (!session.setActive(true, error.ptr) || error.value != null)
+            AudioOutputCapability.capture(AudioOutputStage.SESSION_ACTIVATE, error.value) else null
     }
 }
