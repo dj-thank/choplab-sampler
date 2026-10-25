@@ -91,8 +91,13 @@ def launch(device: str, container: Path, profile: str, phase: str) -> dict:
     deadline = time.monotonic() + 60
     while time.monotonic() < deadline:
         failure = container / "Documents" / ".simulator-smoke-error.json"
-        if failure.is_file() and json.loads(failure.read_text(encoding="utf-8")).get("token") == token:
-            raise RuntimeError("Production app studio acceptance failed during " + phase)
+        if failure.is_file():
+            failed = json.loads(failure.read_text(encoding="utf-8"))
+            if failed.get("token") == token:
+                failed.pop("token", None)
+                (ROOT / "dist/ipad-native-foundation-evidence/app-studio-failure.json").write_text(
+                    json.dumps(failed, indent=2) + "\n", encoding="utf-8")
+                raise RuntimeError("Production app studio acceptance failed during " + phase + ": " + failed.get("stage", "unknown"))
         if receipt.is_file():
             value = json.loads(receipt.read_text(encoding="utf-8"))
             if value.get("token") == token:
