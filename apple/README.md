@@ -44,6 +44,7 @@ Apple の確認には ARM64 Mac、対応 Xcode/iOS SDK と iPad Simulator が必
   --tests 'com.choplab.apple.AppleStudioFlowTest' --tests 'com.choplab.apple.AppleResourceOwnershipTest' \
   --tests 'com.choplab.apple.AppleInceptionStoreTest'
 python3 apple/scripts/build_simulator.py --device "$CHOPLAB_SIMULATOR"
+python3 apple/scripts/build_device.py
 ```
 
 `.github/workflows/ipad-native-foundation.yml` は共有 Native 試験に加え、
@@ -72,6 +73,17 @@ SHA-256 付き UTF-8 封筒、32 ノート/各 256 KiB/総 8 MiB、revision CAS�
 ## 署名と所有 iPad での確認
 
 CI の `ChopLab-iPad-Simulator.zip` は実機へ導入できる IPA ではありません。
+`ChopLab-iPad-Unsigned-Device.zip` は arm64/iPhoneOS 向け `.app` の build・構造・hash を確認した成果物です。
+署名・provisioning・実機導入を含まないため、その zip も直接 iPad へインストールできません。
+`device-app-results.json` の source revision を使い、ARM64 Mac、iPhoneOS SDK を含む Xcode、
+JDK 21、Android SDK platform `android-37.0` / build-tools `36.0.0` を準備します。
+`JAVA_HOME` と `ANDROID_HOME` を設定してから、repository root で次を実行すれば未署名 build を再現できます。
+
+```sh
+python3 apple/scripts/build_device.py
+open apple/ChopLab.xcodeproj
+```
+
 署名担当が `apple/ChopLab.xcodeproj` を Xcode で開き、`ChopLab` scheme と所有 iPad を選択し、
 Signing & Capabilities の Team とこの Preview 用 bundle ID を設定して build/run します。
 鍵・provisioning profile・Team の秘密情報は repository や CI artifact へ追加しません。
