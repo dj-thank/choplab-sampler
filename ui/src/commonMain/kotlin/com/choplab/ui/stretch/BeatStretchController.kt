@@ -23,7 +23,7 @@ interface BeatStretchPorts {
     fun isPreviewing(): Boolean = previewing.value
     suspend fun render(project: Project, draft: StretchDraft, progress: (Int, Int) -> Unit): Asset
     suspend fun original(project: Project, draft: StretchDraft): Asset
-    suspend fun preview(asset: Asset, revision: Long): Boolean
+    suspend fun preview(asset: Asset, range: FrameRange, revision: Long): Boolean
     suspend fun stopPreview(): Boolean
     fun cancelPreview()
     suspend fun apply(intent: Intent, revision: Long): Boolean
@@ -40,8 +40,7 @@ data class StretchState(val project: Project, val revision: Long, val target: St
         val clip = if (target.kind == StretchKind.CLIP) project.clips.firstOrNull { it.id == target.id } else null
         val hash = pad?.assetHash ?: clip?.assetHash
         val range = pad?.range ?: clip?.range
-        return project.beatStretches.firstOrNull { it.target == target &&
-            ((hash == it.sourceAssetHash && range == it.sourceRange) || (hash == it.renderedAssetHash && range == it.renderedRange)) }
+        return project.beatStretches.firstOrNull { it.target == target && it.contains(hash, range) }
     }
     val name get() = if (target.kind == StretchKind.PAD) project.pads[target.id.toInt()].name else
         project.clips.firstOrNull { it.id == target.id }?.let { project.asset(it.assetHash).name } ?: ""
@@ -136,7 +135,7 @@ class BeatStretchController(private val document: StateFlow<DocumentState>, priv
                         val original = action == StretchAction.Original
                         val asset = if (original || draft.sourceMilliBpm == draft.targetMilliBpm) ports.original(value.project, draft) else requireNotNull(prepared).second
                         current(token, value.revision)
-                        if (!ports.preview(asset, value.revision)) throw StretchException(StretchProblem.PREVIEW_FAILED)
+                        if (!ports.preview(asset, draft.auditionRange(value.project, original), value.revision)) throw StretchException(StretchProblem.PREVIEW_FAILED)
                         if (original) StretchAudition.ORIGINAL else StretchAudition.STRETCHED
                     }
                 }

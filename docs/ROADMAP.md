@@ -4,7 +4,7 @@
 
 ## 現在地
 
-- 48kHz原音のトリム済みピッチ補正は、保存済みの原音/補正音を範囲・配置・来歴を保って切替可能です。原音へ戻した後の再編集も全処理文脈とトリムを保持します。異なるrateの保存版切替とWSOLA再伸縮は引き続き未対応です。
+- トリム済みピッチ補正は非48kHz原音も正規化した比較用原音を保存し、範囲・配置・来歴を保って切替できます。WSOLA再伸縮は全原音文脈から再処理し、基準cropから端点を求めるためテンポを往復しても丸め誤差を累積しません。schema16で保存し、schema10–15を明示移行します。実音・人の品質受入は別です。
 - 追加改善: [MacのZIP導入/更新](https://github.com/dj-thank/choplab-sampler/pull/242)、[ミキサーの不変判定](https://github.com/dj-thank/choplab-sampler/pull/243)、[所有付き資産staging復旧](https://github.com/dj-thank/choplab-sampler/pull/244)、[trim済みpitch再編集と分割来歴](https://github.com/dj-thank/choplab-sampler/pull/245)、[出力再接続の試験計測](https://github.com/dj-thank/choplab-sampler/pull/246)。Mac更新時の一時的なbundle読取にも、上限付きのidle再確認で対応します。未対応・実機未確認の範囲は下表に残します。
 - 制作・録音・編集の保全と操作UX改善 [PR239](https://github.com/dj-thank/choplab-sampler/pull/239) をmain `a3454724`へ統合済み。保存/取消、STEP下書き、録音終了通知、大文字でのミキサー、Mac梱包を改善しました。
 - Android試験の古いXMLによる誤判定を防ぐ [PR240](https://github.com/dj-thank/choplab-sampler/pull/240) は [PR241](https://github.com/dj-thank/choplab-sampler/pull/241) でmain `cce5207d`へ統合済み。元コミット `3b66138a` を履歴に保持。統合後mainのWindows/Android/履歴とMac CIも成功しました。
@@ -32,11 +32,11 @@
 | 0–1 基盤・文書・build・CI | 統合済み。Previewのidentity/data・署名・公開面検査を分離 | 最新の対象artifactごとに検証 |
 | 2 engine・4工程・制作通し | 統合済み。SOURCE/HAND独立、PAD、Undo、保存再開 | 実音・物理入力・正式切替。旧経路は保護試験と置換完了まで保持 |
 | 3 取込・ライブラリ | ファイル/録音/オンライン取込、codec、Library、圧縮原音保全 | 実provider、対応範囲、完全source提供、正式署名・配布サイズ |
-| 4 ビート | BPM/tap/swing、STEP/pattern、3連、LiveChop、WSOLA、Loop | 実端末のタイミング・聴感、trim済み加工音の再編集 |
+| 4 ビート | BPM/tap/swing、STEP/pattern、3連、LiveChop、WSOLA、Loop、trim済みWSOLA再伸縮 | 実端末のタイミング・聴感 |
 | 5 ボーカル・歌詞 | LRC、take/comp/punch、区間練習、録音受理・復帰 | 物理マイク、route別補正後±5ms、聴感 |
 | 6 作詞・TTS | Google提案の同意/費用/取消境界、構造歌詞、端末TTS | 実Google往復・価格/modelの確認、物理音。実送信の成功は未宣言 |
 | 7 ミックス・FX | ミキサー、FX、24bit/STEM/LRC書出し、同一graph | 実音・64track性能・長時間underrun |
-| 8 ピッチ補正 | 非破壊加工、原音/加工来歴、trim済み再編集、48kHz原音のtrim済み保存版切替、保存再開 | 異なるrateのtrim済み保存版切替、実音・人の品質受入 |
+| 8 ピッチ補正 | 非破壊加工、原音/加工来歴、trim済み再編集、異なるrateを含むtrim済み保存版切替、保存再開 | 実音・人の品質受入 |
 | 9 4パート分離 | 本番ORT経路、メモリ境界、取消、固定モデル推論 | 長尺/実曲品質、実HTTPS初回取得・修復、実機受入 |
 | 10 練習coach | 練習・履歴・掛合いの制作接続 | 実音・人の体験受入 |
 | 11 仕上げ・1.0 | WASAPI、初回guide、配布/NOTICE基盤 | 正式署名/公証、完全source、実route/性能/VoiceOver/TalkBack、HUMAN_GO |
@@ -49,7 +49,7 @@ Issueを閉じることと、機能の実装完了は区別します。下記は
 | 優先 | 課題 | 完了条件・次の作業 |
 |---|---|---|
 | P1 | 旧形式stagingの移行（旧 [#207](https://github.com/dj-thank/choplab-sampler/issues/207)） | 新形式はOS排他と完全な所有記録を導入し、異常終了後にquota回収→再試行できる。旧 `.pending-UUID`・不完全な小さな所有記録は所有を証明できないため保全し、quotaに数える。これらの移行は個別確認が必要。prefixだけの削除はしない |
-| P1 | trim済み加工音の残る制約 | pitch再編集は原音の全処理文脈と既存48kHz crop・配置を保持して対応。分割右側のrecipe欠落も修正。48kHz原音の保存版切替は先頭との差分で正確に対応し、保存再開・再編集・Undoを保持。異なるrateの保存版切替とWSOLA再伸縮は未対応を明示し、native端点を比例逆算しない |
+| P1 | trim済み加工音の品質受入 | 非48kHzの保存版切替は全原音文脈の48kHz比較用資産を使い、WSOLAは基準cropを保持して再処理する。実WAV・archive・取消・Undoを検証。極端な伸縮率や実音の品質受入は残る |
 | P1 | 64trackの実時間性能 | Linux合成p99=0.821ms・追加割当0・PCM欠落0は確認済み。不変のbypass判定を事前計算し、16trackのLinux render CPUは2対の比較で10〜14%減。64trackの差は計測幅内で改善未確定。Mac既存p99=2.059msと対象Mac/Pixelの10分underrunは未解決 |
 | P1 | Macの日常制作受入 | main由来artifactで導入/通常終了/保存再開、実音/物理マイク/システム音、VoiceOverを確認。今回Desktop Commanderはオフラインで新しい端末観測なし |
 | P2 | iPadOSアプリ | 試作の精査でdotfileのquota除外、同size破損の見逃し、PCM予算確認前の確保を確認。生成物を除き、まず保存/資産adapterと失敗系試験を導入。アプリ入口・署名・所有iPad受入はその後 |
@@ -62,7 +62,7 @@ Issueを閉じることと、機能の実装完了は区別します。下記は
 | 順序・旧Issue | 実装と受入条件 |
 |---|---|
 | IN-01 / [#221](https://github.com/dj-thank/choplab-sampler/issues/221) | 添付候補を取得・精査し、素材/仮構想/関係/採用履歴、呼出し/取消/古い応答拒否/明示適用を正式Gradleで検証。候補packageのSHA-256は `67b26a58e3b2f71aa8dfc253348e3eca01111caecaefa342019169abca765355`。`docs/inception/`は現在のmainに存在しない |
-| IN-02A / [#222](https://github.com/dj-thank/choplab-sampler/issues/222) | schema15と独立したversion付きローカル保存。原文/根拠ID/判断の保存再開、atomic publish、中断/破損/未知version/容量不足/過大入力の拒否。削除は索引/cache/Undo/autosaveへ伝播し、backup/provider保持は明示 |
+| IN-02A / [#222](https://github.com/dj-thank/choplab-sampler/issues/222) | 音楽projectのschemaと独立したversion付きローカル保存。原文/根拠ID/判断の保存再開、atomic publish、中断/破損/未知version/容量不足/過大入力の拒否。削除は索引/cache/Undo/autosaveへ伝播し、backup/provider保持は明示 |
 | IN-02B / [#223](https://github.com/dj-thank/choplab-sampler/issues/223) | 既存4工程から明示入口。AIなしの手動作成/更新/Undo、原文と根拠の往復、0〜3案の比較/編集/採用/保留。連打/新入力/停止/画面閉鎖/workspace切替で旧応答を破棄。IME/長文/幅/キーボード/空・エラーを検証 |
 | IN-03 / [#224](https://github.com/dj-thank/choplab-sampler/issues/224) | provider実接続は毎回同意・選択素材・整数費用上限・期限・取消境界を守る。strict応答schema、根拠/ID/revision、未知field/過大/二重応答/timeout/429を試験。自動retryなし。公式model/価格と意味評価を実providerで確認し、合成fixtureと分離 |
 | IN-04 / [#225](https://github.com/dj-thank/choplab-sampler/issues/225) | テキスト縦断後に明示マイク入力とASRへ。原音/文字起こし/訂正を分離。QUIETは無応答、JAMも本人の発話境界だけ。停止でcapture/ASR/TTS/provider取消・遅着破棄。拒否/音楽かぶり/無声/不明話者/再開を実機検証 |
@@ -73,6 +73,7 @@ Issueを閉じることと、機能の実装完了は区別します。下記は
 
 ## 検証の根拠
 
+- 2026-10-25候補: schema16のcore132件とpitch/stretch画面27件がWindows/JDK21で成功。JVM関連39件では8/44.1/48/96kHzの実WAV、全原音文脈とのhash/PCM一致、保存再開、繰返し伸縮、1frame crop、左右/原音保全を検査。core/画面はその後の96kHz微小範囲のtyped拒否も含み、独立レビューは具体的指摘なし。最終PR headの全CIで統合を確認する。実音・物理入力・Humanは未確認。
 - 2026-10-22: 48kHz原音のトリム済み保存版切替はWindows/JDK21でcore127件・UI15件・JVM10件の計152件が成功（失敗/error/skip 0）。1frameと両端のcrop、配置・他clip・来歴、原音からの再編集、保存再開、1切替1Undo、8/44.1/96kHzの拒否と直接reducer経路を確認。既存の全原音文脈とのWAV一致・archive再開・長尺処理も成功。DSPと保存schemaは変更せず、実音・物理入力・人の品質受入は別です。
 - PR239 head `da1270cd` とCI checkout `66fdaf9f` はtree `56a3865a`が一致。[Windows/Android/履歴](https://github.com/dj-thank/choplab-sampler/actions/runs/38377899819)、[Mac](https://github.com/dj-thank/choplab-sampler/actions/runs/38377899768)、[Apple共通](https://github.com/dj-thank/choplab-sampler/actions/runs/38377899828)の5チェックが成功。UI355件、関連Desktop13件は失敗/skip 0。実機導入ではありません。
 - PR240元head `3b66138a` の必須3チェックは成功。本整理の合成後にもAndroid gate/集計39件が成功。PR241最終CIと統合後main CIも成功しました。

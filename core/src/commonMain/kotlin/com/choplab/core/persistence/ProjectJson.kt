@@ -117,8 +117,8 @@ object ProjectJson {
             },
             lyricStructure = if (schema == 10) null else readLyricStructure(p.getValue("lyricStructure")),
             vocalComps = if (schema < 12) frozenListOf() else p.list("vocalComps", 64, ::readVocalComp),
-            pitchCorrections = if (schema < 14) frozenListOf() else p.list("pitchCorrections", 64, ::readVocalPitch),
-            beatStretches = if (schema < 15) frozenListOf() else p.list("beatStretches", 256, ::readBeatStretch),
+            pitchCorrections = if (schema < 14) frozenListOf() else p.list("pitchCorrections", 64) { readVocalPitch(it, schema) },
+            beatStretches = if (schema < 15) frozenListOf() else p.list("beatStretches", 256) { readBeatStretch(it, schema) },
             takes = p.list("takes", 1024) { e ->
                 val a = e.obj().fields("id", "trackId", "assetHash", "range", "timelineStartFrame", "compensationFrames")
                 Take(a.string("id"), a.string("trackId"), a.string("assetHash"), readRange(a.getValue("range")), a.long("timelineStartFrame"), a.int("compensationFrames"))

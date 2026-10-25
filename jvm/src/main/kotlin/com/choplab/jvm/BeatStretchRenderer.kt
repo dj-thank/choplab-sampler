@@ -18,7 +18,7 @@ class BeatStretchRenderer(private val assets: FileAssetStore, private val pcm: W
     private val serial = Mutex()
     suspend fun render(project: Project, draft: StretchDraft, name: String, progress: (Int, Int) -> Unit = { _, _ -> }): Asset {
         BeatStretchEdits.validate(project, draft)
-        if (draft.sourceMilliBpm == draft.targetMilliBpm) { currentCoroutineContext().ensureActive(); return project.asset(draft.sourceAssetHash) }
+        if (draft.sourceMilliBpm == draft.targetMilliBpm && draft.crop == null) { currentCoroutineContext().ensureActive(); return project.asset(draft.sourceAssetHash) }
         return produce(project, draft, name, false, progress)
     }
     suspend fun original(project: Project, draft: StretchDraft, name: String): Asset = produce(project, draft, name, true) { _, _ -> }

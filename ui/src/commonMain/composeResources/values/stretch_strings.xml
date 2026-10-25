@@ -14,7 +14,7 @@
     <string name="stretch_cancel">Cancel / stop preview</string>
     <string name="stretch_reload">Reload current edit</string>
     <string name="stretch_stale">The sound or song changed. Reload before preparing again.</string>
-    <string name="stretch_trimmed">Re-stretching a trimmed stretched sound is not supported yet. Undo the trim before stretching again, then trim the result.</string>
+    <string name="stretch_trimmed">The selected range is outside the saved stretch result. Check the selected sound and range.</string>
     <string name="stretch_no_target">Select a PAD with a sound or a placed clip.</string>
     <string name="stretch_invalid">Enter a BPM from 40 to 240. Very short ranges cannot be stretched.</string>
     <string name="stretch_limit">This result exceeds the audio, storage or song limit. Use a shorter range.</string>

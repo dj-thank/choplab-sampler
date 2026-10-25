@@ -29,9 +29,16 @@ class VocalPitchRenderer(
     private val serial = Mutex()
 
     /** Exact normalized original range for A audition, including native-rate clips and subranges. No document edit. */
-    suspend fun original(project: Project, draft: VocalPitchDraft, name: String): Asset =
-        requireNotNull((produce(project, draft.copy(settings = draft.settings.copy(amount = 0f)), name, { _, _, _ -> }, true)
-            as VocalPitchRenderResult.Rendered).asset)
+    suspend fun original(project: Project, draft: VocalPitchDraft, name: String): Asset {
+        VocalPitchEdits.validate(project, draft)
+        currentCoroutineContext().ensureActive()
+        project.pitchCorrections.firstOrNull { it.clipId == draft.expectedClip.id &&
+            it.sourceAssetHash == draft.sourceAssetHash && it.sourceRange == draft.sourceRange }?.normalizedOriginalHash?.let {
+            return project.asset(it)
+        }
+        return (produce(project, draft.copy(settings = draft.settings.copy(amount = 0f)), name, { _, _, _ -> }, true)
+            as VocalPitchRenderResult.Rendered).asset
+    }
 
     suspend fun render(project: Project, draft: VocalPitchDraft, name: String,
                       progress: (PitchCorrectionPhase, Int, Int) -> Unit = { _, _, _ -> }): VocalPitchRenderResult =
