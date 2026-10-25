@@ -2,6 +2,8 @@
 
 ChopLab / おとひろい / Earth Song のオリジナルコードは [MIT License](LICENSE) で提供します。
 第三者のライブラリ、実行環境、モデル、同梱ツールには各提供元の条件が適用されます。
+
+NIO再ビルド検証の `scripts/acceptance/NioUndesugar.java` は、R8の `DesugaredLibraryJDK11Undesugarer` の変換を単独実行用に移したものです。R8 project authorsのBSD条件を [r8-verification-BSD.txt](licenses/r8-verification-BSD.txt) に保持します。検証時に使うOW2 ASM 9.9.1はBSD-3-Clauseです。これらは検証用で、アプリへ新しい実行依存を追加しません。
 この索引だけで、配布物のライセンス本文や対応するソースの提供を代替しません。
 
 配布時は `scripts/prepare_source_notices.py` がこの本文、独立したlicense全文、固定manifestとrecipe、`SOURCE-INDEX.json` / `SOURCE-INDEX.md` を同梱します。Androidは `assets/source-notices/`、Macは `Contents/app/`、Windowsはapp-image直下から読めます。共通のApache-2.0・LGPL-2.1・JNA表示とGPLv3本文の取得物・entry・hashは `config/source-notice-texts.json` に記録し、NIO configurationの本文は下記の固定bytesを使います。取得indexの生成は全依存のnotice網羅・完全な対応source・公開提供の認定ではありません。未解決のAndroid再利用native、NIO、Mac toolsはindexにも明記します。

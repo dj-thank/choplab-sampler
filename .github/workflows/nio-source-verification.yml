@@ -6,6 +6,7 @@ on:
       - '.github/workflows/nio-source-verification.yml'
       - 'scripts/acceptance/rebuild_nio_linux.sh'
       - 'scripts/acceptance/verify_nio_sources.py'
+      - 'scripts/acceptance/NioUndesugar.java'
       - 'config/newpipe-dependencies.json'
   workflow_dispatch:
 

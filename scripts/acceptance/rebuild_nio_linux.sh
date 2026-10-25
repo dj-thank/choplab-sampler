@@ -7,7 +7,7 @@ set -euo pipefail
 here="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 run="${1:?provide a new absolute private run directory}"
 [[ "$run" == /* && ! -e "$run" ]] || { echo 'run directory must be absolute and new' >&2; exit 2; }
-for tool in python3 curl unzip zip timeout gcc; do command -v "$tool" >/dev/null; done
+for tool in python3 curl unzip zip timeout gcc java javac; do command -v "$tool" >/dev/null; done
 [[ "$(uname -s)" == Linux && "$(uname -m)" == x86_64 ]]
 mkdir -p "$run"/{downloads,home,tmp,sdk,cache,receipts}
 export TMPDIR="$run/tmp" XDG_CACHE_HOME="$run/cache" COURSIER_CACHE="$run/cache/coursier"
@@ -35,6 +35,18 @@ def pinned(local, url, name, digest):
 source=pinned(os.environ['SOURCE_INPUT'],'https://codeload.github.com/google/desugar_jdk_libs/zip/73170c345e6a762fc6a1f0301bb15218850023ef','source.zip','cf0b48cb046b6517ed8e2a816c125116a907e13e48e341882ba6f4016a155d9f')
 pinned(os.environ['BINARY_INPUT'],'https://dl.google.com/dl/android/maven2/com/android/tools/desugar_jdk_libs_nio/2.1.5/desugar_jdk_libs_nio-2.1.5.jar','published.jar','d8044befae095781b9a80bf1faa92edc30382d75d437476784c1bf991598a976')
 with zipfile.ZipFile(source) as z: z.extractall(r/'source')
+# Match the public R8 release builder's b/256723819 exclusion; retain the source bytes as evidence.
+excluded=r/'source/desugar_jdk_libs-73170c345e6a762fc6a1f0301bb15218850023ef/jdk11/src/java.base/share/classes/java/time/format/DesugarDateTimeFormatterBuilder.java'
+excluded.rename(r/'receipts/excluded-DesugarDateTimeFormatterBuilder.java')
+pinned('', 'https://repo.maven.apache.org/maven2/org/ow2/asm/asm/9.9.1/asm-9.9.1.jar', 'asm.jar',
+       '6f3828a215c920059a5efa2fb55c233d6c54ec5cadca99ce1b1bdd10077c7ddd')
+(r/'receipts/release-transforms.json').write_text(json.dumps({
+    'upstreamBuilder': 'https://r8.googlesource.com/r8/+/077a41997c296ed70aea6ac09ae24d8330421055/tools/archive_desugar_jdk_libs.py',
+    'upstreamUndesugarer': 'https://r8.googlesource.com/r8/+/077a41997c296ed70aea6ac09ae24d8330421055/src/test/java/com/android/tools/r8/desugar/desugaredlibrary/jdk11/DesugaredLibraryJDK11Undesugarer.java',
+    'excludedSourceSha256': hashlib.sha256((r/'receipts/excluded-DesugarDateTimeFormatterBuilder.java').read_bytes()).hexdigest(),
+    'asmVersion': '9.9.1', 'asmSha256': '6f3828a215c920059a5efa2fb55c233d6c54ec5cadca99ce1b1bdd10077c7ddd',
+    'defaultJavaLanguageVersion': 8, 'explicitJavaBaseAndLibcoreLanguageVersion': 11,
+    'sourcePublicationVerified': False}, indent=2)+'\n')
 # Bazel is a candidate version, because this source tree does not pin one.
 burl='https://github.com/bazelbuild/bazel/releases/download/6.5.0/bazel-6.5.0-linux-x86_64'
 fetch(burl,d/'bazel'); fetch(burl+'.sha256',d/'bazel.sha256')
@@ -69,7 +81,7 @@ PY
 src="$run/source/desugar_jdk_libs-73170c345e6a762fc6a1f0301bb15218850023ef"
 cd "$src"
 bazel=("$run/downloads/bazel" --batch "--output_user_root=$run/cache/bazel" --nosystem_rc --nohome_rc)
-opts=(--repository_cache="$run/cache/repository" --python_path="$(command -v python3)" --java_language_version=11 --tool_java_language_version=11 --java_runtime_version=remotejdk_11 --tool_java_runtime_version=remotejdk_11 --jobs=4)
+opts=(--repository_cache="$run/cache/repository" --python_path="$(command -v python3)" --java_language_version=8 --tool_java_language_version=11 --java_runtime_version=remotejdk_11 --tool_java_runtime_version=remotejdk_11 --jobs=4)
 "${bazel[@]}" version > "$run/receipts/bazel-version.txt"
 set +e
 timeout --signal=TERM --kill-after=30s 30m "${bazel[@]}" build "${opts[@]}" //:maven_release_jdk11_nio --build_event_json_file="$run/receipts/build-events.json"
@@ -82,5 +94,9 @@ cp bazel-bin/desugar_jdk_libs_jdk11_nio.zip "$run/receipts/"
 cp bazel-bin/jdk11/src/{libjava_base_all.jar,d8_java_base_selected.jar,d8_java_base_selected_with_addon.jar} "$run/receipts/"
 cp bazel-bin/jdk11/src/libcore/liblibcore_addon.jar "$run/receipts/"
 cp bazel-bin/jdk11/src/addon/addon.jar "$run/receipts/"
-python3 "$here/verify_nio_sources.py" --source "$run/downloads/source.zip" --binary "$run/downloads/published.jar" --rebuilt "$run/receipts/d8_java_base_selected_with_addon.jar" --output "$run/receipts/comparison"
+mkdir "$run/helper"
+java -version > "$run/receipts/adapter-java-version.txt" 2>&1
+javac -encoding UTF-8 -cp "$run/downloads/asm.jar" -d "$run/helper" "$here/NioUndesugar.java"
+java -cp "$run/helper:$run/downloads/asm.jar" NioUndesugar "$run/receipts/d8_java_base_selected_with_addon.jar" "$run/receipts/undesugared.jar"
+python3 "$here/verify_nio_sources.py" --source "$run/downloads/source.zip" --binary "$run/downloads/published.jar" --rebuilt "$run/receipts/undesugared.jar" --output "$run/receipts/comparison"
 date -u +%FT%TZ
