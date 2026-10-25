@@ -43,6 +43,34 @@ NON_COMMIT_REF_ARGUMENTS = [
 
 
 class PublicSurfacePolicyTest(unittest.TestCase):
+    def test_ipad_executable_keeps_full_tail_secret_scan(self) -> None:
+        with TemporaryDirectory() as directory:
+            archive_path = Path(directory) / "ipad.zip"
+            for suffix in (b"safe", ("github_pat_" + "a" * 24).encode()):
+                with zipfile.ZipFile(archive_path, "w") as archive:
+                    archive.writestr("ChopLab.app/ChopLab.debug.dylib", b"\x00" * 1536 + suffix)
+                with patch("scripts.check_public_surface.ZIP_BINARY_SECRET_MEMBER_LIMIT", 1024), patch(
+                    "scripts.check_public_surface.ZIP_IPAD_EXECUTABLE_SCAN_LIMIT", 2048
+                ):
+                    findings = scan_zip(archive_path)
+                self.assertEqual(suffix != b"safe", bool(findings), findings)
+                if suffix != b"safe":
+                    self.assertTrue(any("secret-shaped content" in item for item in findings))
+
+    def test_ipad_executable_limit_rejects_oversize_and_other_paths(self) -> None:
+        with TemporaryDirectory() as directory:
+            archive_path = Path(directory) / "ipad.zip"
+            for name, size in (("ChopLab.app/ChopLab.debug.dylib", 2049),
+                               ("Other.app/ChopLab.debug.dylib", 1536),
+                               ("nested/ChopLab.app/ChopLab.debug.dylib", 1536)):
+                with zipfile.ZipFile(archive_path, "w") as archive:
+                    archive.writestr(name, b"\x00" * size)
+                with patch("scripts.check_public_surface.ZIP_BINARY_SECRET_MEMBER_LIMIT", 1024), patch(
+                    "scripts.check_public_surface.ZIP_IPAD_EXECUTABLE_SCAN_LIMIT", 2048
+                ):
+                    findings = scan_zip(archive_path)
+                self.assertTrue(any("full secret-scan limit" in item for item in findings), findings)
+
     def test_rejects_signing_and_audio_paths(self) -> None:
         self.assertEqual("signing or private-key material", suspicious_path(PurePosixPath("keys/release.jks")))
         self.assertEqual("audio asset", suspicious_path(PurePosixPath("samples/user.wav")))
