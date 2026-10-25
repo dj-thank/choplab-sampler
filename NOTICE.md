@@ -2,6 +2,8 @@
 
 ChopLab / おとひろい / Earth Song のオリジナルコードは [MIT License](LICENSE) で提供します。
 第三者のライブラリ、実行環境、モデル、同梱ツールには各提供元の条件が適用されます。
+
+NIO再ビルド検証の `scripts/acceptance/NioUndesugar.java` は、R8の `DesugaredLibraryJDK11Undesugarer` の変換を単独実行用に移したものです。R8 project authorsのBSD条件を [r8-verification-BSD.txt](licenses/r8-verification-BSD.txt) に保持します。検証時に使うOW2 ASM 9.9.1はBSD-3-Clauseです。これらは検証用で、アプリへ新しい実行依存を追加しません。
 この索引だけで、配布物のライセンス本文や対応するソースの提供を代替しません。
 
 配布時は `scripts/prepare_source_notices.py` がこの本文、独立したlicense全文、固定manifestとrecipe、`SOURCE-INDEX.json` / `SOURCE-INDEX.md` を同梱します。Androidは `assets/source-notices/`、Macは `Contents/app/`、Windowsはapp-image直下から読めます。共通のApache-2.0・LGPL-2.1・JNA表示とGPLv3本文の取得物・entry・hashは `config/source-notice-texts.json` に記録し、NIO configurationの本文は下記の固定bytesを使います。取得indexの生成は全依存のnotice網羅・完全な対応source・公開提供の認定ではありません。未解決のAndroid再利用native、NIO、Mac toolsはindexにも明記します。
@@ -65,7 +67,7 @@ The October 25 policy `config/mac-media-tool-files-20261025.txt` replaces only t
 
 `config/newpipe-dependencies.json` はGoogle Mavenで取得したNIO本体とconfigurationの両JAR/POMをURL・bytes・SHA-256で固定します。`:app:verifyNewPipeDesugaring` は解決した推移依存を含む全座標と両JARを照合します。設定だけでなく、configuration JARにある29個の補助classも検査対象です。これらが最終APKへどの形で入るかはD8/R8後の配布物で確認します。
 
-- NIO本体の[公式source候補](https://github.com/google/desugar_jdk_libs/tree/73170c345e6a762fc6a1f0301bb15218850023ef)は、NIO version 2.1.5とBazel target `maven_release_jdk11_nio` を持ち、取得archiveのbytes/hashもmanifestに固定しました。生成・改名されたclassを含む全1,459 classのsource/header対応と再build一致は未検証です。[上流LICENSE](https://github.com/google/desugar_jdk_libs/blob/73170c345e6a762fc6a1f0301bb15218850023ef/LICENSE)のClasspath例外は指定されたsource headerに対する条件であり、POMの宣言だけで全classへ拡張しません。manifestの集約licenseは `NOASSERTION` を維持します。これは上流条件が無いという意味ではありません。
+- NIO本体は[固定source](https://github.com/google/desugar_jdk_libs/tree/73170c345e6a762fc6a1f0301bb15218850023ef)のBazel targetとR8の公開配布変換から全1,459 classのbytesを再現しました。[CI結果](https://github.com/dj-thank/choplab-sampler/actions/runs/40186680717)と `config/nio-source-class-map-20261025.json` にclass hash・生成元・source headerを保持します。577 source fileのうち571はGPL-2.0-only＋Classpath例外、6はApache-2.0の本文を持ち、集約条件をmanifestへ反映しました。[GPLv2＋Classpath例外本文](licenses/desugar-jdk-libs-LICENSE.txt)とApache-2.0本文を同梱します。8生成classを含め全classが一致しますが、ZIP全体のbytesは異なります。これはNIO本体の対応確認であり、アプリ全体の対応source提供・notice配達を完了したという意味ではありません。
 - configurationの[公式R8 release-preparation commit](https://r8.googlesource.com/r8/+/c331a820ddae7dea41f41a04375b784486d0f705)をsource候補として記録しました。Google MavenのPOMと実JARの `LICENSE` はBSD-3-Clauseで一致します。生成設定と29補助classのexact source/build対応は未検証で、公式sources classifierは2026-09-28に404でした。
 
 以下はconfiguration JAR内の `LICENSE` 全文です（1,491 bytes、SHA-256はmanifestの `license_evidence`）。この本文の保持だけで、NIO全体の例外判定、組合せの対応source提供、APK内のnotice配達が完了したとは扱いません。公開前の判定は[RELEASE](docs/RELEASE.md#newpipenioを含む配布の条件)に従います。
