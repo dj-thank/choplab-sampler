@@ -281,9 +281,18 @@
         "upstream": "https://r8.googlesource.com/r8",
         "revision": "c331a820ddae7dea41f41a04375b784486d0f705",
         "configuration": "src/library_desugar/jdk11/desugar_jdk_libs_nio.json",
-        "status": "Official release-preparation commit identifies 2.1.5. Generated configuration and 29 helper classes have NOT been rebuilt or completely mapped to source. Official sources classifier returned HTTP 404 on 2026-09-28."
+        "status": "All 29 helper class bytes reproduced from the pinned 67 BSD source inputs using the upstream wrapper conversion. Generated configuration JSON and lint files remain unverified."
       },
-      "corresponding_source_status": "Exact helper/configuration source and build receipt must accompany the combined-work source delivery; the embedded BSD notice does not establish that receipt."
+      "corresponding_source_status": "Helper source/build correspondence is verified; generated JSON/lint and complete combined-work source delivery remain unverified.",
+      "source_verification": {
+        "manifest": "config/nio-configuration-source-class-map-20261025.json",
+        "allHelperClassBytesReproduced": true,
+        "helperClasses": 29,
+        "compileInputs": 67,
+        "generatedConfigurationVerified": false,
+        "generatedLintVerified": false,
+        "sourcePublicationVerified": false
+      }
     }
   ],
   "android_rules_source": "https://github.com/TeamNewPipe/NewPipe/blob/7e5df38aad4b2c035332b3f71aee3064d4fdaae4/app/proguard-rules.pro"
