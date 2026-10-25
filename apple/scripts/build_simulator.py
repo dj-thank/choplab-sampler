@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import platform
 import plistlib
+import re
 import subprocess
 import time
 import uuid
@@ -122,6 +123,9 @@ def verify_studio(value: dict, phase: str) -> None:
     if any(acceptance.get(key) != expected_value for key, expected_value in expected.items()):
         raise RuntimeError("Incomplete app studio acceptance")
     delta = acceptance.get("consumedFramesDelta")
+    original_hash = acceptance.get("originalHash")
+    if not isinstance(original_hash, str) or re.fullmatch(r"[0-9a-f]{64}", original_hash) is None:
+        raise RuntimeError("Original content hash is missing or invalid")
     if not isinstance(delta, int) or isinstance(delta, bool) or delta <= 1024:
         raise RuntimeError("Real AVAudioEngine buffer consumption was not observed")
     if value.get("livePlayback") != "verified-real-output" or value.get("physicalSoundVerified") is not False:

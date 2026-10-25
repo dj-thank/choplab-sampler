@@ -16,6 +16,7 @@ class StudioGuards(unittest.TestCase):
     def fixture(self, phase="first"):
         return {"livePlayback": "verified-real-output", "physicalSoundVerified": False,
                 "studioAcceptance": {"phase": phase, "originalBytesPreserved": True,
+                    "originalHash": "a" * 64,
                     "songSourceHandIndependent": True, "consumedFramesDelta": 2048, "exportBits": 24,
                     "exportFrames": 96000, "autosaveFlushed": True, "archiveVerified": True,
                     "newUndoRedoAfterRestart": phase == "relaunch", "livePlayback": "verified-real-output",
@@ -28,7 +29,8 @@ class StudioGuards(unittest.TestCase):
     def test_missing_restore_consumption_and_false_human_claims_are_rejected(self):
         for changes in ({"consumedFramesDelta": 0}, {"consumedFramesDelta": True},
                         {"newUndoRedoAfterRestart": False}, {"phase": "first"},
-                        {"physicalSoundVerified": True}, {"exportBits": 16}, {"archiveVerified": False}):
+                        {"physicalSoundVerified": True}, {"exportBits": 16}, {"archiveVerified": False},
+                        {"originalHash": None}, {"originalHash": "bad"}):
             fixture = copy.deepcopy(self.fixture("relaunch"))
             fixture["studioAcceptance"].update(changes)
             with self.assertRaises(RuntimeError):
