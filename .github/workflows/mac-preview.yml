@@ -8,6 +8,7 @@ on:
   pull_request:
     paths:
       - '.github/workflows/mac-preview.yml'
+      - 'engine/**'
       - 'scripts/package_mac_app.py'
       - 'scripts/stage_mac_preview_distribution.py'
       - 'scripts/install_mac_preview.py'
@@ -72,6 +73,9 @@ jobs:
           date -u +%Y-%m-%dT%H:%M:%SZ > dist/mixer-render/started-at.txt
           sw_vers > dist/mixer-render/macos.txt
           uname -sm >> dist/mixer-render/macos.txt
+          sysctl hw.model hw.ncpu hw.memsize machdep.cpu.brand_string > dist/mixer-render/hardware.txt
+          printf 'ImageOS=%s\nImageVersion=%s\nRunnerOS=%s\nRunnerArch=%s\n' \
+            "$ImageOS" "$ImageVersion" "$RUNNER_OS" "$RUNNER_ARCH" > dist/mixer-render/runner-image.txt
           ./gradlew --no-daemon --max-workers=1 --console=plain --rerun-tasks \
             :engine:desktopTest --tests com.choplab.engine.LargeArrangementAllocationTest \
             | tee dist/mixer-render/gradle.log

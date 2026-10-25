@@ -13,6 +13,23 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /** Explicit real HTTPS acceptance in a newly created private fixture directory. */
 public class FourStemDownloadCheck {
+  static String jsonString(String value) {
+    var result = new StringBuilder("\"");
+    for (int i = 0; i < value.length(); i++) {
+      char c = value.charAt(i);
+      if (c == '\\' || c == '"') result.append('\\').append(c);
+      else if (c < 32) result.append(String.format("\\u%04x", (int)c));
+      else result.append(c);
+    }
+    return result.append('"').toString();
+  }
+  static String binary(Class<?> type) throws Exception {
+    Path path = Path.of(type.getProtectionDomain().getCodeSource().getLocation().toURI()).toRealPath();
+    if (!Files.isRegularFile(path) || !path.getFileName().toString().endsWith(".jar"))
+      throw new IllegalArgumentException("Acceptance requires actual input JARs: " + type.getName());
+    return "{\"class\":" + jsonString(type.getName()) + ",\"jar\":" + jsonString(path.getFileName().toString())
+        + ",\"bytes\":" + Files.size(path) + ",\"sha256\":\"" + hash(path) + "\"}";
+  }
   static FourStemModelStore store(Path directory) throws Exception {
     return FourStemModelStore.class.getConstructor(Path.class, Function1.class, int.class,
         DefaultConstructorMarker.class).newInstance(directory, null, 2, null);
@@ -62,8 +79,12 @@ public class FourStemDownloadCheck {
     }, () -> Unit.INSTANCE);
   }
   public static void main(String[] args) throws Exception {
-    if (args.length != 2 || !args[0].equals("--allow-real-https-download"))
-      throw new IllegalArgumentException("Explicit real HTTPS opt-in and new fixture path required");
+    if (args.length != 3 || !args[0].equals("--allow-real-https-download") || !args[2].matches("[0-9a-f]{40}"))
+      throw new IllegalArgumentException("Explicit real HTTPS opt-in, new fixture path and input-JAR source revision required");
+    // Hash the classes actually loaded, not a caller-supplied JAR path. The source revision is a caller assertion;
+    // verify the build/source association separately and keep it alongside this self-contained binary identity.
+    String binaries = "[" + binary(FourStemModelStore.class) + "," + binary(com.choplab.core.model.Project.class)
+        + "," + binary(Unit.class) + "]";
     Path directory = Path.of(args[1]).toAbsolutePath();
     Files.createDirectory(directory); // Existing directories are never modified.
     String started = java.time.Instant.now().toString();
@@ -96,6 +117,8 @@ public class FourStemDownloadCheck {
     if (!resultHash.equals(FourStemSpec.MODEL_SHA256)) throw new AssertionError("Wrong repaired model");
     noParts(directory);
     String receipt = "{\n  \"status\": \"PASS\",\n  \"scope\": \"FourStemModelStore real HTTPS first download and repair\",\n"
+      + "  \"declaredSourceRevision\": " + jsonString(args[2]) + ",\n  \"runtimeBinaries\": " + binaries + ",\n"
+      + "  \"sourceRevisionIndependentlyVerified\": false,\n"
       + "  \"startedAt\": \"" + started + "\",\n  \"finishedAt\": \"" + java.time.Instant.now() + "\",\n"
       + "  \"modelBytes\": " + Files.size(model) + ",\n  \"modelSha256\": \"" + resultHash + "\",\n"
       + "  \"initialCancellationBytes\": " + firstCancellation + ",\n  \"repairCancellationBytes\": " + repairCancellation + ",\n"

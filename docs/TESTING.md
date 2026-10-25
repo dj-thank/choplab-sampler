@@ -140,7 +140,7 @@ Androidの今回の受入条件はlargeHeapを使わない既定heap192MiB・eng
 
 ## 4-partモデルの実HTTPS取得と修復
 
-`scripts/acceptance/FourStemDownloadCheck.java` は、実アプリと同じ `FourStemModelStore` の既定HTTPS downloaderを使う明示的な通信試験です。対象revisionで作ったJVM/core JARと対応Kotlin stdlibのclasspathでcompile/runします。引数は `--allow-real-https-download <まだ存在しないfixture-directory>` のみで、既存directoryには書き込みません。約330MBの固定モデル取得を伴うため、通常のoffline単体試験には含めません。
+`scripts/acceptance/FourStemDownloadCheck.java` は、実アプリと同じ `FourStemModelStore` の既定HTTPS downloaderを使う明示的な通信試験です。対象revisionで作ったJVM/core JARと対応Kotlin stdlibのclasspathでcompile/runします。引数は `--allow-real-https-download <まだ存在しないfixture-directory> <入力JARのsource commit 40桁>` で、既存directoryには書き込みません。receiptには実際にloadされたJVM/core/stdlib JARの名前・bytes・SHA-256と宣言されたsource revisionを含めます。revisionは自己申告なのでbuild記録との照合は別に必要です。約330MBの固定モデル取得を伴うため、通常のoffline単体試験には含めません。
 
 空cacheのdownload拒否→実HTTPSを1MiB受信後に取消→part残留0→初回全取得とsize/hash→通信を拒否したcache再使用→fixture内の1byte破損拒否→修復取消時の旧corrupt保全→全修復とhash一致を検査し、source/JARのidentityとともに私有receiptを残します。音源・鍵は使いません。この試験だけでモデルの推論品質、アプリのdownload UI、Android/iPad実機音、配布やHUMAN_GOが確認できたとは扱いません。
 
