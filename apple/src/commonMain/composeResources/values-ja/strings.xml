@@ -1,0 +1,5 @@
+<resources>
+    <string name="startup_failed">制作を開けませんでした。保存ファイルは保持されています。</string>
+    <string name="autosave_preserved">自動保存を復元できなかったため、元の記録を保全しました。</string>
+    <string name="reconnect_audio">音声出力に再接続</string>
+</resources>

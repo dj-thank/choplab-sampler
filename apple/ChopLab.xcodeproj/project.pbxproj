@@ -1,0 +1,26 @@
+// !$*UTF8*$!
+{
+ archiveVersion = 1;
+ classes = {};
+ objectVersion = 56;
+ objects = {
+  A00000000000000000000001 = {isa = PBXProject; attributes = {LastUpgradeCheck = 1600;}; buildConfigurationList = A00000000000000000000002; compatibilityVersion = "Xcode 14.0"; developmentRegion = ja; knownRegions = (ja, en, Base); mainGroup = A00000000000000000000003; productRefGroup = A00000000000000000000004; projectDirPath = ""; projectRoot = ""; targets = (A00000000000000000000005);};
+  A00000000000000000000002 = {isa = XCConfigurationList; buildConfigurations = (A00000000000000000000010, A00000000000000000000011); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;};
+  A00000000000000000000003 = {isa = PBXGroup; children = (A00000000000000000000006, A00000000000000000000007, A00000000000000000000004); sourceTree = "<group>";};
+  A00000000000000000000004 = {isa = PBXGroup; children = (A00000000000000000000008); name = Products; sourceTree = "<group>";};
+  A00000000000000000000005 = {isa = PBXNativeTarget; buildConfigurationList = A00000000000000000000009; buildPhases = (A00000000000000000000012, A00000000000000000000013, A00000000000000000000014); buildRules = (); dependencies = (); name = ChopLab; productName = ChopLab; productReference = A00000000000000000000008; productType = "com.apple.product-type.application";};
+  A00000000000000000000006 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = app/AppDelegate.swift; sourceTree = "<group>";};
+  A00000000000000000000007 = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = app/Info.plist; sourceTree = "<group>";};
+  A00000000000000000000008 = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ChopLab.app; sourceTree = BUILT_PRODUCTS_DIR;};
+  A00000000000000000000009 = {isa = XCConfigurationList; buildConfigurations = (A00000000000000000000015, A00000000000000000000016); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;};
+  A00000000000000000000010 = {isa = XCBuildConfiguration; name = Debug; buildSettings = {CLANG_ENABLE_MODULES = YES; SWIFT_VERSION = 5.0; SDKROOT = iphoneos; IPHONEOS_DEPLOYMENT_TARGET = 18.0;};};
+  A00000000000000000000011 = {isa = XCBuildConfiguration; name = Release; buildSettings = {CLANG_ENABLE_MODULES = YES; SWIFT_VERSION = 5.0; SDKROOT = iphoneos; IPHONEOS_DEPLOYMENT_TARGET = 18.0;};};
+  A00000000000000000000012 = {isa = PBXShellScriptBuildPhase; alwaysOutOfDate = 1; buildActionMask = 2147483647; files = (); inputPaths = (); outputPaths = (); name = "Build Kotlin Apple host"; runOnlyForDeploymentPostprocessing = 0; shellPath = /bin/sh; shellScript = "set -eu\ncd \"$SRCROOT/..\"\n./gradlew --no-daemon --max-workers=1 -PchoplabIosPreview=true :apple:embedAndSignAppleFrameworkForXcode\n";};
+  A00000000000000000000013 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000017); runOnlyForDeploymentPostprocessing = 0;};
+  A00000000000000000000014 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0;};
+  A00000000000000000000015 = {isa = XCBuildConfiguration; name = Debug; buildSettings = {PRODUCT_NAME = ChopLab; PRODUCT_BUNDLE_IDENTIFIER = com.choplab.sampler.preview.ipad; INFOPLIST_FILE = app/Info.plist; TARGETED_DEVICE_FAMILY = 2; SWIFT_OPTIMIZATION_LEVEL = "-Onone"; CODE_SIGN_STYLE = Automatic; ENABLE_USER_SCRIPT_SANDBOXING = NO; FRAMEWORK_SEARCH_PATHS = ("$(inherited)", "$(SRCROOT)/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)"); OTHER_LDFLAGS = ("$(inherited)", "-framework", ChopLabApp, "-lz", "-lc++");};};
+  A00000000000000000000016 = {isa = XCBuildConfiguration; name = Release; buildSettings = {PRODUCT_NAME = ChopLab; PRODUCT_BUNDLE_IDENTIFIER = com.choplab.sampler.preview.ipad; INFOPLIST_FILE = app/Info.plist; TARGETED_DEVICE_FAMILY = 2; SWIFT_OPTIMIZATION_LEVEL = "-O"; CODE_SIGN_STYLE = Automatic; ENABLE_USER_SCRIPT_SANDBOXING = NO; FRAMEWORK_SEARCH_PATHS = ("$(inherited)", "$(SRCROOT)/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)"); OTHER_LDFLAGS = ("$(inherited)", "-framework", ChopLabApp, "-lz", "-lc++");};};
+  A00000000000000000000017 = {isa = PBXBuildFile; fileRef = A00000000000000000000006;};
+ };
+ rootObject = A00000000000000000000001;
+}

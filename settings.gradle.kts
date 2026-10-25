@@ -27,3 +27,8 @@ include(":jvm-core")
 include(":engine")
 include(":core", ":jvm")
 include(":ui")
+
+// Apple host is opt-in; the Android/JVM release graph does not change.
+if (providers.gradleProperty("choplabIosPreview").map(String::toBooleanStrict).orElse(false).get()) {
+    include(":apple")
+}
