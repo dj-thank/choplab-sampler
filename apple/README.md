@@ -92,6 +92,14 @@ Signing & Capabilities の Team とこの Preview 用 bundle ID を設定して 
 保存領域はアプリ内 `Application Support/ChopLab/next-v10`、持出しは Documents です。
 別アプリの既存保存領域や署名を変更しません。
 
+Simulator の実アプリ検証では、毎回生成する32桁のrun IDと起動nonceの両方を要求し、
+通常の `next-v10` を開かない専用profileで合成音源を使います。実アプリ内で原音bytesの取込、
+chop/PAD/曲配置、実AVAudioEngineのbuffer消費、SOURCE/HAND/曲の独立、24bit書出し、
+archive/autosaveを確認してから画面を構成します。OSでアプリを終了し、同じprofileを新プロセスで復元し、
+原音hashとarchiveを照合して新編集のUndo/Redoを行います。失敗・出力不可は成功へ置き換えません。
+通常起動や従来のreadiness nonceだけでは、このfixtureを選択しません。
+`app-results.json` の `studioAcceptance` と消費frame増分を確認してください。物理音の聴感は含みません。
+
 実機担当は次の 5 点を source revision・実アプリ hash・OS/route と一緒に記録します。
 
 1. 左右が異なる所有素材を Files から取り込み、元 bytes の hash を保存/再開後も照合する。

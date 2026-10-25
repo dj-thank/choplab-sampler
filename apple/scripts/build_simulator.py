@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import platform
 import plistlib
+import re
 import subprocess
 import time
 import uuid
@@ -80,13 +81,23 @@ def verify_app(app: Path) -> dict:
             "composeResourceFiles": len(resources), "platform": "iOS Simulator", "architecture": "arm64",
             **verify_notices(app)}
 
-def launch(device: str, container: Path) -> dict:
+def launch(device: str, container: Path, profile: str, phase: str) -> dict:
     token = str(uuid.uuid4())
-    env = dict(os.environ, SIMCTL_CHILD_CHOPLAB_SIMULATOR_SMOKE_TOKEN=token)
+    env = dict(os.environ, SIMCTL_CHILD_CHOPLAB_SIMULATOR_SMOKE_TOKEN=token,
+               SIMCTL_CHILD_CHOPLAB_APP_ACCEPTANCE_PROFILE=profile,
+               SIMCTL_CHILD_CHOPLAB_APP_ACCEPTANCE_PHASE=phase)
     run("xcrun", "simctl", "launch", "--terminate-running-process", device, BUNDLE, env=env)
     receipt = container / "Documents" / ".simulator-smoke.json"
     deadline = time.monotonic() + 60
     while time.monotonic() < deadline:
+        failure = container / "Documents" / ".simulator-smoke-error.json"
+        if failure.is_file():
+            failed = json.loads(failure.read_text(encoding="utf-8"))
+            if failed.get("token") == token:
+                failed.pop("token", None)
+                (ROOT / "dist/ipad-native-foundation-evidence/app-studio-failure.json").write_text(
+                    json.dumps(failed, indent=2) + "\n", encoding="utf-8")
+                raise RuntimeError("Production app studio acceptance failed during " + phase + ": " + failed.get("stage", "unknown"))
         if receipt.is_file():
             value = json.loads(receipt.read_text(encoding="utf-8"))
             if value.get("token") == token:
@@ -96,7 +107,7 @@ def launch(device: str, container: Path) -> dict:
                 if not isinstance(capability, dict) or not capability.get("stage"):
                     raise RuntimeError("The app did not record its actual audio capability")
                 return {key: value[key] for key in ("padCount", "stage", "outputAttached", "schemaVersion",
-                        "driverPhase", "driverFault", "audioCapability", "livePlayback", "physicalSoundVerified")}
+                        "driverPhase", "driverFault", "audioCapability", "livePlayback", "physicalSoundVerified", "studioAcceptance")}
         time.sleep(0.5)
     raise RuntimeError("The app did not compose a ready editor within its deadline")
 
@@ -106,6 +117,24 @@ def verify_capability(value: dict) -> None:
         raise RuntimeError("Unexpected or disabled production audio driver; see app-capabilities.json")
     if value["outputAttached"] != (stage == "READY"):
         raise RuntimeError("The app lost its output route before readiness; see app-capabilities.json")
+
+
+def verify_studio(value: dict, phase: str) -> None:
+    acceptance = value.get("studioAcceptance", {})
+    expected = {"phase": phase, "originalBytesPreserved": True, "songSourceHandIndependent": True,
+                "exportBits": 24, "exportFrames": 96000, "autosaveFlushed": True, "archiveVerified": True,
+                "newUndoRedoAfterRestart": phase == "relaunch", "livePlayback": "verified-real-output",
+                "physicalSoundVerified": False}
+    if any(acceptance.get(key) != expected_value for key, expected_value in expected.items()):
+        raise RuntimeError("Incomplete app studio acceptance")
+    delta = acceptance.get("consumedFramesDelta")
+    original_hash = acceptance.get("originalHash")
+    if not isinstance(original_hash, str) or re.fullmatch(r"[0-9a-f]{64}", original_hash) is None:
+        raise RuntimeError("Original content hash is missing or invalid")
+    if not isinstance(delta, int) or isinstance(delta, bool) or delta <= 1024:
+        raise RuntimeError("Real AVAudioEngine buffer consumption was not observed")
+    if value.get("livePlayback") != "verified-real-output" or value.get("physicalSoundVerified") is not False:
+        raise RuntimeError("App playback receipt has an invalid evidence scope")
 
 def main() -> None:
     parser = argparse.ArgumentParser()
@@ -128,14 +157,19 @@ def main() -> None:
     run("xcrun", "simctl", "bootstatus", args.device, "-b")
     run("xcrun", "simctl", "install", args.device, str(app))
     container = Path(read("xcrun", "simctl", "get_app_container", args.device, BUNDLE, "data"))
-    report["firstLaunch"] = launch(args.device, container)
+    profile = uuid.uuid4().hex
+    report["firstLaunch"] = launch(args.device, container, profile, "first")
     (evidence / "app-capabilities.json").write_text(json.dumps({"firstLaunch": report["firstLaunch"]}, indent=2) + "\n", encoding="utf-8")
     verify_capability(report["firstLaunch"])
+    verify_studio(report["firstLaunch"], "first")
     run("xcrun", "simctl", "io", args.device, "screenshot", str(evidence / "ipad-editor.png"))
     run("xcrun", "simctl", "terminate", args.device, BUNDLE)
-    report["relaunch"] = launch(args.device, container)
+    report["relaunch"] = launch(args.device, container, profile, "relaunch")
     (evidence / "app-capabilities.json").write_text(json.dumps({key: report[key] for key in ("firstLaunch", "relaunch")}, indent=2) + "\n", encoding="utf-8")
     verify_capability(report["relaunch"])
+    verify_studio(report["relaunch"], "relaunch")
+    if report["firstLaunch"]["studioAcceptance"]["originalHash"] != report["relaunch"]["studioAcceptance"]["originalHash"]:
+        raise RuntimeError("Original bytes changed across actual app restart")
     run("xcrun", "simctl", "terminate", args.device, BUNDLE)
     package = ROOT / "dist/ChopLab-iPad-Simulator.zip"
     with zipfile.ZipFile(package, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
@@ -144,7 +178,7 @@ def main() -> None:
                 raise RuntimeError("Unexpected app symlink")
             if path.is_file():
                 archive.write(path, "ChopLab.app/" + path.relative_to(app).as_posix())
-    report.update({"scope": "simulator-app-build-launch-relaunch-only", "appBuilt": True,
+    report.update({"scope": "simulator-app-studio-playback-export-save-relaunch", "appBuilt": True,
                    "physicalDeviceTested": False, "appSigningPerformed": False,
                    "sourceRevision": read("git", "rev-parse", "HEAD"),
                    "observedAtUtc": datetime.datetime.now(datetime.timezone.utc).isoformat(),

@@ -1,0 +1,3 @@
+# Historical synthetic local app-launch nonce; never a credential. Exact commit/path/rule/line only.
+# The current test composes this UUID at runtime. All other findings remain enforced.
+eed4bee598e8112b2f777160a56492b1d67a523b:apple/src/commonTest/kotlin/com/choplab/apple/AppAcceptanceModeTest.kt:generic-api-key:7

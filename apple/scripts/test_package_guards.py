@@ -1,5 +1,6 @@
 """Local package guards only; these fixtures do not prove an Apple build or device run."""
 import hashlib
+import copy
 import json
 from pathlib import Path
 import tempfile
@@ -9,6 +10,33 @@ from unittest.mock import patch
 import build_simulator as package
 
 REVISION = "a" * 40
+
+
+class StudioGuards(unittest.TestCase):
+    def fixture(self, phase="first"):
+        return {"livePlayback": "verified-real-output", "physicalSoundVerified": False,
+                "studioAcceptance": {"phase": phase, "originalBytesPreserved": True,
+                    "originalHash": "a" * 64,
+                    "songSourceHandIndependent": True, "consumedFramesDelta": 2048, "exportBits": 24,
+                    "exportFrames": 96000, "autosaveFlushed": True, "archiveVerified": True,
+                    "newUndoRedoAfterRestart": phase == "relaunch", "livePlayback": "verified-real-output",
+                    "physicalSoundVerified": False}}
+
+    def test_both_process_phases_require_actual_studio_results(self):
+        for phase in ("first", "relaunch"):
+            package.verify_studio(self.fixture(phase), phase)
+
+    def test_missing_restore_consumption_and_false_human_claims_are_rejected(self):
+        for changes in ({"consumedFramesDelta": 0}, {"consumedFramesDelta": True},
+                        {"newUndoRedoAfterRestart": False}, {"phase": "first"},
+                        {"physicalSoundVerified": True}, {"exportBits": 16}, {"archiveVerified": False},
+                        {"originalHash": None}, {"originalHash": "bad"}):
+            fixture = copy.deepcopy(self.fixture("relaunch"))
+            fixture["studioAcceptance"].update(changes)
+            with self.assertRaises(RuntimeError):
+                package.verify_studio(fixture, "relaunch")
+        with self.assertRaises(RuntimeError):
+            package.verify_studio({}, "first")
 
 
 class NoticeGuards(unittest.TestCase):
