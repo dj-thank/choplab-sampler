@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "reviewedOn": "2026-10-25",
+  "scope": "ICU update in the exact 40-file Mac media policy; other families match the October 24 policy; not complete corresponding source or release clearance",
+  "policy": "config/mac-media-tool-files-20261025.txt",
+  "observation": "https://github.com/dj-thank/choplab-sampler/actions/runs/40184611902/job/121142641945",
+  "previousReview": "config/mac-media-source-review-20261024.json",
+  "sources": [{
+    "name": "icu4c", "version": "79.1", "license": "Unicode-3.0",
+    "formula": "https://formulae.brew.sh/api/formula/icu4c@79.json",
+    "source": "https://github.com/unicode-org/icu/releases/download/release-79.1/icu4c-79.1-sources.tgz",
+    "sourceSha256": "06fa63ecb521048f8082f12ad988f6b678d90cbd88aafce24cbc94902b191d99",
+    "licenseEvidence": "https://github.com/unicode-org/icu/blob/release-79.1/LICENSE",
+    "abiEvidence": "https://github.com/unicode-org/icu/blob/release-79.1/icu4c/source/common/unicode/uvernum.h",
+    "files": ["libicudata.79.1.dylib", "libicui18n.79.1.dylib", "libicuuc.79.1.dylib"]
+  }],
+  "sourceHashes": "Declared by the official Homebrew formula metadata; not a local source archive download receipt",
+  "sourcePublicationVerified": false
+}

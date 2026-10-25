@@ -138,6 +138,12 @@ Androidの今回の受入条件はlargeHeapを使わない既定heap192MiB・eng
 - online/AI: fake contractの後に明示された実accountで確認。取消/429/失効/遅い応答、metadataと音声の分離を試す。
 - package: Windowsの実app-imageをWindowsで起動/停止、native処理を確認。Androidは対象variantのlint/assemble、signature/package/version/hashをreadback。
 
+## 4-partモデルの実HTTPS取得と修復
+
+`scripts/acceptance/FourStemDownloadCheck.java` は、実アプリと同じ `FourStemModelStore` の既定HTTPS downloaderを使う明示的な通信試験です。対象revisionで作ったJVM/core JARと対応Kotlin stdlibのclasspathでcompile/runします。引数は `--allow-real-https-download <まだ存在しないfixture-directory> <入力JARのsource commit 40桁>` で、既存directoryには書き込みません。receiptには実際にloadされたJVM/core/stdlib JARの名前・bytes・SHA-256と宣言されたsource revisionを含めます。revisionは自己申告なのでbuild記録との照合は別に必要です。約330MBの固定モデル取得を伴うため、通常のoffline単体試験には含めません。
+
+空cacheのdownload拒否→実HTTPSを1MiB受信後に取消→part残留0→初回全取得とsize/hash→通信を拒否したcache再使用→fixture内の1byte破損拒否→修復取消時の旧corrupt保全→全修復とhash一致を検査し、source/JARのidentityとともに私有receiptを残します。音源・鍵は使いません。この試験だけでモデルの推論品質、アプリのdownload UI、Android/iPad実機音、配布やHUMAN_GOが確認できたとは扱いません。
+
 ## 実機の所有
 
 ADBは一つの明示serialだけを対象にし、全connected device taskを使いません。install前にowner/lease、対象APKと署名、残すデータを確認します。無断uninstallや端末初期化を行いません。合成fixtureと隔離profileを優先し、最終状態をreadbackして解放します。
@@ -149,6 +155,8 @@ iPadOSは [ADR10](adr/ADR-0010-ipad-native-support.md) に従い、対象の所�
 既存の `config/choplab-review-avd.json` とemulator runnerは、対象AVD・source provenance・実test数・fatal/ANR・font/rotation復元を検査します。テストをcompileしただけでは実行済みになりません。emulator runnerがphysical serialを拒否する保護を保持してください。
 
 性能試験はwarm-up、rate/buffer、機種、OS、冷間/熱時、反復数、p99/最大/underrunを添えます。サイズは同じbuild種別・圧縮形式で測り、初回DL・展開・利用者素材/cacheを分けます。human確認は最大5項目に絞り、未回答は未確認のまま残します。
+
+Mac preview CIは `LargeArrangementAllocationTest` をcache再利用なしで実行し、16/64track・同時32reader・192frame・全FX/stemの1万block計測をsource/OS/開始時刻/XML/logへ結びます。render割当0・PCM欠落0をassertし、p99/最大/CPU時間は実測値として読むこと。CIの成功はp99目標や物理出力の10分underrunが合格した意味ではありません。
 
 研究資料は [Android audio/accessibility review](research/android-audio-accessibility-reference-review-2026-08-17.md) に保存しています。資料の日時とsource revisionを現在の検証結果へ読み替えません。
 
