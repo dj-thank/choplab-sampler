@@ -61,11 +61,11 @@ Issueを閉じることと、機能の実装完了は区別します。下記は
 
 ### 構想形成ワークスペース（旧 #221–#227）
 
-テーマが未定の素材・独り言から「何を表現したいか」を育てる構想です。歌詞の自動量産とは区別し、原文・AI仮説・本人の採用を分離します。**mainにはまだ実装されていません。** 元の候補は下のIssueに名前/hashが記録されていますが、取得URLはなく今回はsource未取得です。採用には元ZIPの取得・精査、または要件からの新規実装としての検証が必要です。閉鎖は追跡先の集約です。添付の存在や独立source試験をrepository/実AIの成功に読み替えません。
+テーマが未定の素材・独り言から「何を表現したいか」を育てる構想です。歌詞の自動量産とは区別し、原文・AI仮説・本人の採用を分離します。旧Issueの要件から新規実装した候補は、Android/Desktopの手動編集→根拠→採用→プレビュー→制作へ1Undoで適用、独立version 1の保存再開、許可ノートだけの文字列検索を接続しました。[実装契約](inception/README.md)と[評価境界](inception/EVALS.md)を参照してください。元ZIPは取得していません。providerは毎回の用途・model・料金上限の確認と同意を必要とし、実通信は未検証です。Androidの端末内ASRは対応端末だけで有効で、原音保存・Desktop ASR・JAM自動応答・意味検索・Apple接続・実機と人の受入は未完です。
 
 | 順序・旧Issue | 実装と受入条件 |
 |---|---|
-| IN-01 / [#221](https://github.com/dj-thank/choplab-sampler/issues/221) | 添付候補を取得・精査し、素材/仮構想/関係/採用履歴、呼出し/取消/古い応答拒否/明示適用を正式Gradleで検証。候補packageのSHA-256は `67b26a58e3b2f71aa8dfc253348e3eca01111caecaefa342019169abca765355`。`docs/inception/`は現在のmainに存在しない |
+| IN-01 / [#221](https://github.com/dj-thank/choplab-sampler/issues/221) | 要件から新規実装した素材/仮構想/関係/採用履歴、取消/古い応答拒否/明示適用の候補を正式Gradleで検証。元候補package（SHA-256 `67b26a58e3b2f71aa8dfc253348e3eca01111caecaefa342019169abca765355`）は未取得で、同一実装とは主張しない |
 | IN-02A / [#222](https://github.com/dj-thank/choplab-sampler/issues/222) | 音楽projectのschemaと独立したversion付きローカル保存。原文/根拠ID/判断の保存再開、atomic publish、中断/破損/未知version/容量不足/過大入力の拒否。削除は索引/cache/Undo/autosaveへ伝播し、backup/provider保持は明示 |
 | IN-02B / [#223](https://github.com/dj-thank/choplab-sampler/issues/223) | 既存4工程から明示入口。AIなしの手動作成/更新/Undo、原文と根拠の往復、0〜3案の比較/編集/採用/保留。連打/新入力/停止/画面閉鎖/workspace切替で旧応答を破棄。IME/長文/幅/キーボード/空・エラーを検証 |
 | IN-03 / [#224](https://github.com/dj-thank/choplab-sampler/issues/224) | provider実接続は毎回同意・選択素材・整数費用上限・期限・取消境界を守る。strict応答schema、根拠/ID/revision、未知field/過大/二重応答/timeout/429を試験。自動retryなし。公式model/価格と意味評価を実providerで確認し、合成fixtureと分離 |

@@ -59,6 +59,16 @@ class NextSession private constructor(
     /** Explicit owner-session review only; normal creation never enables cloud sending. */
     val googleLyrics = GoogleLyricSession(System::currentTimeMillis)
     val presenter = ContinuousEditorPresenter(backend.studio, scope, Ports())
+    val inception = com.choplab.ui.inception.InceptionController(
+        com.choplab.jvm.inception.FileInceptionStore(backend.assets.directory.parent.resolve("inception-v1")), scope, backend.studio,
+        GoogleLyricSession(System::currentTimeMillis), { com.choplab.jvm.inception.GeminiInceptionProvider() },
+        AndroidInceptionVoice(context, microphone),
+        canApply = { presenter.state.value.permits(ContinuousCapability.LYRICS_EDIT) },
+        canListen = { presenter.state.value.permits(ContinuousCapability.LYRICS_EDIT) && !voice.inputBusy })
+    fun onEditorAction(action: ContinuousEditorAction) {
+        if (action == ContinuousEditorAction.StopAll) scope.launch { inception.stop() }
+        presenter.onAction(action)
+    }
     private val guideStore = FileQuickStartStore(backend.assets.directory.parent.resolve("ui"))
     val quickStart = QuickStartController(scope, autoShow = backend.studio.document.value.revision == 0L,
         guideStore::completed, guideStore::complete)
@@ -71,6 +81,7 @@ class NextSession private constructor(
     fun releaseOutput() { backend.engine.releaseOutput() }
     /** Stops the song and the original. Unlike the Stop button it leaves an edit, import, save or export running. */
     suspend fun stopSound() {
+        inception.stop()
         presenter.cancelFourStemPreparation()
         presenter.stopVocalPractice()
         presenter.vocalCoach.value?.dispatch(CoachAction.Stop)
@@ -95,6 +106,7 @@ class NextSession private constructor(
             { confirmWithoutAutosave().also { if (it) closedWithoutAutosave = true } }, finish)
 
     suspend fun shutdown() {
+        inception.close()
         googleLyrics.close()
         quickStart.close()
         withContext(Dispatchers.Main.immediate + NonCancellable) { pickers.close(); microphone.close() }
