@@ -18,7 +18,8 @@ internal class IosAutosave(directory: String, private val assets: IosAssetStore,
 
     fun save(project: Project, revision: Long): Boolean = lock.withLock {
         require(revision >= 0)
-        val previous = validGenerations().maxByOrNull { it.generation }
+        // A temporarily unavailable asset must not reset the generation counter and make an older slot win later.
+        val previous = (0..2).mapNotNull { readGeneration("$directory/autosave.$it.json", verifyAssets = false) }.maxByOrNull { it.generation }
         if (previous != null && revision <= previous.revision) return@withLock false
         require(project.assets.filter { it.required }.all(assets::verified)) { "Autosave cannot commit missing assets" }
         val generation = (previous?.generation ?: -1L).also { check(it < Long.MAX_VALUE) } + 1
@@ -43,7 +44,7 @@ internal class IosAutosave(directory: String, private val assets: IosAssetStore,
 
     private fun validGenerations(): List<Recovery> = (0..2).mapNotNull { readGeneration("$directory/autosave.$it.json") }
 
-    private fun readGeneration(path: String): Recovery? = try {
+    private fun readGeneration(path: String, verifyAssets: Boolean = true): Recovery? = try {
         val root = ProjectJson.parse(readFile(path, ProjectJson.MAX_BYTES.toLong())).obj()
             .fields("generation", "revision", "documentHash", "project")
         val generation = root.long("generation"); val revision = root.long("revision")
@@ -52,7 +53,7 @@ internal class IosAutosave(directory: String, private val assets: IosAssetStore,
         val document = root.getValue("project").obj()
         require(sha256(ProjectJson.encodeElement(document)) == root.string("documentHash"))
         val project = ProjectJson.fromJson(document)
-        require(project.assets.filter { it.required }.all(assets::verified))
+        if (verifyAssets) require(project.assets.filter { it.required }.all(assets::verified))
         Recovery(project, revision, generation)
     } catch (_: Exception) { null }
 }

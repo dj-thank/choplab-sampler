@@ -33,7 +33,7 @@ internal object IosAudioDecoder {
     }
 
     private fun openApple(path: String): AppleFile = memScoped {
-        val error = alloc<ObjCObjectVar<NSError?>>()
+        val error = alloc<ObjCObjectVar<NSError?>>().apply { value = null }
         // A failing Objective-C initializer surfaces as an exception or an error out-parameter.
         val file: AVAudioFile? = try { AVAudioFile(forReading = NSURL.fileURLWithPath(path), error = error.ptr) } catch (_: Throwable) { null }
         require(file != null && error.value == null) { "This audio format cannot be opened on iPadOS" }
@@ -56,7 +56,7 @@ internal object IosAudioDecoder {
             val buffer = requireNotNull(AVAudioPCMBuffer(pCMFormat = file.processingFormat, frameCapacity = 4096u))
             var frames = 0L
             memScoped {
-                val error = alloc<ObjCObjectVar<NSError?>>()
+                val error = alloc<ObjCObjectVar<NSError?>>().apply { value = null }
                 while (true) {
                     require(!cancelled()) { "Decode cancelled" }
                     error.value = null
@@ -84,7 +84,7 @@ internal object IosAudioDecoder {
             val buffer = requireNotNull(AVAudioPCMBuffer(pCMFormat = file.processingFormat, frameCapacity = chunk)) { "No decode buffer" }
             var frame = 0L
             memScoped {
-                val error = alloc<ObjCObjectVar<NSError?>>()
+                val error = alloc<ObjCObjectVar<NSError?>>().apply { value = null }
                 while (frame < info.frames) {
                     require(!cancelled()) { "Decode cancelled" }
                     require(file.readIntoBuffer(buffer, error.ptr) && error.value == null) { "Audio decode failed" }

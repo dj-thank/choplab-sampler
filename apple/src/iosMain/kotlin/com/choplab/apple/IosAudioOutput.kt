@@ -96,7 +96,7 @@ internal class IosAudioOutput private constructor(private val blockFrames: Int, 
                 output.engine.connect(output.player, to = output.engine.mainMixerNode, format = output.format)
                 output.engine.prepare()
                 val started = memScoped {
-                    val error = alloc<ObjCObjectVar<NSError?>>()
+                    val error = alloc<ObjCObjectVar<NSError?>>().apply { value = null }
                     output.engine.startAndReturnError(error.ptr) && error.value == null
                 }
                 if (!started) { output.close(); return null }
@@ -111,7 +111,7 @@ internal class IosAudioOutput private constructor(private val blockFrames: Int, 
 internal object AudioSessionControl {
     fun activate(): Boolean = memScoped {
         val session = AVAudioSession.sharedInstance()
-        val error = alloc<ObjCObjectVar<NSError?>>()
+        val error = alloc<ObjCObjectVar<NSError?>>().apply { value = null }
         if (!session.setCategory(AVAudioSessionCategoryPlayback, error.ptr)) return@memScoped false
         session.setPreferredIOBufferDuration(0.005, null)
         session.setActive(true, error.ptr)

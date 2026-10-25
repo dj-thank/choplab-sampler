@@ -2,6 +2,7 @@ package com.choplab.apple
 
 import com.choplab.core.ProgramCompiler
 import com.choplab.core.chop.*
+import com.choplab.core.analysis.*
 import com.choplab.core.kits.DrumKits
 import com.choplab.core.model.*
 import com.choplab.engine.NoteRepeatRender
@@ -19,6 +20,28 @@ import kotlin.math.round
  * sounds are 48 kHz float WAVs published by content hash, so the same PAD renders to the same asset again.
  */
 internal class IosRendering(private val assets: IosAssetStore, private val pcm: IosPcmPort) {
+    /** Bounded worker analysis, using the same stereo DSP as the other hosts. */
+    suspend fun analyseSource(asset: Asset, range: FrameRange): SourceMusicResult = withContext(Dispatchers.Default) {
+        require(range.end <= asset.frames && range.length <= asset.sampleRate.toLong() * SourceMusicAnalysis.MAX_SECONDS)
+        val first = ((range.start * SourceMusicAnalysis.RATE + asset.sampleRate - 1) / asset.sampleRate).toInt()
+        val end = (range.end * SourceMusicAnalysis.RATE / asset.sampleRate).toInt()
+        pcm.reserveWorking(SourceMusicAnalysis.WORK_BYTES).use {
+            pcm.acquire(asset).use { lease ->
+                require(end <= lease.pcm.frameCount)
+                val analysis = SourceMusicAnalysis()
+                var from = first
+                while (from < end) {
+                    ensureActive()
+                    val until = minOf(end, from + 4096)
+                    val chunk = FloatArray((until - from) * 2) { lease.pcm.sample(from + it / 2, it % 2) }
+                    analysis.accept(chunk) { ensureActive() }
+                    from = until
+                }
+                analysis.finish { ensureActive() }
+            }
+        }
+    }
+
     /** A PAD as it sounds from its PAD (pitch, reverse, tone, own pan), for placing on the song. */
     suspend fun renderPad(pad: Pad, source: Asset): Asset = withContext(Dispatchers.Default) {
         pcm.acquire(source).use { lease ->

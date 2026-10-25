@@ -64,6 +64,18 @@ class AppleStorageTest {
         FileWriter("$autosaveRoot/autosave.0.json", exclusive = false).use { it.write(byteArrayOf(1)); it.syncAndClose() }
         assertEquals(3L, autosave.recover()?.revision)
     }
+    @Test fun unavailableOldAssetDoesNotResetAutosaveGeneration() = runBlocking {
+        val store = IosAssetStore(directory())
+        val (asset, bytes) = fixture()
+        store.write(asset, bytes)
+        val autosave = IosAutosave(directory(), store)
+        autosave.save(Project(assets = frozenListOf(asset)), 1)
+        autosave.save(Project(assets = frozenListOf(asset), title = "Previous"), 2)
+        // Memory pressure can prevent asset validation even when the envelope itself remains trustworthy.
+        store.memory.reserve(store.memory.limit).use { autosave.save(Project(title = "New empty project"), 3) }
+        assertEquals(3L, autosave.recover()?.revision)
+        assertEquals("New empty project", autosave.recover()?.project?.title)
+    }
     @Test fun unknownSchemaAndUnknownZipEntryAreRejected() {
         val store = IosAssetStore(directory())
         val root = directory().also(::ensureDirectory)

@@ -19,6 +19,8 @@ internal class IosEditorPorts(private val backend: IosBackend, private val picke
     override val drumKitsAvailable = true
     override val stepPatternsAvailable = true
     override val noteRepeatAvailable = true
+    override val sourceAnalysisAvailable = true
+    override suspend fun analyseSource(asset: Asset, range: FrameRange) = backend.rendering.analyseSource(asset, range)
     // Ports not implemented by iPad remain NOT_CONNECTED in the shared editor, never a silent success.
     override val outputRevealAvailable = true
     override suspend fun chooseAudio(): Location? = picker.openAudio()?.let(backend.files::register)

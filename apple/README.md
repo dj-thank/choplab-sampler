@@ -12,7 +12,7 @@ Swift の入口は `app/AppDelegate.swift`、共有画面の入口は `MainViewC
 |---|---|
 | 再生 | AVAudioEngine/AVAudioPlayerNode、48 kHz stereo float、独立した SOURCE/HAND/曲。出力がない場合は編集のみで、再生要求は失敗を返す |
 | 素材 | UIKit のコピー取込、WAV PCM16/24/float32、その他は AVAudioFile が実際に開ける mono/stereo format。元 bytes をそのまま保持 |
-| Chop/PAD/曲 | 等分・attack chop、PAD 変換、step/pattern、note repeat、内蔵ドラム音源、共有 mixer/FX |
+| Chop/PAD/曲 | 等分・attack chop、テンポ/キー候補の解析、PAD 変換、step/pattern、note repeat、内蔵ドラム音源、共有 mixer/FX |
 | 保存 | 全 bytes SHA-256、サイズ・音声メタデータ、隠しファイルを含む quota、リンク拒否、厳格 ZIP、現行共通 schema、3 世代の原子的 autosave |
 | 出力 | EngineCore のオフライン描画から 24-bit WAV。Files の Documents 保存と共有 sheet |
 | 再開 | 必要資産を検証して復元。全 autosave が読めないときは保全して通知。開き直した後の新編集から Undo/Redo |
