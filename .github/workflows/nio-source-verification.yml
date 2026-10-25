@@ -8,6 +8,7 @@ on:
       - 'scripts/acceptance/verify_nio_sources.py'
       - 'scripts/acceptance/NioUndesugar.java'
       - 'config/newpipe-dependencies.json'
+      - 'config/nio-source-class-map-20261025.json'
   workflow_dispatch:
 
 permissions:
