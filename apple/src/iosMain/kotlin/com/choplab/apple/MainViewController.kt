@@ -6,7 +6,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.window.ComposeUIViewController
 import com.choplab.core.Action
+import com.choplab.core.ai.GoogleLyricSession
 import com.choplab.ui.*
+import com.choplab.ui.inception.InceptionController
 import kotlinx.coroutines.*
 import platform.Foundation.*
 import platform.UIKit.*
@@ -53,6 +55,11 @@ fun MainViewController(): UIViewController {
             val picker = remember(host) { IosFilePicker { controller } }
             val ports = remember(host) { IosEditorPorts(host, picker, scope) }
             val presenter = remember(host) { ContinuousEditorPresenter(host.studio, scope, ports) }
+            val inception = remember(host) {
+                InceptionController(IosInceptionStore(host.directory + "/inception-v1"), scope, host.studio,
+                    GoogleLyricSession { (NSDate().timeIntervalSince1970 * 1000).toLong() },
+                    canApply = { presenter.state.value.permits(ContinuousCapability.LYRICS_EDIT) })
+            }
             val state by presenter.state.collectAsState()
             val autoChop by presenter.autoChop.collectAsState()
             val patterns by presenter.stepPatterns.collectAsState()
@@ -75,12 +82,14 @@ fun MainViewController(): UIViewController {
             var refresh by remember { mutableLongStateOf(0L) }
             LaunchedEffect(host) { while (isActive) { delay(33); host.studio.dispatch(Action.RefreshTransport); refresh++ } }
             DisposableEffect(host) {
-                requireNotNull(owned).beforeShutdown = { try { presenter.close() } finally { ports.sourcePreview.close() } }
+                requireNotNull(owned).beforeShutdown = {
+                    try { inception.close() } finally { try { presenter.close() } finally { ports.sourcePreview.close() } }
+                }
                 val center = NSNotificationCenter.defaultCenter
                 val observers = listOf(
                     center.addObserverForName(UIApplicationDidEnterBackgroundNotification, null, NSOperationQueue.mainQueue) {
                         host.engine.releaseOutput()
-                        scope.launch { host.studio.dispatch(Action.Silence); host.flushAutosave() }
+                        scope.launch { inception.hostChanged(); host.studio.dispatch(Action.Silence); host.flushAutosave() }
                     },
                     center.addObserverForName(UIApplicationWillEnterForegroundNotification, null, NSOperationQueue.mainQueue) { host.engine.reattach() },
                     center.addObserverForName(AVAudioSessionInterruptionNotification, null, NSOperationQueue.mainQueue) { host.engine.releaseOutput() },
@@ -96,9 +105,12 @@ fun MainViewController(): UIViewController {
                 if (driver.phase == DriverPhase.EDITING_ONLY) TextButton(onClick = { host.engine.reattach() }) {
                     Text(stringResource(Res.string.reconnect_audio))
                 }
-                ContinuousEditor(state, presenter::onAction, presenter::readout, refresh,
+                ContinuousEditor(state, { action ->
+                    if (action == ContinuousEditorAction.StopAll) scope.launch { inception.stop() }
+                    presenter.onAction(action)
+                }, presenter::readout, refresh,
                     modifier = Modifier.weight(1f), diagnostics = presenter::diagnostics, mixerReadout = presenter::readMixer,
-                    autoChop = autoChop, stepPatterns = patterns)
+                    autoChop = autoChop, stepPatterns = patterns, inception = inception)
             }
         }
     }

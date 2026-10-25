@@ -16,6 +16,7 @@ Swift の入口は `app/AppDelegate.swift`、共有画面の入口は `MainViewC
 | 保存 | 全 bytes SHA-256、サイズ・音声メタデータ、隠しファイルを含む quota、リンク拒否、厳格 ZIP、現行共通 schema、3 世代の原子的 autosave |
 | 出力 | EngineCore のオフライン描画から 24-bit WAV。Files の Documents 保存と共有 sheet |
 | 再開 | 必要資産を検証して復元。全 autosave が読めないときは保全して通知。開き直した後の新編集から Undo/Redo |
+| 構想 | 独立した version 1 ノート。原文・訂正・案・判断を保存、採用案を制作タイトル/歌詞へ明示適用し制作の Undo で戻す。音声入力と AI provider は未接続 |
 
 PCM は一つの 128 MiB 予算で resident/copy/resample/作業領域/出力を確保前に予約します。
 長い素材の paged PCM は未接続で、収まらない処理は失敗を返します。元ファイルは失いません。
@@ -40,7 +41,8 @@ Apple の確認には ARM64 Mac、対応 Xcode/iOS SDK と iPad Simulator が必
   :apple:linkDebugFrameworkIosArm64 :apple:linkDebugFrameworkIosSimulatorArm64 \
   :apple:iosSimulatorArm64Test --device "$CHOPLAB_SIMULATOR" \
   --tests 'com.choplab.apple.AppleCodecTest' --tests 'com.choplab.apple.AppleStorageTest' \
-  --tests 'com.choplab.apple.AppleStudioFlowTest' --tests 'com.choplab.apple.AppleResourceOwnershipTest'
+  --tests 'com.choplab.apple.AppleStudioFlowTest' --tests 'com.choplab.apple.AppleResourceOwnershipTest' \
+  --tests 'com.choplab.apple.AppleInceptionStoreTest'
 python3 apple/scripts/build_simulator.py --device "$CHOPLAB_SIMULATOR"
 ```
 
@@ -60,6 +62,12 @@ ARM64/iOS Simulator identity と Compose リソース、package bytes/hash を�
 予期しない driver 例外は利用不能とみなさず失敗にします。偽出力へ置き換えず、聴感は実機で確認します。
 `AppleResourceOwnershipTest` は起動途中の取消、初回再描画前の終了、公開失敗時の資源回収を検査します。
 autosave の復元が古い有効世代へ戻っても新編集を保存し、上書き先の読めない世代は別名で保全します。
+
+構想は同じ profile 内の `inception-v1/` へ保存し、音楽制作の autosave/archive へ混入しません。
+SHA-256 付き UTF-8 封筒、32 ノート/各 256 KiB/総 8 MiB、revision CAS、プロセス内排他と OS file lock を使います。
+読めない既存版・未知 version・一時コピーは保全して失敗を返し、完全に検証できた一時コピーだけを回収します。
+`AppleInceptionStoreTest` は再開、同時保存競合、容量不足、同サイズ破損、未知 version、UTF-8/パス、
+削除と保存失敗の保全、実 controller から制作への適用/Undo を Native 上で確認します。
 
 ## 署名と所有 iPad での確認
 
