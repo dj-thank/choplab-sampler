@@ -68,6 +68,9 @@ private suspend fun runAppAcceptance(host: IosBackend, mode: AppAcceptanceMode, 
         val clip = Clip("part", track.id, asset.hash, FrameRange(0, asset.frames))
         check(studio.dispatch(Action.Edit(Intent.SetArrangement(frozenListOf(track), frozenListOf(clip), frozenListOf()))).accepted)
         completeAppOperation(studio, Action.Save(host.files.register(HostFile(savedPath, "fixture.choplab"))), Operation.SAVE)
+        val saved = studio.document.value.project
+        completeAppOperation(studio, Action.Open(host.files.register(HostFile(savedPath, "fixture.choplab"))), Operation.OPEN)
+        check(studio.document.value.project == saved)
     } else {
         // This branch starts in a new app process and must restore the first process's autosave exactly.
         check(studio.document.value.project.title == "App acceptance fixture")
