@@ -26,7 +26,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up JDK 21
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
           java-version: '21'
@@ -61,7 +61,7 @@ jobs:
         run: python3.14 scripts/release_metadata.py --github-output "$GITHUB_OUTPUT"
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
 
       - name: Build the full NEXT app and matching R8 test APK
         shell: bash
@@ -104,7 +104,7 @@ jobs:
           (cd dist/android-next-native-candidate && shasum -a 256 ./*.apk source-notices.zip > SHA256SUMS)
 
       - name: Upload explicitly unsigned Android NEXT candidate pair
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: choplab-android-next-native-candidate
           if-no-files-found: error
@@ -139,7 +139,7 @@ jobs:
           python scripts/check_public_surface.py --text-file work/next-native-windows/candidate/native-inputs.json --text-file work/next-native-windows/candidate/derived.json --archive work/next-native-windows/candidate/source-notices.zip
 
       - name: Upload exact pinned transfer inputs
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: choplab-windows-next-native-inputs
           if-no-files-found: error
@@ -156,7 +156,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Download inputs from this workflow run
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: choplab-windows-next-native-inputs
           path: work/native-transfer
@@ -169,13 +169,13 @@ jobs:
         run: python scripts/release_metadata.py --github-output $env:GITHUB_OUTPUT
 
       - name: Set up JDK 21
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
           java-version: '21'
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
 
       - name: Package the full linked NEXT editor
         run: .\gradlew.bat --no-daemon --stacktrace :desktop:packageWindowsLinkedPreview -PchoplabWindowsAudioRuntime=work/next-native-runtime
@@ -220,7 +220,7 @@ jobs:
           (Get-FileHash dist/windows-next-native-candidate/source-notices.zip -Algorithm SHA256).Hash.ToLowerInvariant() + '  source-notices.zip' | Add-Content -Encoding utf8 dist/windows-next-native-candidate/SHA256SUMS
 
       - name: Upload Windows NEXT native candidate
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: choplab-windows-next-native-candidate
           if-no-files-found: error
