@@ -43,7 +43,7 @@ jobs:
         run: python3 scripts/release_metadata.py --github-output "$GITHUB_OUTPUT"
 
       - name: Set up JDK 21
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
           java-version: '21'
@@ -74,7 +74,7 @@ jobs:
             "system-images;android-36;google_apis;x86_64"
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
 
       - name: Unit tests, lint, and debug APK
         run: >-
@@ -92,7 +92,7 @@ jobs:
 
       - name: Upload failed engine test diagnostics
         if: ${{ failure() && !cancelled() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: choplab-engine-test-failure-linux
           if-no-files-found: ignore
@@ -178,7 +178,7 @@ jobs:
 
       - name: Upload reports and APKs
         if: always() && steps.preview_verify.outcome == 'success'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: choplab-android-preview-and-reports
           retention-days: 7
@@ -217,7 +217,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Upload committed source snapshot
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: choplab-source-snapshot
           if-no-files-found: error
@@ -230,13 +230,13 @@ jobs:
         run: python scripts/release_metadata.py --github-output $env:GITHUB_OUTPUT
 
       - name: Set up JDK 21
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
           java-version: '21'
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
 
       - name: Test and package Windows app-image
         shell: pwsh
@@ -296,7 +296,7 @@ jobs:
           $zip = Resolve-Path 'dist/ChopLab-windows-next.zip'
           (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant() + "  " + (Split-Path -Leaf $zip) | Set-Content -Encoding utf8 "$zip.sha256"
       - name: Upload Windows app-image artifact
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: choplab-windows-app-image
           if-no-files-found: error
@@ -309,7 +309,7 @@ jobs:
 
       - name: Upload failed desktop test diagnostics
         if: ${{ failure() && !cancelled() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: choplab-desktop-test-failure
           if-no-files-found: ignore
@@ -341,7 +341,7 @@ jobs:
 
       - name: Upload synthetic UI review evidence
         if: ${{ always() && steps.ui_review_archive.outcome == 'success' && hashFiles('dist/choplab-ui-review.zip') != '' && !cancelled() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: choplab-ui-review
           if-no-files-found: error
@@ -369,14 +369,14 @@ jobs:
 
       - name: Set up JDK 21
         if: github.event_name != 'pull_request'
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
           java-version: '21'
 
       - name: Set up Gradle
         if: github.event_name != 'pull_request'
-        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
 
       - name: Resolve dependencies and generate CycloneDX SBOM
         if: github.event_name != 'pull_request'
@@ -393,7 +393,7 @@ jobs:
 
       - name: Upload dependency evidence
         if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: choplab-cyclonedx-sbom
           if-no-files-found: error
